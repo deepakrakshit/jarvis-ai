@@ -1,0 +1,78 @@
+version: "1.0.0"
+default_decision: "DENY"
+
+rules:
+  # 1. Deny path traversal attempts unconditionally
+  - rule_id: "deny-path-traversal"
+    description: "Hard block on any parameter containing relative path traversal"
+    priority: 1000
+    tool_pattern: "*"
+    when:
+      arguments_regex:
+        file_path: "(?:\\.\\.[\\\\/]|[\\\\/]\\.\\.)"
+    decision: "DENY"
+
+  # 2. Block direct read or write to sensitive system credentials
+  - rule_id: "deny-sensitive-credential-targets"
+    description: "Block access to SSH keys, credentials, and environment secret files"
+    priority: 950
+    tool_pattern: "native:fs:*"
+    when:
+      arguments_regex:
+        file_path: "(?:\\.env|id_rsa|\\.ssh|\\.aws|credentials\\.json)"
+    decision: "DENY"
+
+  # 3. Dangerous root shell commands require explicit HITL approval and sandbox
+  - rule_id: "require-hitl-for-dangerous-shell"
+    description: "Destructive shell commands require human approval"
+    priority: 800
+    tool_pattern: "native:shell:execute"
+    when:
+      arguments_regex:
+        command: "(?:rm\\s+-(?:r|f|rf|fr)|format\\s+[a-z]:|mkfs|dd\\s+if=|sudo|chmod\\s+777)"
+    decision: "REQUIRE_HITL"
+    obligations:
+      - "hitl"
+      - "sandbox"
+
+  # 4. Standard in-workspace read-only operations allowed for autonomy >= 2
+  - rule_id: "allow-workspace-read-autonomy-ge-2"
+    description: "Allow reading files inside approved workspace for autonomy level 2 or higher"
+    priority: 500
+    tool_pattern: "native:fs:read_file"
+    when:
+      workspace: "approved"
+      autonomy_level: ">=2"
+      max_risk: 0.35
+    decision: "ALLOW"
+
+  # 5. Standard in-workspace bounded writes allowed for autonomy >= 3
+  - rule_id: "allow-workspace-write-autonomy-ge-3"
+    description: "Allow writing files inside approved workspace for autonomy level 3 or higher"
+    priority: 400
+    tool_pattern: "native:fs:write_file"
+    when:
+      workspace: "approved"
+      confidentiality: "<=INTERNAL"
+      autonomy_level: ">=3"
+      max_risk: 0.60
+    decision: "ALLOW"
+
+  # 6. System clock read allowed for any non-zero autonomy
+  - rule_id: "allow-system-clock"
+    description: "Allow reading current time"
+    priority: 300
+    tool_pattern: "native:clock:get_time"
+    when:
+      autonomy_level: ">=1"
+    decision: "ALLOW"
+
+  # 7. Web fetch permitted for autonomy >= 2 when within risk bounds
+  - rule_id: "allow-web-fetch"
+    description: "Allow reading web pages for autonomy level 2 or higher"
+    priority: 300
+    tool_pattern: "native:web:fetch"
+    when:
+      autonomy_level: ">=2"
+      max_risk: 0.40
+    decision: "ALLOW"
