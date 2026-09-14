@@ -1,4 +1,4 @@
-"""Tests for CapabilityFirewall least-privilege projection and Stage 3 Exit Gate."""
+"""Tests for CapabilityFirewall least-privilege projection and scope filtering."""
 
 import pytest
 
@@ -62,10 +62,10 @@ def populated_registry() -> CapabilityRegistry:
     return reg
 
 
-def test_stage_3_exit_gate_differing_scopes_differing_projections(
+def test_capability_firewall_differing_scopes_differing_projections(
     populated_registry: CapabilityRegistry,
 ) -> None:
-    """STAGE 3 EXIT GATE:
+    """CAPABILITY FIREWALL PROJECTION:
 
     'Given two tasks with different scopes, their model-visible tool lists differ
     exactly as policy predicts.'

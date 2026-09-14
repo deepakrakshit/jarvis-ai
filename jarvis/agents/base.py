@@ -1,6 +1,6 @@
 """JARVIS Capability Specialist Base Interface.
 
-Defines the foundation for domain specialists implemented in Stage 6.
+Defines the foundation for domain capability specialists.
 """
 
 from abc import ABC, abstractmethod

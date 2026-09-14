@@ -1,6 +1,6 @@
-"""Adversarial security test suite and Stage 2 Exit Gate verification.
+"""Adversarial security test suite and IFC invariant verification.
 
-Tests all 6 canonical adversarial vectors from the implementation roadmap:
+Tests all 6 canonical adversarial vectors:
 1. Poisoned webpage (hidden exfiltration instructions).
 2. Malicious PDF (system override payload).
 3. Malicious email (phishing and shell injection).
@@ -8,7 +8,7 @@ Tests all 6 canonical adversarial vectors from the implementation roadmap:
 5. Tool result demanding secret revelation.
 6. External payload masquerading as a system message.
 
-And executes the formal Stage 2 Exit Gate:
+And executes the formal invariant verification:
 "No untrusted artifact can cause a deterministic policy state to become trusted
 merely because a model claims it is safe."
 """
@@ -237,14 +237,14 @@ def test_adversarial_external_content_masquerading_as_system_message() -> None:
 
 
 # ------------------------------------------------------------------------------
-# 7. Stage 2 Exit Gate Test
+# 7. Non-Elevation Invariant Test
 # ------------------------------------------------------------------------------
 
 
-def test_stage_2_exit_gate_model_claims_cannot_elevate_untrusted_data(
+def test_model_claims_cannot_elevate_untrusted_data(
     enforcer: SinkEnforcer,
 ) -> None:
-    """STAGE 2 EXIT GATE:
+    """NON-ELEVATION INVARIANT:
 
     'No untrusted artifact can cause a deterministic policy state to become trusted
     merely because a model claims it is safe.'

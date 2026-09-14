@@ -1,4 +1,4 @@
-"""JARVIS Analysis Specialist Stub (Stage 6)."""
+"""JARVIS Analysis Specialist Stub."""
 
 from typing import Any
 
@@ -19,4 +19,4 @@ class AnalysisSpecialist(BaseAgent):
         )
 
     async def process_task(self, task_payload: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError("AnalysisSpecialist will be implemented in Stage 6.")
+        raise NotImplementedError("AnalysisSpecialist implementation pending.")

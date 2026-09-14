@@ -1,4 +1,4 @@
-"""Tests for Stage 6 Specialist Stubs and Manifest Declarations."""
+"""Tests for Specialist Stubs and Manifest Declarations."""
 
 import pytest
 
@@ -37,7 +37,7 @@ def test_specialist_manifest_declarations() -> None:
 
 @pytest.mark.asyncio
 async def test_specialist_stubs_raise_not_implemented() -> None:
-    """Verify that invoking stubs in Stage 0 cleanly raises NotImplementedError."""
+    """Verify that invoking stubs cleanly raises NotImplementedError."""
     specialists = [
         ResearchSpecialist(),
         CodingSpecialist(),

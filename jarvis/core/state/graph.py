@@ -1,6 +1,6 @@
 """JARVIS LangGraph StateGraph Engine with Checkpoint Persistence and Resume Semantics.
 
-Implements Stage 1 deterministic control plane, budget enforcement, and crash recovery.
+Implements deterministic control plane, budget enforcement, and crash recovery.
 """
 
 from typing import Any, Literal

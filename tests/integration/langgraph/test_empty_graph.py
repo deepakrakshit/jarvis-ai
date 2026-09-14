@@ -1,4 +1,4 @@
-"""Stage 0 Exit Gate Test: Baseline LangGraph Execution.
+"""Baseline LangGraph Execution Verification.
 
 Validates that an empty/baseline LangGraph workflow compiles and executes deterministically.
 """
@@ -10,7 +10,7 @@ from jarvis.core.workflow import BaselineState, create_baseline_graph
 
 @pytest.mark.integration
 def test_baseline_langgraph_execution() -> None:
-    """Verify execution of baseline LangGraph StateGraph (Stage 0 Exit Gate)."""
+    """Verify execution of baseline LangGraph StateGraph."""
     graph = create_baseline_graph()
     initial_state: BaselineState = {
         "status": "initialized",

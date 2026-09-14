@@ -1,6 +1,6 @@
 """JARVIS Baseline LangGraph Workflow Engine.
 
-Provides the foundational state graph initialization and deterministic verification for Stage 0.
+Provides the foundational state graph initialization and deterministic verification.
 """
 
 from typing import Any, TypedDict
@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 
 
 class BaselineState(TypedDict):
-    """Minimal baseline state schema for Stage 0 verification."""
+    """Minimal baseline state schema for workflow verification."""
 
     status: str
     step_count: int

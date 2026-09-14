@@ -1,4 +1,4 @@
-"""Stage 1 Exit Gate Test: Checkpoint Crash Recovery and Resume Semantics.
+"""Checkpoint Crash Recovery and Resume Semantics Verification.
 
 Proves that interrupting a task at any graph node and restarting resumes from
 the correct persisted checkpoint without duplicating completed work.
@@ -23,13 +23,13 @@ from jarvis.storage.task_store import TaskStore
         (4, "verify", TaskStatus.VERIFYING),
     ],
 )
-def test_stage_1_exit_gate_resume_from_node(
+def test_checkpoint_resume_from_node(
     temp_db: DatabaseManager,
     interrupted_at_step: int,
     node_name: str,
     interrupted_status: TaskStatus,
 ) -> None:
-    """Stage 1 Exit Gate: Verify resuming from intermediate checkpoint after crash."""
+    """Verify resuming from intermediate checkpoint after crash."""
     store = TaskStore(temp_db)
 
     # 1. Create task and advance to interrupted state
