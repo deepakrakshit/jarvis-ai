@@ -1,0 +1,58 @@
+# Environment & Secrets
+.env
+.env.local
+*.env
+
+# Roadmaps & Internal Plans
+IMPLEMENTATION_ROADMAP.md
+implementation_roadmap.md
+
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local Database & Storage
+data/
+*.db
+*.sqlite3
+workspace/artifacts/
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo

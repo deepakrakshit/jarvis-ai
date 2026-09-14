@@ -1,0 +1,63 @@
+# ==============================================================================
+# JARVIS v1.0.0: Core Dependencies & Runtime Requirements
+# Architecture: Zero-Trust Stateful Personal AI Operating System
+# ==============================================================================
+
+# --- 1. Agent Control Plane & Graph Orchestration ---
+langgraph>=0.2.20                  # Deterministic state machine, checkpoints & interrupts
+langchain-core>=0.3.0               # Base interfaces, Runnables & message abstractions
+langchain>=0.3.0                    # Composable agent primitives & chain operations
+pydantic>=2.8.0                     # V2 Type validation, strict schemas & serialization
+pydantic-settings>=2.4.0            # Environment management & setting models
+
+# --- 2. Model Providers & Inference Adapters ---
+langchain-google-genai>=2.0.0       # Google AI Studio / Gemini & Gemma client
+google-genai>=0.1.1                 # Next-gen Google GenAI official SDK
+langchain-groq>=0.2.0               # Groq Cloud ultra-fast inference SDK (Qwen, GPT-OSS)
+groq>=0.11.0                        # Native Groq API client
+openai>=1.40.0                      # OpenAI-compatible client (OpenRouter & fallback endpoints)
+
+# --- 3. Gateway, Networking & Event Streaming ---
+fastapi>=0.112.0                    # High-performance async gateway & WebSocket server
+uvicorn[standard]>=0.30.0           # ASGI production server with uvloop & httptools
+websockets>=12.0                    # Duplex low-latency telemetry & audio bridge
+httpx>=0.27.0                       # Async HTTP client for outbound tool calls & web scraping
+sse-starlette>=2.1.0                # Server-Sent Events (SSE) streaming support
+
+# --- 4. Tool Protocols & Capability Plane ---
+mcp>=1.3.0                          # Official Model Context Protocol SDK (stdio / SSE client & server)
+
+# --- 5. Execution Fabric: Windows OS Automation & System Hooks ---
+psutil>=6.0.0                       # Process inspection, memory/CPU metrics & app termination
+pywinauto>=0.6.8                    # Windows UI Automation & native application window control
+pygetwindow>=0.0.9                  # Active window handle detection & title inspection
+pyautogui>=0.9.54                   # Simulated keyboard, mouse clicking & screen perception
+pycaw>=20240210                     # Windows Core Audio API (Volume & mute management)
+comtypes>=1.4.0                     # Pure Python COM interface for Windows internals
+
+# --- 6. Voice & Multimodal Audio Pipeline ---
+edge-tts>=6.1.12                    # Free, ultra-natural neural TTS (en-GB-RyanNeural British voice)
+sounddevice>=0.4.7                  # Cross-platform raw audio recording & playback
+numpy>=1.26.0                       # Numeric array manipulation for audio wave streaming
+
+# --- 7. Memory Plane & Vector Storage ---
+qdrant-client>=1.10.0               # Fast, local/embedded vector database for semantic memory
+chromadb>=0.5.0                     # Local embedded fallback vector store
+
+# --- 8. Resilience, Logging & Observability ---
+tenacity>=8.5.0                     # Exponential backoff, jitter & circuit-breaker retries
+structlog>=24.4.0                   # Structured JSON logging for audit trails
+colorama>=0.4.6                     # Terminal ANSI colors for reactive CLI HUD
+rich>=13.7.0                        # Terminal formatting, progress bars, tables & trace inspection
+python-dotenv>=1.0.1                # Secure .env file parsing
+
+# --- 9. Testing, Verification & Chaos Engineering ---
+pytest>=8.3.0                       # Primary test framework
+pytest-asyncio>=0.24.0              # Async test runner for LangGraph nodes & WebSocket routes
+pytest-mock>=3.14.0                 # Mocking interfaces for tool failure-injection testing
+pytest-cov>=5.0.0                   # Test coverage reporting
+
+# --- 10. Code Quality, Linting & Type Checking ---
+ruff>=0.5.0                         # Fast linter and code formatter
+mypy>=1.11.0                        # Strict static type checker
+pre-commit>=3.8.0                   # Git hook manager
