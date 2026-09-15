@@ -44,7 +44,9 @@ async def test_live_google_genai_generate_and_stream() -> None:
         assert len(resp.content.strip()) > 0
         assert resp.prompt_tokens > 0
     except QuotaExceededError:
-        pytest.skip("Google Gemini free-tier quota window reached; skipping non-deterministic rate-limited test")
+        pytest.skip(
+            "Google Gemini free-tier quota window reached; skipping non-deterministic rate-limited test"
+        )
 
     # 2. Streaming generation
     try:
