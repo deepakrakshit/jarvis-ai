@@ -4,12 +4,42 @@ Defines the foundation for domain capability specialists (ARCHITECTURE.md Layer 
 Specialists produce PROPOSALS; the shared platform enforces security and policy.
 """
 
+import json
+import re
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from jarvis.core.gateway.router import ModelGateway
+
+
+def parse_llm_json(raw: str) -> dict[str, Any]:
+    """Robustly parse JSON dictionaries from LLM responses (stripping markdown fences)."""
+    text = raw.strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict):
+                return parsed
+
+    raise ValueError(f"Failed to parse valid JSON dictionary from LLM response: {raw[:120]}")
 
 
 class SpecialistRole(StrEnum):
@@ -59,8 +89,13 @@ class SpecialistManifest(BaseModel):
 class BaseSpecialist(ABC):
     """Abstract interface for all JARVIS capability specialists."""
 
-    def __init__(self, manifest: SpecialistManifest) -> None:
+    def __init__(
+        self,
+        manifest: SpecialistManifest,
+        model_gateway: "ModelGateway | None" = None,
+    ) -> None:
         self.manifest = manifest
+        self.gateway = model_gateway
 
     @property
     def role(self) -> SpecialistRole:

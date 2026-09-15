@@ -10,6 +10,7 @@ from jarvis.agents.base import (
     SpecialistManifest,
     SpecialistProposal,
     SpecialistRole,
+    parse_llm_json,
 )
 from jarvis.agents.coding import CodingSpecialist
 from jarvis.agents.computer import ComputerSpecialist
@@ -28,4 +29,5 @@ __all__ = [
     "SpecialistProposal",
     "SpecialistRole",
     "SpecialistRouter",
+    "parse_llm_json",
 ]

@@ -16,12 +16,22 @@ from jarvis.core.policy.decision import AutonomyLevel
 from jarvis.core.session.session_manager import SessionManager
 from jarvis.orchestrator import JarvisOrchestrator
 
-console = Console()
+# Ensure UTF-8 output encoding across all terminals (especially Windows cmd/powershell)
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+console = Console(force_terminal=True, highlight=False)
 
 
 def print_banner() -> None:
     banner_text = (
-        "[bold cyan]JARVIS v1.0.0[/bold cyan] — [italic white]Stateful Personal AI Operating System[/italic white]\n"
+        "[bold cyan]JARVIS v1.0.0[/bold cyan] - [italic white]Stateful Personal AI Operating System[/italic white]\n"
         "[dim]Zero-Trust Architecture | 5 Capability Specialists | Action Broker | Point-in-Time Reality[/dim]\n"
         "[dim]Type [bold yellow]exit[/bold yellow] or [bold yellow]quit[/bold yellow] to leave. Full logs saved to [bold green]sessions.json[/bold green] & [bold green]conversations.json[/bold green][/dim]"
     )
@@ -57,7 +67,7 @@ async def run_cli() -> None:
             "action_broker": "green",
         }
         color = colors.get(component, "white")
-        console.print(f"  [{color}]⚙ [{component}][/{color}] [dim]{message}[/dim]")
+        console.print(f"  [{color}]* [{component}][/{color}] [dim]{message}[/dim]")
 
     # Check for one-shot command line argument
     if len(sys.argv) > 1:

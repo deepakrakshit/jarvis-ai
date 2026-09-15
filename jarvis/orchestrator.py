@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from jarvis.agents.router import SpecialistRouter
+from jarvis.agents.base import SpecialistRole
+from jarvis.agents.router import RoutingCategory, SpecialistRouter
 from jarvis.core.broker.broker import ActionBroker
 from jarvis.core.capabilities.builtin import BUILTIN_CAPABILITIES, register_builtin_capabilities
 from jarvis.core.capabilities.firewall import CapabilityFirewall
 from jarvis.core.capabilities.manifest import RiskClass
 from jarvis.core.capabilities.registry import CapabilityRegistry
+from jarvis.core.gateway.router import ModelGateway
 from jarvis.core.lifecycle.manager import LifecycleManager
 from jarvis.core.lifecycle.types import ComponentType
 from jarvis.core.logging import get_logger
@@ -39,11 +41,13 @@ class JarvisOrchestrator:
         session_manager: SessionManager | None = None,
         sessions_path: Path | str | None = None,
         conversations_path: Path | str | None = None,
+        model_gateway: ModelGateway | None = None,
     ) -> None:
         self.workspace_root = Path(workspace_root or Path.cwd()).resolve()
         self.autonomy_level = autonomy_level
 
         # Subsystems
+        self.gateway = model_gateway or ModelGateway()
         self.lifecycle = LifecycleManager()
         self.registry = CapabilityRegistry()
         register_builtin_capabilities(self.registry)
@@ -54,7 +58,7 @@ class JarvisOrchestrator:
             default_autonomy=self.autonomy_level,
         )
         self.broker = ActionBroker()
-        self.router = SpecialistRouter()
+        self.router = SpecialistRouter(model_gateway=self.gateway)
         self.session_manager = session_manager or SessionManager(
             sessions_path=sessions_path,
             conversations_path=conversations_path,
@@ -93,12 +97,64 @@ class JarvisOrchestrator:
 
         log_event("gateway", f"Received user prompt: '{user_message}'")
 
-        # 1. Router: Select Specialist
-        specialist = self.router.route(user_message)
-        log_event("router", f"Routed request to specialist: {specialist.role.value}")
+        # 0. Retrieve conversation history for context
+        history_records: list[dict[str, Any]] = []
+        conv_record = self.session_manager.get_conversation(session_id)
+        if conv_record:
+            for past_turn in conv_record.turns:
+                history_records.append(
+                    {
+                        "user_message": past_turn.user_message,
+                        "assistant_response": past_turn.assistant_response,
+                    }
+                )
 
-        # 2. Specialist Proposal
-        proposal = await specialist.propose(user_message)
+        # 1. Router: Intelligent Layer 07 Classification (gemini-3.1-flash-lite / fallback)
+        decision = await self.router.route_intent(user_message, history=history_records)
+        log_event(
+            "router",
+            f"Classified intent: '{decision.intent}' (Category: {decision.category.value})",
+            details={
+                "category": decision.category.value,
+                "specialist": decision.specialist_role.value if decision.specialist_role else None,
+                "reasoning": decision.reasoning,
+            },
+        )
+
+        # 2. Handle Conversational Turn (greetings, identity, capabilities, chitchat)
+        if decision.category == RoutingCategory.CONVERSATIONAL:
+            assistant_response = (
+                decision.direct_response
+                or "Hello! I am JARVIS, your Personal AI Operating System. How can I assist you today?"
+            )
+            log_event(
+                "jarvis", f"Delivered conversational response: '{assistant_response[:60]}...'"
+            )
+
+            turn = ConversationTurn(
+                turn_id=turn_id,
+                user_message=user_message,
+                assistant_response=assistant_response,
+                specialist="jarvis",
+                intent=decision.intent,
+                needs_clarification=False,
+                clarification_question=None,
+                tool_executions=[],
+                system_logs=system_logs,
+            )
+            self.session_manager.add_turn(session_id, turn)
+            return assistant_response
+
+        # 3. Specialist Route: Dispatch to the selected specialist
+        role = decision.specialist_role or SpecialistRole.CODING
+        specialist = self.router.get_specialist(role)
+        log_event("specialist", f"Dispatched task to specialist: {specialist.role.value}")
+
+        # 4. Specialist Proposal (LLM-driven)
+        proposal = await specialist.propose(
+            user_message,
+            context={"history": history_records, "workspace_root": str(self.workspace_root)},
+        )
         log_event(
             "specialist",
             f"Specialist '{specialist.role.value}' formulated proposal: {proposal.intent}",
@@ -108,7 +164,7 @@ class JarvisOrchestrator:
             },
         )
 
-        # 3. Check Clarification Need (JARVIS asking questions)
+        # 5. Check Clarification Need (JARVIS proactively asking questions)
         if proposal.needs_clarification and proposal.clarification_question:
             assistant_response = proposal.clarification_question
             log_event("specialist", f"Prompted user for clarification: {assistant_response}")
@@ -127,7 +183,7 @@ class JarvisOrchestrator:
             self.session_manager.add_turn(session_id, turn)
             return assistant_response
 
-        # 4. Check Direct Response (No tool required)
+        # 6. Check Direct Response (No tool execution needed)
         if not proposal.tool_id and proposal.direct_response:
             assistant_response = proposal.direct_response
             log_event("specialist", "Provided direct response without tool execution")
@@ -145,21 +201,10 @@ class JarvisOrchestrator:
             self.session_manager.add_turn(session_id, turn)
             return assistant_response
 
-        # 5. Tool Invocation Pipeline
-        tool_id = proposal.tool_id or ""
-        manifest = self.registry.get(tool_id)
-
-        if not manifest:
-            # Fallback for alias matching
-            for m in self.registry.list_all():
-                if tool_id in m.capability_id:
-                    manifest = m
-                    tool_id = m.capability_id
-                    break
-
-        if not manifest:
-            assistant_response = f"I could not locate an active capability for '{tool_id}'."
-            log_event("firewall", assistant_response, level="ERROR")
+        if not proposal.tool_id:
+            assistant_response = (
+                "I analyzed your request, but no actionable execution path was identified."
+            )
             turn = ConversationTurn(
                 turn_id=turn_id,
                 user_message=user_message,
@@ -172,24 +217,45 @@ class JarvisOrchestrator:
             self.session_manager.add_turn(session_id, turn)
             return assistant_response
 
-        # 6. Policy Engine Evaluation
-        self.lifecycle.record_invocation_start(manifest.capability_id)
-        decision = self.policy_engine.evaluate_invocation(
+        # 7. Capability Verification & Least-Privilege Projection
+        manifest = self.registry.get(proposal.tool_id)
+        if not manifest:
+            assistant_response = f"Capability '{proposal.tool_id}' is not registered in the system."
+            log_event("registry", assistant_response, level="ERROR")
+            turn = ConversationTurn(
+                turn_id=turn_id,
+                user_message=user_message,
+                assistant_response=assistant_response,
+                specialist=specialist.role.value,
+                intent=proposal.intent,
+                tool_executions=[],
+                system_logs=system_logs,
+            )
+            self.session_manager.add_turn(session_id, turn)
+            return assistant_response
+
+        # 8. Centralized Policy Evaluation
+        decision_policy = self.policy_engine.evaluate_invocation(
             task_id=task_id,
             manifest=manifest,
             arguments=proposal.arguments,
             autonomy_level=self.autonomy_level,
             target_resource=proposal.target_resource,
+            agent_id=specialist.role.value,
+            user_id="jarvis_user",
         )
         log_event(
             "policy_engine",
-            f"Policy Decision: {decision.decision.value} (Risk: {decision.risk_score:.2f}) - {decision.reason}",
-            details={"risk_score": decision.risk_score, "decision": decision.decision.value},
+            f"Policy Decision: {decision_policy.decision.value} (Risk: {decision_policy.risk_score:.2f}) - {decision_policy.reason}",
+            details={
+                "decision": decision_policy.decision.value,
+                "risk_score": decision_policy.risk_score,
+            },
         )
 
-        if decision.decision == PolicyDecisionType.DENY:
-            assistant_response = f"Security Policy Blocked Action: {decision.reason}"
-            self.lifecycle.record_invocation_failure(manifest.capability_id, decision.reason)
+        if decision_policy.decision == PolicyDecisionType.DENY:
+            assistant_response = f"Security Policy Blocked Action: {decision_policy.reason}"
+            self.lifecycle.record_invocation_failure(manifest.capability_id, decision_policy.reason)
             turn = ConversationTurn(
                 turn_id=turn_id,
                 user_message=user_message,
@@ -202,7 +268,7 @@ class JarvisOrchestrator:
             self.session_manager.add_turn(session_id, turn)
             return assistant_response
 
-        # 7. Action Broker Authorization & Execution
+        # 9. Action Broker Execution Fabric
         start_time = time.perf_counter()
         authorization: EffectAuthorization | None = None
 
@@ -246,20 +312,19 @@ class JarvisOrchestrator:
                 f"Action '{manifest.capability_id}' verified and completed in {duration_ms:.1f}ms",
             )
 
-            # Record tool execution audit
             tool_executions.append(
                 ToolExecutionRecord(
                     tool_id=manifest.capability_id,
                     arguments=proposal.arguments,
-                    policy_decision=decision.decision.value,
-                    risk_score=decision.risk_score,
+                    policy_decision=decision_policy.decision.value,
+                    risk_score=decision_policy.risk_score,
                     result=tool_output,
                     verified=True,
                     duration_ms=duration_ms,
                 )
             )
 
-            # 8. Synthesize Result
+            # 10. Synthesize Result (LLM-driven)
             assistant_response = await specialist.synthesize(proposal, tool_output, user_message)
             log_event("specialist", "Synthesized final observation response")
 
@@ -277,15 +342,15 @@ class JarvisOrchestrator:
                 ToolExecutionRecord(
                     tool_id=manifest.capability_id,
                     arguments=proposal.arguments,
-                    policy_decision=decision.decision.value,
-                    risk_score=decision.risk_score,
+                    policy_decision=decision_policy.decision.value,
+                    risk_score=decision_policy.risk_score,
                     result={"error": str(exc)},
                     verified=False,
                     duration_ms=duration_ms,
                 )
             )
 
-        # 9. Save Complete Turn with System Logs
+        # 11. Save Complete Turn with System Logs
         turn = ConversationTurn(
             turn_id=turn_id,
             user_message=user_message,
