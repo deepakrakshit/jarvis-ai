@@ -146,6 +146,57 @@ BUILTIN_CAPABILITIES: list[CapabilityManifest] = [
         sandbox_requirement=False,
         approval_requirement=False,
     ),
+    CapabilityManifest(
+        capability_id="native:calc:evaluate",
+        owner="core",
+        version="1.0.0",
+        provider="builtin",
+        tool_type=ToolType.NATIVE,
+        description="Safely evaluates mathematical and arithmetic expressions using an AST evaluator.",
+        required_scopes=["math:evaluate"],
+        input_schema={
+            "type": "object",
+            "properties": {
+                "expression": {"type": "string", "description": "Mathematical expression string"}
+            },
+            "required": ["expression"],
+        },
+        output_schema={"type": "object", "properties": {"result": {"type": "number"}}},
+        risk_class=RiskClass.READ_ONLY,
+        side_effect_class=SideEffectClass.NONE,
+        allowed_trust_sources=[
+            TrustLevel.USER_INPUT,
+            TrustLevel.SYSTEM_POLICY,
+            TrustLevel.EXTERNAL_UNTRUSTED,
+        ],
+        allowed_sinks=[SinkType.LLM_PROMPT],
+        sandbox_requirement=False,
+        approval_requirement=False,
+    ),
+    CapabilityManifest(
+        capability_id="native:fs:list_dir",
+        owner="core",
+        version="1.0.0",
+        provider="builtin",
+        tool_type=ToolType.NATIVE,
+        description="Lists files and subdirectories within a permitted directory.",
+        required_scopes=["filesystem:read"],
+        input_schema={
+            "type": "object",
+            "properties": {"dir_path": {"type": "string", "description": "Directory path to list"}},
+        },
+        output_schema={"type": "object", "properties": {"entries": {"type": "array"}}},
+        risk_class=RiskClass.READ_ONLY,
+        side_effect_class=SideEffectClass.NONE,
+        allowed_trust_sources=[
+            TrustLevel.USER_INPUT,
+            TrustLevel.SYSTEM_POLICY,
+            TrustLevel.EXTERNAL_UNTRUSTED,
+        ],
+        allowed_sinks=[SinkType.LLM_PROMPT],
+        sandbox_requirement=False,
+        approval_requirement=False,
+    ),
 ]
 
 

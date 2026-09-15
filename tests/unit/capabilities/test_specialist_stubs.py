@@ -36,8 +36,8 @@ def test_specialist_manifest_declarations() -> None:
 
 
 @pytest.mark.asyncio
-async def test_specialist_stubs_raise_not_implemented() -> None:
-    """Verify that invoking stubs cleanly raises NotImplementedError."""
+async def test_specialist_task_processing() -> None:
+    """Verify that invoking specialists processes task and returns structured proposal."""
     specialists = [
         ResearchSpecialist(),
         CodingSpecialist(),
@@ -46,5 +46,6 @@ async def test_specialist_stubs_raise_not_implemented() -> None:
         AnalysisSpecialist(),
     ]
     for s in specialists:
-        with pytest.raises(NotImplementedError):
-            await s.process_task({"test": 123})
+        res = await s.process_task({"message": "status"})
+        assert isinstance(res, dict)
+        assert "intent" in res

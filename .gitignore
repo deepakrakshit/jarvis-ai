@@ -46,6 +46,12 @@ data/
 *.sqlite3
 workspace/artifacts/
 
+# Private Runtime Sessions & Logs
+sessions.json
+conversations.json
+*.jsonl
+*.log
+
 # OS Artifacts
 .DS_Store
 Thumbs.db

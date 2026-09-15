@@ -232,6 +232,8 @@ class ActionBroker:
                 result = await executor_fn(arguments)
             else:
                 result = executor_fn(arguments)
+                if inspect.iscoroutine(result):
+                    result = await result
 
             # 7. Success Path -> Transition to VERIFIED
             self.ledger.record_attempt_success(
