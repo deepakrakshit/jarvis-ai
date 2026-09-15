@@ -72,13 +72,30 @@ class PersonalSpecialist(BaseSpecialist):
                     "\n".join(f"- {n}" for n in self._user_notes) if self._user_notes else "None"
                 )
                 formatted_prompt = PERSONAL_SYSTEM_PROMPT.replace("{notes}", notes_str)
-                messages = [ChatMessage(role="user", content=user_message)]
+
+                history_str = ""
+                if context and "history" in context and context["history"]:
+                    recent = context["history"][-3:]
+                    lines = []
+                    for turn in recent:
+                        lines.append(f"User: {turn.get('user_message')}")
+                        lines.append(f"JARVIS: {str(turn.get('assistant_response', ''))[:250]}")
+                    history_str = "Recent Conversation History:\n" + "\n".join(lines) + "\n\n"
+
+                intent_str = (
+                    f"Classified Intent: {context.get('intent')}\n"
+                    if context and context.get("intent")
+                    else ""
+                )
+                full_content = f"{history_str}{intent_str}Current User Request: {user_message}"
+
+                messages = [ChatMessage(role="user", content=full_content)]
                 req = GenerationRequest(
                     model_id="gemini-3.5-flash-lite",
                     system_instruction=formatted_prompt,
                     messages=messages,
                     temperature=0.1,
-                    max_tokens=250,
+                    max_tokens=500,
                 )
                 resp = await self.gateway.generate(req)
                 data = parse_llm_json(resp.content)

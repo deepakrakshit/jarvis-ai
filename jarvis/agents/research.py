@@ -21,17 +21,19 @@ from jarvis.core.logging import get_logger
 logger = get_logger(__name__)
 
 RESEARCH_SYSTEM_PROMPT = """You are the JARVIS Research Specialist.
-Your domain covers online research, fetching documentation from URLs, and synthesizing evidence with citations.
+Your domain covers online research, web searches, fetching documentation from URLs, and synthesizing evidence with citations.
 
 Available Tools:
+- "native:web:search": Searches the live web and returns matching titles, URLs, and snippets.
+  Arguments: {"query": string}
 - "native:web:fetch": Fetches the text/HTML content of a specified web URL.
   Arguments: {"url": string}
 
-Analyze the user's message.
+Analyze the user's message, recent conversation history, and classified intent.
 You MUST output ONLY a valid JSON object matching this schema:
 {
   "action": "tool_call" | "clarify" | "direct_answer",
-  "tool_id": "native:web:fetch" | null,
+  "tool_id": "native:web:search" | "native:web:fetch" | null,
   "arguments": dict,
   "intent": string,
   "clarification_question": string | null,
@@ -40,9 +42,11 @@ You MUST output ONLY a valid JSON object matching this schema:
 }
 
 Rules:
-1. If the user provides a specific URL to fetch, inspect, browse, or read (e.g. "fetch https://example.com/docs"), set action='tool_call', tool_id='native:web:fetch', arguments={"url": "<url>"}, target_resource="<url>".
-2. If the user asks to search or research something with an empty or vague query (e.g. "search for", "look up"), set action='clarify' and ask what topic or URL they would like researched.
-3. If it is a conceptual question that can be answered directly using knowledge, set action='direct_answer'.
+1. If the user asks to search, find, lookup, or research a topic on the internet (e.g. "search the internet for X", "research about GPT 6 ASTRA", or following up with "yeah" to search recent articles/rumors), set action='tool_call', tool_id='native:web:search', arguments={"query": "<search query>"}, target_resource="web_search".
+2. If the user provides a specific URL to fetch, browse, or read (e.g. "fetch https://example.com/docs"), set action='tool_call', tool_id='native:web:fetch', arguments={"url": "<url>"}, target_resource="<url>".
+3. If the user says an affirmation ("yeah", "yes", "sure") following an assistant offer to search or investigate something, extract the subject from history/intent and trigger the web search tool!
+4. If the user message is completely empty or meaningless with no conversational context, set action='clarify'.
+5. If it is a purely conceptual question that does not benefit from real-time web search, set action='direct_answer'.
 """
 
 
@@ -56,6 +60,7 @@ class ResearchSpecialist(BaseSpecialist):
                 role=SpecialistRole.RESEARCH,
                 role_description="Web search, document retrieval, and evidence citation.",
                 allowed_tool_scopes=[
+                    "native:web:search",
                     "native:web:fetch",
                     "web.search",
                     "web.scrape",
@@ -74,13 +79,29 @@ class ResearchSpecialist(BaseSpecialist):
         """Evaluate research request with LLM intelligence or fallback."""
         if self.gateway:
             try:
-                messages = [ChatMessage(role="user", content=user_message)]
+                history_str = ""
+                if context and "history" in context and context["history"]:
+                    recent = context["history"][-3:]
+                    lines = []
+                    for turn in recent:
+                        lines.append(f"User: {turn.get('user_message')}")
+                        lines.append(f"JARVIS: {str(turn.get('assistant_response', ''))[:250]}")
+                    history_str = "Recent Conversation History:\n" + "\n".join(lines) + "\n\n"
+
+                intent_str = (
+                    f"Classified Intent: {context.get('intent')}\n"
+                    if context and context.get("intent")
+                    else ""
+                )
+                full_content = f"{history_str}{intent_str}Current User Request: {user_message}"
+
+                messages = [ChatMessage(role="user", content=full_content)]
                 req = GenerationRequest(
                     model_id="gemini-3.5-flash-lite",
                     system_instruction=RESEARCH_SYSTEM_PROMPT,
                     messages=messages,
                     temperature=0.1,
-                    max_tokens=250,
+                    max_tokens=500,
                 )
                 resp = await self.gateway.generate(req)
                 data = parse_llm_json(resp.content)
@@ -98,13 +119,15 @@ class ResearchSpecialist(BaseSpecialist):
                 if action == "tool_call" and data.get("tool_id"):
                     tool_id = str(data["tool_id"])
                     args = data.get("arguments") or {}
-                    url = args.get("url", "")
+                    target = str(
+                        data.get("target_resource") or args.get("url") or args.get("query") or "web"
+                    )
                     return SpecialistProposal(
                         specialist_role=self.role,
-                        intent=str(data.get("intent", f"Fetch URL '{url}'")),
+                        intent=str(data.get("intent", f"Execute {tool_id}")),
                         tool_id=tool_id,
                         arguments=args,
-                        target_resource=url,
+                        target_resource=target,
                     )
 
                 if action == "direct_answer" and data.get("direct_response"):
@@ -117,9 +140,11 @@ class ResearchSpecialist(BaseSpecialist):
             except Exception as exc:
                 logger.warning("research_specialist_llm_fallback", error=str(exc))
 
-        return self._heuristic_propose(user_message)
+        return self._heuristic_propose(user_message, context)
 
-    def _heuristic_propose(self, user_message: str) -> SpecialistProposal:
+    def _heuristic_propose(
+        self, user_message: str, context: dict[str, Any] | None = None
+    ) -> SpecialistProposal:
         """Rule-based fallback for offline test suites and network disconnection."""
         msg = user_message.strip()
         lower = msg.lower()
@@ -136,10 +161,31 @@ class ResearchSpecialist(BaseSpecialist):
                 target_resource=url,
             )
 
-        if any(w in lower for w in ("search for", "find out", "research", "lookup")):
-            topic = re.sub(
-                r"^(search for|find out|research|lookup)\s*", "", msg, flags=re.I
-            ).strip()
+        # Check for affirmative follow-up with intent
+        if (
+            lower in ("yeah", "yes", "sure", "ok", "please do")
+            and context
+            and context.get("intent")
+        ):
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent=str(context["intent"]),
+                tool_id="native:web:search",
+                arguments={"query": str(context["intent"])},
+                target_resource="web_search",
+            )
+
+        if any(w in lower for w in ("search for", "find out", "research", "lookup", "search")):
+            topic = (
+                re.sub(
+                    r"^(search for|find out|research about|research|lookup|search on the internet about|search the internet for)\s*",
+                    "",
+                    msg,
+                    flags=re.I,
+                )
+                .strip()
+                .strip("\"'")
+            )
             if not topic:
                 return SpecialistProposal(
                     specialist_role=self.role,
@@ -149,14 +195,16 @@ class ResearchSpecialist(BaseSpecialist):
                 )
             return SpecialistProposal(
                 specialist_role=self.role,
-                intent=f"Research topic '{topic}'",
-                direct_response=f"I have initialized research on '{topic}'. Provide a specific documentation URL or query for deeper extraction.",
+                intent=f"Search web for '{topic}'",
+                tool_id="native:web:search",
+                arguments={"query": topic},
+                target_resource="web_search",
             )
 
         return SpecialistProposal(
             specialist_role=self.role,
             intent="General research query",
-            direct_response="I am the Research Specialist. I can fetch web documentation, browse URLs, and verify factual references.",
+            direct_response="I am the Research Specialist. I can search the live web, fetch documentation, and verify factual references.",
         )
 
     async def synthesize(
@@ -170,16 +218,16 @@ class ResearchSpecialist(BaseSpecialist):
             try:
                 prompt = (
                     f"User asked: '{user_message}'\n"
-                    f"Web fetch result from '{proposal.arguments.get('url')}':\n"
+                    f"Tool '{proposal.tool_id}' was executed with result:\n"
                     f"{tool_result}\n\n"
-                    "Synthesize an insightful, concise, and structured summary with key facts and citations."
+                    "Synthesize an insightful, well-structured summary incorporating key findings, relevant dates, and source URLs."
                 )
                 req = GenerationRequest(
                     model_id="gemini-3.5-flash-lite",
                     system_instruction="You are the JARVIS Research Specialist. Provide structured, accurate, well-cited summaries.",
                     messages=[ChatMessage(role="user", content=prompt)],
                     temperature=0.2,
-                    max_tokens=500,
+                    max_tokens=2000,
                 )
                 res = await self.gateway.generate(req)
                 if res.content.strip():
@@ -187,10 +235,23 @@ class ResearchSpecialist(BaseSpecialist):
             except Exception as exc:
                 logger.warning("research_specialist_synth_fallback", error=str(exc))
 
+        if proposal.tool_id == "native:web:search":
+            results = tool_result.get("results", [])
+            query = tool_result.get("query", proposal.arguments.get("query", ""))
+            if not results:
+                return f"No search results returned for query '{query}'."
+            items = []
+            for r in results:
+                title = r.get("title", "Untitled")
+                url = r.get("url", "#")
+                snippet = r.get("snippet", "")
+                items.append(f"- [{title}]({url})\n  {snippet}")
+            return f"Search Results for **{query}**:\n\n" + "\n\n".join(items)
+
         if proposal.tool_id == "native:web:fetch":
             url = tool_result.get("url", proposal.arguments.get("url", ""))
-            content = tool_result.get("content", "")
-            bytes_count = tool_result.get("bytes_count", 0)
+            content = tool_result.get("body", "")
+            bytes_count = len(content.encode("utf-8"))
             preview = content[:500] if content else "(No text content retrieved)"
             return f"Fetched **{url}** ({bytes_count} bytes):\n\n```\n{preview}\n```"
 

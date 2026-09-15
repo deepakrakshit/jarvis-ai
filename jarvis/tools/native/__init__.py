@@ -9,7 +9,7 @@ from jarvis.tools.native.calculator import evaluate_expression
 from jarvis.tools.native.clock import get_time
 from jarvis.tools.native.filesystem import list_dir, read_file, write_file
 from jarvis.tools.native.shell import execute_shell
-from jarvis.tools.native.web import fetch_url
+from jarvis.tools.native.web import fetch_url, search_web
 
 
 async def dispatch_native_tool(tool_id: str, arguments: dict[str, Any]) -> Any:
@@ -38,6 +38,11 @@ async def dispatch_native_tool(tool_id: str, arguments: dict[str, Any]) -> Any:
         url = arguments.get("url") or ""
         return fetch_url(url)
 
+    if tool_id in ("native:web:search", "web.search", "search_web"):
+        query = arguments.get("query") or arguments.get("q") or ""
+        max_results = int(arguments.get("max_results", 5))
+        return search_web(query, max_results=max_results)
+
     if tool_id in ("native:shell:execute", "shell.execute", "execute_command"):
         cmd = arguments.get("command") or arguments.get("cmd") or ""
         timeout = float(arguments.get("timeout_seconds", 30.0))
@@ -54,5 +59,6 @@ __all__ = [
     "get_time",
     "list_dir",
     "read_file",
+    "search_web",
     "write_file",
 ]

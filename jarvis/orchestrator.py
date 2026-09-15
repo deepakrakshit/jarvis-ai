@@ -153,7 +153,11 @@ class JarvisOrchestrator:
         # 4. Specialist Proposal (LLM-driven)
         proposal = await specialist.propose(
             user_message,
-            context={"history": history_records, "workspace_root": str(self.workspace_root)},
+            context={
+                "history": history_records,
+                "intent": decision.intent,
+                "workspace_root": str(self.workspace_root),
+            },
         )
         log_event(
             "specialist",

@@ -59,11 +59,12 @@ Categories:
 
 2. "specialist":
    - The request requires an actionable task or query handled by one of our 5 canonical domain specialists:
-     * "coding": Filesystem operations (reading, writing, listing files), code analysis, debugging, terminal commands, test running.
+     * "coding": Filesystem operations (reading, writing, inspecting, listing files), code analysis, debugging, terminal commands, test running.
      * "analysis": Mathematical calculations, formula evaluations (e.g. sqrt, arithmetic), numeric statistics, quantitative data analysis.
      * "computer": Point-in-time system clock, current time, date, operating system status, process state, confirmation dialogs.
      * "personal": Reminders, saving notes, recalling personal notes, user preferences with strict privacy.
      * "research": Web searches, fetching URLs, external documentation, citations.
+   - CRITICAL: If the user asks to perform a domain action (e.g. "can you inspect a file?", "read a file for me", "calculate something", "search something") but omits parameters (such as the target file path, expression, or search topic), you MUST STILL classify it as "specialist" with the appropriate specialist_role so the specialist can proactively ask the user for the missing parameters!
 
 You MUST respond with ONLY a valid JSON object matching this schema:
 {
