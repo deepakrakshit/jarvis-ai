@@ -39,6 +39,8 @@ wheels/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage.xml
+*.xml
 
 # Local Database & Storage
 data/

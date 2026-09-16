@@ -184,16 +184,14 @@ class CodingSpecialist(BaseSpecialist):
         if any(
             w in lower
             for w in (
-                "can you view file",
-                "can you read file",
+                "inspect",
+                "view file",
+                "read file",
                 "analyze file",
-                "analyze a file",
-                "inspect file",
-                "inspect a file",
-                "view file?",
-                "read file?",
+                "examine file",
+                "show file",
             )
-        ):
+        ) and not re.search(r"([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)", msg):
             return SpecialistProposal(
                 specialist_role=self.role,
                 intent="Clarify target file",
