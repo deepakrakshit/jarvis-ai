@@ -221,6 +221,35 @@ BUILTIN_CAPABILITIES: list[CapabilityManifest] = [
         sandbox_requirement=False,
         approval_requirement=False,
     ),
+    CapabilityManifest(
+        capability_id="native:system:get_stats",
+        owner="core",
+        version="1.0.0",
+        provider="builtin",
+        tool_type=ToolType.NATIVE,
+        description="Retrieves host operating system, CPU, memory, and disk health metrics.",
+        required_scopes=["system:status"],
+        input_schema={"type": "object", "properties": {}},
+        output_schema={
+            "type": "object",
+            "properties": {
+                "platform": {"type": "string"},
+                "cpu_percent": {"type": "number"},
+                "memory_percent": {"type": "number"},
+                "disk_percent": {"type": "number"},
+            },
+        },
+        risk_class=RiskClass.READ_ONLY,
+        side_effect_class=SideEffectClass.NONE,
+        allowed_trust_sources=[
+            TrustLevel.USER_INPUT,
+            TrustLevel.SYSTEM_POLICY,
+            TrustLevel.EXTERNAL_UNTRUSTED,
+        ],
+        allowed_sinks=[SinkType.LLM_PROMPT],
+        sandbox_requirement=False,
+        approval_requirement=False,
+    ),
 ]
 
 

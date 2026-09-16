@@ -9,6 +9,7 @@ from jarvis.tools.native.calculator import evaluate_expression
 from jarvis.tools.native.clock import get_time
 from jarvis.tools.native.filesystem import list_dir, read_file, write_file
 from jarvis.tools.native.shell import execute_shell
+from jarvis.tools.native.system import get_system_stats
 from jarvis.tools.native.web import fetch_url, search_web
 
 
@@ -29,6 +30,9 @@ async def dispatch_native_tool(tool_id: str, arguments: dict[str, Any]) -> Any:
 
     if tool_id in ("native:clock:get_time", "clock.get_time", "get_time"):
         return get_time()
+
+    if tool_id in ("native:system:get_stats", "system.get_stats", "system_stats"):
+        return get_system_stats()
 
     if tool_id in ("native:calc:evaluate", "math.evaluate", "calculator"):
         expr = arguments.get("expression") or arguments.get("expr") or ""
@@ -56,6 +60,7 @@ __all__ = [
     "evaluate_expression",
     "execute_shell",
     "fetch_url",
+    "get_system_stats",
     "get_time",
     "list_dir",
     "read_file",

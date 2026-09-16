@@ -73,3 +73,127 @@ def test_invalid_lifecycle_transition_rejected() -> None:
     # Cannot jump directly from REGISTERED to RUNNING
     with pytest.raises(InvalidLifecycleTransitionError):
         rec.transition_to(ComponentLifecycleState.RUNNING)
+
+
+@pytest.mark.asyncio
+async def test_health_probe_success_and_failure() -> None:
+    """Test registering and executing diagnostic health probes (Contract 16)."""
+    from jarvis.core.lifecycle.types import HealthProbeResult
+
+    mgr = LifecycleManager()
+    mgr.register_component("probe:tool", ComponentType.TOOL)
+    mgr.validate_component("probe:tool")
+    mgr.enable_component("probe:tool")
+
+    # 1. Successful probe
+    async def healthy_probe() -> HealthProbeResult:
+        return HealthProbeResult(component_id="probe:tool", healthy=True)
+
+    mgr.register_health_probe("probe:tool", healthy_probe)
+    res = await mgr.run_health_probe("probe:tool")
+    assert res.healthy is True
+    assert mgr.is_available("probe:tool") is True
+
+    # 2. Failing probe triggers quarantine
+    async def unhealthy_probe() -> HealthProbeResult:
+        return HealthProbeResult(
+            component_id="probe:tool",
+            healthy=False,
+            error="Backend connection degraded",
+        )
+
+    mgr.register_health_probe("probe:tool", unhealthy_probe)
+    res_fail = await mgr.run_health_probe("probe:tool")
+    assert res_fail.healthy is False
+    assert mgr.is_available("probe:tool") is False
+    rec = mgr.get_component("probe:tool")
+    assert rec is not None
+    assert rec.state == ComponentLifecycleState.QUARANTINED
+    assert "Backend connection degraded" in str(rec.quarantine_reason)
+
+
+@pytest.mark.asyncio
+async def test_attempt_repair_automated_self_healing() -> None:
+    """Test automated self-healing repair workflow with health re-validation."""
+    from jarvis.core.lifecycle.types import HealthProbeResult
+
+    mgr = LifecycleManager()
+    mgr.register_component("auto:heal", ComponentType.SPECIALIST)
+    mgr.validate_component("auto:heal")
+    mgr.enable_component("auto:heal")
+
+    # Quarantine explicitly
+    mgr.quarantine_component("auto:heal", "Anomalous failure burst")
+    assert mgr.is_available("auto:heal") is False
+
+    repair_executed = False
+
+    async def custom_repair() -> bool:
+        nonlocal repair_executed
+        repair_executed = True
+        return True
+
+    async def passing_probe() -> HealthProbeResult:
+        return HealthProbeResult(component_id="auto:heal", healthy=True)
+
+    mgr.register_repair_handler("auto:heal", custom_repair)
+    mgr.register_health_probe("auto:heal", passing_probe)
+
+    success = await mgr.attempt_repair("auto:heal")
+    assert success is True
+    assert repair_executed is True
+    assert mgr.is_available("auto:heal") is True
+    rec = mgr.get_component("auto:heal")
+    assert rec is not None
+    assert rec.state == ComponentLifecycleState.ENABLED
+    assert rec.quarantine_reason is None
+
+
+@pytest.mark.asyncio
+async def test_attempt_repair_failure_returns_to_quarantine() -> None:
+    """Test that a failing repair handler leaves component quarantined."""
+    mgr = LifecycleManager()
+    mgr.register_component("failing:repair", ComponentType.SPECIALIST)
+    mgr.validate_component("failing:repair")
+    mgr.enable_component("failing:repair")
+    mgr.quarantine_component("failing:repair", "Severe fault")
+
+    async def broken_repair() -> bool:
+        return False
+
+    mgr.register_repair_handler("failing:repair", broken_repair)
+    success = await mgr.attempt_repair("failing:repair")
+    assert success is False
+    assert mgr.is_available("failing:repair") is False
+    rec = mgr.get_component("failing:repair")
+    assert rec is not None
+    assert rec.state == ComponentLifecycleState.QUARANTINED
+
+
+@pytest.mark.asyncio
+async def test_run_all_health_probes_and_status() -> None:
+    """Test running health probes across all components and getting status summary."""
+    mgr = LifecycleManager()
+    mgr.register_component("tool:a", ComponentType.TOOL)
+    mgr.validate_component("tool:a")
+    mgr.enable_component("tool:a")
+
+    mgr.register_component("spec:b", ComponentType.SPECIALIST)
+    mgr.validate_component("spec:b")
+    mgr.enable_component("spec:b")
+
+    results = await mgr.run_all_health_probes()
+    assert "tool:a" in results
+    assert "spec:b" in results
+    assert results["tool:a"].healthy is True
+    assert results["spec:b"].healthy is True
+
+    status = mgr.get_health_status()
+    assert status["total_components"] == 2
+    assert status["ready"] is True
+    assert len(status["quarantined"]) == 0
+
+    # Filter components
+    tools = mgr.list_components(component_type=ComponentType.TOOL)
+    assert len(tools) == 1
+    assert tools[0].component_id == "tool:a"

@@ -10,6 +10,7 @@ from jarvis.core.lifecycle.types import (
     ComponentLifecycleState,
     ComponentRecord,
     ComponentType,
+    HealthProbeResult,
     InvalidLifecycleTransitionError,
 )
 
@@ -18,6 +19,7 @@ __all__ = [
     "ComponentLifecycleState",
     "ComponentRecord",
     "ComponentType",
+    "HealthProbeResult",
     "InvalidLifecycleTransitionError",
     "LifecycleManager",
 ]

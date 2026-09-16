@@ -4,7 +4,9 @@ Handles deterministic mathematical calculation, data transformations,
 statistical analysis, and model evaluation with LLM intelligence (ARCHITECTURE.md Layer 8 & 10).
 """
 
+import math
 import re
+import statistics
 from typing import Any
 
 from jarvis.agents.base import (
@@ -16,12 +18,14 @@ from jarvis.agents.base import (
 )
 from jarvis.core.gateway.interfaces import ChatMessage, GenerationRequest
 from jarvis.core.gateway.router import ModelGateway
+from jarvis.core.lifecycle.types import HealthProbeResult
 from jarvis.core.logging import get_logger
+from jarvis.tools.native.calculator import evaluate_expression
 
 logger = get_logger(__name__)
 
 ANALYSIS_SYSTEM_PROMPT = """You are the JARVIS Analysis Specialist.
-Your domain covers deterministic mathematics, formula evaluation, numeric transformations, and data analysis.
+Your domain covers deterministic mathematics, formula evaluation, numeric transformations, statistical analysis, and dataset metrics.
 
 Available Tools:
 - "native:calc:evaluate": Safely evaluates mathematical and scientific expressions (e.g. sqrt, log, sin, cos, round, pi, arithmetic).
@@ -41,9 +45,33 @@ You MUST output ONLY a valid JSON object matching this schema:
 
 Rules:
 1. If the user provides a mathematical calculation, expression, or formula to compute (e.g. "calculate sqrt(144) * 5", "how much is 15 * 3", "25 + 4"), extract the clean mathematical expression into arguments["expression"], set action='tool_call', tool_id='native:calc:evaluate', target_resource='math_engine'.
-2. If the user asks for vague or underspecified analysis (e.g. "analyze the metrics please", "can you check the numbers?") without providing numbers or formulas, set action='clarify' and ask what numbers or metrics they want evaluated.
-3. If it is a conceptual math or statistics question, set action='direct_answer'.
+2. If the user provides a dataset or list of numbers asking for statistics (mean, median, stdev, summary), compute or format the statistical response and set action='direct_answer'.
+3. If the user asks for vague or underspecified analysis (e.g. "analyze the metrics please", "can you check the numbers?") without providing numbers or formulas, set action='clarify' and ask what numbers or metrics they want evaluated.
+4. If it is a conceptual math or statistics question, set action='direct_answer'.
 """
+
+
+def compute_statistics(numbers: list[float]) -> dict[str, Any]:
+    """Compute summary statistics for a sequence of numbers."""
+    if not numbers:
+        return {}
+    n = len(numbers)
+    total = sum(numbers)
+    mean_val = total / n
+    median_val = statistics.median(numbers)
+    variance_val = statistics.variance(numbers) if n > 1 else 0.0
+    stdev_val = math.sqrt(variance_val)
+
+    return {
+        "count": n,
+        "sum": round(total, 4),
+        "mean": round(mean_val, 4),
+        "median": round(median_val, 4),
+        "variance": round(variance_val, 4),
+        "stdev": round(stdev_val, 4),
+        "min": min(numbers),
+        "max": max(numbers),
+    }
 
 
 class AnalysisSpecialist(BaseSpecialist):
@@ -136,6 +164,30 @@ class AnalysisSpecialist(BaseSpecialist):
         msg = user_message.strip()
         lower = msg.lower()
 
+        # Check for statistical request on numbers
+        if any(
+            w in lower for w in ("statistic", "summary stats", "mean of", "average of", "stdev")
+        ):
+            nums = [float(x) for x in re.findall(r"[-+]?\d*\.?\d+", msg)]
+            if len(nums) >= 2:
+                stats = compute_statistics(nums)
+                self.scratchpad.add_note(
+                    f"Computed statistics for {len(nums)} values: Mean={stats['mean']}"
+                )
+                resp = (
+                    f"**Statistical Summary** (N={stats['count']}):\n"
+                    f"- **Mean**: {stats['mean']}\n"
+                    f"- **Median**: {stats['median']}\n"
+                    f"- **Std Dev**: {stats['stdev']}\n"
+                    f"- **Min / Max**: {stats['min']} / {stats['max']}\n"
+                    f"- **Sum**: {stats['sum']}"
+                )
+                return SpecialistProposal(
+                    specialist_role=self.role,
+                    intent=f"Statistical analysis of {len(nums)} values",
+                    direct_response=resp,
+                )
+
         # Check for calculation requests: calculate, compute, evaluate, math
         math_prefixes = ("calculate", "compute", "evaluate", "what is", "how much is")
         for prefix in math_prefixes:
@@ -181,6 +233,11 @@ class AnalysisSpecialist(BaseSpecialist):
         user_message: str,
     ) -> str:
         """Synthesize calculation observation into human-readable response."""
+        if isinstance(tool_result, dict):
+            expr = tool_result.get("expression", proposal.arguments.get("expression", ""))
+            val = tool_result.get("result", "")
+            self.scratchpad.add_note(f"Evaluated math: {expr} = {val}")
+
         if self.gateway:
             try:
                 prompt = (
@@ -207,3 +264,20 @@ class AnalysisSpecialist(BaseSpecialist):
             return f"Calculated: `{expr}` = **{val}**"
 
         return str(tool_result)
+
+    async def health_probe(self) -> HealthProbeResult:
+        """Verify deterministic mathematical calculation engine."""
+        try:
+            res = evaluate_expression("2 + 2")
+            ok = res.get("result") == 4
+            return HealthProbeResult(
+                component_id="specialist:analysis",
+                healthy=ok,
+                details={"engine_test": "2 + 2 == 4", "actual": res.get("result")},
+            )
+        except Exception as exc:
+            return HealthProbeResult(
+                component_id="specialist:analysis",
+                healthy=False,
+                error=str(exc),
+            )

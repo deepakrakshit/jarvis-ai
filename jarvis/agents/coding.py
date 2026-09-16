@@ -272,7 +272,33 @@ class CodingSpecialist(BaseSpecialist):
         tool_result: Any,
         user_message: str,
     ) -> str:
-        """Synthesize file/code observation into human-readable response using LLM."""
+        # Record artifact and action in isolated scratchpad (Contract 04)
+        if isinstance(tool_result, dict):
+            if proposal.tool_id == "native:fs:read_file":
+                p = str(tool_result.get("file_path") or proposal.arguments.get("file_path") or "")
+                if p:
+                    self.scratchpad.add_artifact(p)
+                    self.scratchpad.add_note(
+                        f"Read file '{p}' ({tool_result.get('size_bytes', 0)} bytes)"
+                    )
+            elif proposal.tool_id == "native:fs:write_file":
+                p = str(tool_result.get("file_path") or proposal.arguments.get("file_path") or "")
+                if p:
+                    self.scratchpad.add_artifact(p)
+                    self.scratchpad.add_note(
+                        f"Wrote file '{p}' ({tool_result.get('bytes_written', 0)} bytes)"
+                    )
+            elif proposal.tool_id == "native:fs:list_dir":
+                d = str(tool_result.get("dir_path") or proposal.arguments.get("dir_path") or ".")
+                self.scratchpad.add_artifact(d)
+                self.scratchpad.add_note(
+                    f"Listed directory '{d}' ({tool_result.get('count', 0)} entries)"
+                )
+            elif proposal.tool_id == "native:shell:execute":
+                cmd = str(proposal.arguments.get("command") or "")
+                code = tool_result.get("exit_code", 0)
+                self.scratchpad.add_note(f"Executed command '{cmd}' (Exit: {code})")
+
         if self.gateway:
             try:
                 prompt = (

@@ -4,10 +4,23 @@ Defines the formal lifecycle states and transition validators for all tools,
 specialists, models, and skills (ARCHITECTURE.md Layer 11).
 """
 
+from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+
+class HealthProbeResult(BaseModel):
+    """Result of a component health diagnostic probe (Contract 16)."""
+
+    component_id: str
+    healthy: bool
+    latency_ms: float = 0.0
+    error: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ComponentLifecycleState(StrEnum):
@@ -129,6 +142,10 @@ class ComponentRecord(BaseModel):
     consecutive_errors: int = 0
     quarantine_reason: str | None = None
     quarantine_count: int = 0
+    last_health_probe: HealthProbeResult | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def transition_to(
         self,

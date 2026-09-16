@@ -64,11 +64,25 @@ class JarvisOrchestrator:
             conversations_path=conversations_path,
         )
 
-        # Register components in Lifecycle Manager
+        # Register built-in tools in Lifecycle Manager
         for manifest in BUILTIN_CAPABILITIES:
             rec = self.lifecycle.register_component(manifest.capability_id, ComponentType.TOOL)
             self.lifecycle.validate_component(rec.component_id)
             self.lifecycle.enable_component(rec.component_id)
+
+        # Register all 5 Capability Specialists in Lifecycle Manager (Contract 16)
+        for role, spec in self.router.specialists.items():
+            spec_id = f"specialist:{role.value}"
+            rec = self.lifecycle.register_component(
+                component_id=spec_id,
+                component_type=ComponentType.SPECIALIST,
+                version="1.0.0",
+                metadata={"role": role.value, "manifest": spec.manifest.name},
+            )
+            self.lifecycle.validate_component(rec.component_id)
+            self.lifecycle.enable_component(rec.component_id)
+            self.lifecycle.register_health_probe(spec_id, spec.health_probe)
+            self.lifecycle.register_repair_handler(spec_id, spec.repair)
 
     async def interact(
         self,
@@ -148,6 +162,38 @@ class JarvisOrchestrator:
         # 3. Specialist Route: Dispatch to the selected specialist
         role = decision.specialist_role or SpecialistRole.CODING
         specialist = self.router.get_specialist(role)
+        spec_id = f"specialist:{specialist.role.value}"
+
+        # Contract 16: Verify specialist lifecycle availability & attempt self-healing if needed
+        if not self.lifecycle.is_available(spec_id):
+            log_event(
+                "lifecycle",
+                f"Specialist '{spec_id}' is unavailable; initiating automated self-healing repair...",
+                level="WARNING",
+            )
+            repaired = await self.lifecycle.attempt_repair(spec_id)
+            if not repaired:
+                rec = self.lifecycle.get_component(spec_id)
+                reason = rec.quarantine_reason if rec else "Quarantined / Degraded"
+                assistant_response = (
+                    f"The {specialist.role.value.capitalize()} Specialist is currently unavailable: {reason}. "
+                    "Automated self-healing repair could not restore operational status."
+                )
+                log_event("lifecycle", assistant_response, level="ERROR")
+                turn = ConversationTurn(
+                    turn_id=turn_id,
+                    user_message=user_message,
+                    assistant_response=assistant_response,
+                    specialist=specialist.role.value,
+                    intent=decision.intent,
+                    needs_clarification=False,
+                    tool_executions=[],
+                    system_logs=system_logs,
+                )
+                self.session_manager.add_turn(session_id, turn)
+                return assistant_response
+
+        self.lifecycle.record_invocation_start(spec_id)
         log_event("specialist", f"Dispatched task to specialist: {specialist.role.value}")
 
         # 4. Specialist Proposal (LLM-driven)
@@ -171,6 +217,7 @@ class JarvisOrchestrator:
         # 5. Check Clarification Need (JARVIS proactively asking questions)
         if proposal.needs_clarification and proposal.clarification_question:
             assistant_response = proposal.clarification_question
+            self.lifecycle.record_invocation_success(spec_id)
             log_event("specialist", f"Prompted user for clarification: {assistant_response}")
 
             turn = ConversationTurn(
@@ -190,6 +237,7 @@ class JarvisOrchestrator:
         # 6. Check Direct Response (No tool execution needed)
         if not proposal.tool_id and proposal.direct_response:
             assistant_response = proposal.direct_response
+            self.lifecycle.record_invocation_success(spec_id)
             log_event("specialist", "Provided direct response without tool execution")
 
             turn = ConversationTurn(
@@ -330,11 +378,13 @@ class JarvisOrchestrator:
 
             # 10. Synthesize Result (LLM-driven)
             assistant_response = await specialist.synthesize(proposal, tool_output, user_message)
+            self.lifecycle.record_invocation_success(spec_id)
             log_event("specialist", "Synthesized final observation response")
 
         except Exception as exc:
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             self.lifecycle.record_invocation_failure(manifest.capability_id, str(exc))
+            self.lifecycle.record_invocation_failure(spec_id, str(exc))
             log_event(
                 "action_broker",
                 f"Execution error on '{manifest.capability_id}': {exc}",

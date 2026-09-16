@@ -214,6 +214,27 @@ class ResearchSpecialist(BaseSpecialist):
         user_message: str,
     ) -> str:
         """Synthesize web research results into human-readable response."""
+        # Record evidence in isolated scratchpad (Contract 04)
+        if proposal.tool_id == "native:web:search" and isinstance(tool_result, dict):
+            results = tool_result.get("results", [])
+            query = tool_result.get("query", proposal.arguments.get("query", ""))
+            self.scratchpad.add_note(f"Searched web for '{query}' with {len(results)} results")
+            for r in results:
+                self.scratchpad.add_evidence(
+                    source=r.get("url", "web_search"),
+                    content=f"{r.get('title', '')}: {r.get('snippet', '')}",
+                    confidence=0.95,
+                )
+        elif proposal.tool_id == "native:web:fetch" and isinstance(tool_result, dict):
+            url = tool_result.get("url", proposal.arguments.get("url", ""))
+            body = tool_result.get("body", "")
+            self.scratchpad.add_note(f"Fetched URL '{url}' ({len(body)} chars)")
+            self.scratchpad.add_evidence(
+                source=url,
+                content=body[:1000],
+                confidence=1.0,
+            )
+
         if self.gateway:
             try:
                 prompt = (

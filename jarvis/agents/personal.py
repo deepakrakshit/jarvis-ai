@@ -4,7 +4,12 @@ Handles user preferences, personal scheduling, memory notes, and reminders
 with strict confidentiality and privacy boundaries (ARCHITECTURE.md Layer 8 & 10).
 """
 
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
 
 from jarvis.agents.base import (
     BaseSpecialist,
@@ -15,9 +20,28 @@ from jarvis.agents.base import (
 )
 from jarvis.core.gateway.interfaces import ChatMessage, GenerationRequest
 from jarvis.core.gateway.router import ModelGateway
+from jarvis.core.lifecycle.types import HealthProbeResult
 from jarvis.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class NoteCategory(StrEnum):
+    """Semantic category of personal user note."""
+
+    REMINDER = "REMINDER"
+    PREFERENCE = "PREFERENCE"
+    FACT = "FACT"
+
+
+class PersonalNote(BaseModel):
+    """Structured personal memory item."""
+
+    note_id: UUID = Field(default_factory=uuid4)
+    content: str
+    category: NoteCategory = NoteCategory.FACT
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
 
 PERSONAL_SYSTEM_PROMPT = """You are the JARVIS Personal Specialist.
 Your domain covers user preferences, personal reminders, daily agenda, and private notes.
@@ -31,15 +55,16 @@ You MUST output ONLY a valid JSON object matching this schema:
 {
   "action": "save_note" | "retrieve_notes" | "clarify" | "direct_answer",
   "note_text": string | null,
+  "category": "REMINDER" | "PREFERENCE" | "FACT",
   "intent": string,
   "clarification_question": string | null,
   "direct_response": string | null
 }
 
 Rules:
-1. If the user asks to save a note or reminder (e.g. "remind me to review the quarterly report tomorrow morning", "remember that my preferred IDE is VSCode"), set action='save_note', extract the clean note text into note_text, and provide a polite confirmation in direct_response.
+1. If the user asks to save a note or reminder (e.g. "remind me to review the quarterly report tomorrow morning", "remember that my preferred IDE is VSCode"), set action='save_note', categorize it properly, extract the clean note text into note_text, and provide a polite confirmation in direct_response.
 2. If the user says "remind me" or "take a note" without providing any details or content, set action='clarify' and ask what they would like to be reminded of.
-3. If the user asks to see, view, or list their notes, set action='retrieve_notes'.
+3. If the user asks to see, view, or list their notes or reminders, set action='retrieve_notes'.
 4. For general personal questions, set action='direct_answer'.
 """
 
@@ -53,12 +78,17 @@ class PersonalSpecialist(BaseSpecialist):
                 name="personal",
                 role=SpecialistRole.PERSONAL,
                 role_description="User memory, personal notes, reminders, and preference management.",
-                allowed_tool_scopes=["calendar.read", "notes.write"],
+                allowed_tool_scopes=["calendar.read", "notes.write", "memory.read", "memory.write"],
                 memory_mode="SHARED",
             ),
             model_gateway=model_gateway,
         )
-        self._user_notes: list[str] = []
+        self._notes: list[PersonalNote] = []
+
+    @property
+    def notes(self) -> list[PersonalNote]:
+        """Read-only access to recorded notes."""
+        return list(self._notes)
 
     async def propose(
         self,
@@ -69,7 +99,9 @@ class PersonalSpecialist(BaseSpecialist):
         if self.gateway:
             try:
                 notes_str = (
-                    "\n".join(f"- {n}" for n in self._user_notes) if self._user_notes else "None"
+                    "\n".join(f"- [{n.category.value}] {n.content}" for n in self._notes)
+                    if self._notes
+                    else "None"
                 )
                 formatted_prompt = PERSONAL_SYSTEM_PROMPT.replace("{notes}", notes_str)
 
@@ -111,11 +143,20 @@ class PersonalSpecialist(BaseSpecialist):
                     )
 
                 if action == "save_note":
-                    note_text = data.get("note_text") or user_message.strip()
-                    self._user_notes.append(note_text)
+                    note_text = str(data.get("note_text") or user_message.strip())
+                    cat_str = str(data.get("category", "FACT")).upper()
+                    category = (
+                        NoteCategory.REMINDER
+                        if "REMIND" in cat_str
+                        else (NoteCategory.PREFERENCE if "PREF" in cat_str else NoteCategory.FACT)
+                    )
+                    note = PersonalNote(content=note_text, category=category)
+                    self._notes.append(note)
+                    self.scratchpad.add_note(f"Saved {category.value}: {note_text}")
+
                     confirm = (
                         data.get("direct_response")
-                        or f'I have recorded this in your personal notes: *"{note_text}"*.'
+                        or f'I have recorded this in your personal notes [{category.value}]: *"{note_text}"*.'
                     )
                     return SpecialistProposal(
                         specialist_role=self.role,
@@ -124,15 +165,11 @@ class PersonalSpecialist(BaseSpecialist):
                     )
 
                 if action == "retrieve_notes":
-                    if not self._user_notes:
-                        text = "You currently have no recorded notes or reminders."
-                    else:
-                        items = "\n".join(f"{i}. {n}" for i, n in enumerate(self._user_notes, 1))
-                        text = f"Here are your recorded personal notes:\n\n{items}"
+                    resp_text = self._format_retrieved_notes(user_message)
                     return SpecialistProposal(
                         specialist_role=self.role,
                         intent="Retrieved personal notes",
-                        direct_response=text,
+                        direct_response=resp_text,
                     )
 
                 if action == "direct_answer" and data.get("direct_response"):
@@ -175,7 +212,19 @@ class PersonalSpecialist(BaseSpecialist):
                     clarification_question="What would you like me to remind you about? Please specify the reminder topic.",
                 )
 
-            self._user_notes.append(note_content)
+            category = (
+                NoteCategory.REMINDER
+                if "remind" in lower
+                else (
+                    NoteCategory.PREFERENCE
+                    if any(w in lower for w in ("prefer", "preference", "favorite", "like"))
+                    else NoteCategory.FACT
+                )
+            )
+            note = PersonalNote(content=note_content, category=category)
+            self._notes.append(note)
+            self.scratchpad.add_note(f"Saved {category.value}: {note_content}")
+
             return SpecialistProposal(
                 specialist_role=self.role,
                 intent="Saved personal note",
@@ -183,17 +232,26 @@ class PersonalSpecialist(BaseSpecialist):
             )
 
         # Check for retrieving notes
-        if any(w in lower for w in ("show my notes", "get my notes", "list notes", "my reminders")):
-            if not self._user_notes:
-                resp = "You have no saved notes or reminders."
-            else:
-                resp = "Your saved notes:\n" + "\n".join(
-                    f"{i + 1}. {n}" for i, n in enumerate(self._user_notes)
-                )
+        if any(
+            w in lower
+            for w in (
+                "show my notes",
+                "get my notes",
+                "list notes",
+                "my reminders",
+                "saved notes",
+                "preferences",
+                "my notes",
+                "show notes",
+                "view notes",
+                "what are my reminders",
+            )
+        ):
+            resp_text = self._format_retrieved_notes(msg)
             return SpecialistProposal(
                 specialist_role=self.role,
                 intent="Retrieve personal notes",
-                direct_response=resp,
+                direct_response=resp_text,
             )
 
         return SpecialistProposal(
@@ -201,6 +259,25 @@ class PersonalSpecialist(BaseSpecialist):
             intent="General personal query",
             direct_response="I am the Personal Specialist. I can securely store reminders, personal notes, and preferences.",
         )
+
+    def _format_retrieved_notes(self, query: str) -> str:
+        """Format matching notes according to query filter."""
+        lower = query.lower()
+        filtered = self._notes
+
+        if "reminder" in lower:
+            filtered = [n for n in self._notes if n.category == NoteCategory.REMINDER]
+        elif "preference" in lower:
+            filtered = [n for n in self._notes if n.category == NoteCategory.PREFERENCE]
+
+        if not filtered:
+            return "You currently have no recorded notes or reminders in this category."
+
+        items = "\n".join(
+            f"{i}. [{n.category.value}] {n.content}" for i, n in enumerate(filtered, 1)
+        )
+        self.scratchpad.add_note(f"Retrieved {len(filtered)} personal notes")
+        return f"Here are your recorded personal notes:\n\n{items}"
 
     async def synthesize(
         self,
@@ -210,3 +287,16 @@ class PersonalSpecialist(BaseSpecialist):
     ) -> str:
         """Synthesize personal observation into human-readable response."""
         return proposal.direct_response or str(tool_result)
+
+    async def health_probe(self) -> HealthProbeResult:
+        """Diagnostic health check for personal memory integrity."""
+        return HealthProbeResult(
+            component_id="specialist:personal",
+            healthy=True,
+            details={"notes_count": len(self._notes)},
+        )
+
+    async def repair(self) -> bool:
+        """Repair personal specialist state."""
+        self.reset_scratchpad()
+        return True

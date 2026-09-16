@@ -13,6 +13,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from jarvis.core.lifecycle.types import HealthProbeResult
+
 if TYPE_CHECKING:
     from jarvis.core.gateway.router import ModelGateway
 
@@ -76,6 +78,77 @@ class SpecialistProposal(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class SpecialistScratchpad(BaseModel):
+    """Isolated working scratchpad buffer for a specialist (Contract 04).
+
+    Prevents context contamination (Failure Mode 12) by holding internal reasoning,
+    evidence citations, candidate plans, and temporary artifacts in an isolated memory space.
+    """
+
+    scratchpad_id: UUID = Field(default_factory=uuid4)
+    specialist_role: SpecialistRole
+    notes: list[str] = Field(default_factory=list)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    artifacts_touched: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    def add_note(self, note: str) -> None:
+        """Record an internal working note or plan step."""
+        cleaned = note.strip()
+        if cleaned and cleaned not in self.notes:
+            self.notes.append(cleaned)
+
+    def add_evidence(self, source: str, content: str, confidence: float = 1.0) -> None:
+        """Record a factual evidence citation from an external observation."""
+        self.evidence.append(
+            {
+                "source": source.strip(),
+                "content": content.strip()[:1000],
+                "confidence": max(0.0, min(1.0, confidence)),
+            }
+        )
+
+    def add_artifact(self, path: str) -> None:
+        """Track a workspace file or artifact touched during processing."""
+        cleaned = path.strip()
+        if cleaned and cleaned not in self.artifacts_touched:
+            self.artifacts_touched.append(cleaned)
+
+    def clear(self) -> None:
+        """Reset scratchpad state for a fresh execution cycle."""
+        self.notes.clear()
+        self.evidence.clear()
+        self.artifacts_touched.clear()
+        self.metadata.clear()
+
+    def export_summary(self) -> str:
+        """Export a concise summary of the scratchpad contents."""
+        parts: list[str] = []
+        if self.notes:
+            parts.append(f"Notes ({len(self.notes)}): " + "; ".join(self.notes[:3]))
+        if self.evidence:
+            parts.append(f"Evidence items: {len(self.evidence)}")
+        if self.artifacts_touched:
+            parts.append("Artifacts: " + ", ".join(self.artifacts_touched[:3]))
+        return " | ".join(parts) if parts else "Scratchpad empty"
+
+
+class SpecialistResult(BaseModel):
+    """Structured, verified result emitted by a capability specialist to the orchestrator."""
+
+    result_id: UUID = Field(default_factory=uuid4)
+    specialist_role: SpecialistRole
+    intent: str
+    success: bool
+    response: str
+    tool_executed: str | None = None
+    citations: list[str] = Field(default_factory=list)
+    artifacts_touched: list[str] = Field(default_factory=list)
+    scratchpad_summary: str | None = None
+    duration_ms: float = 0.0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class SpecialistManifest(BaseModel):
     """Declarative capability specialist manifest."""
 
@@ -87,7 +160,7 @@ class SpecialistManifest(BaseModel):
 
 
 class BaseSpecialist(ABC):
-    """Abstract interface for all JARVIS capability specialists."""
+    """Abstract interface for all JARVIS capability specialists (Contract 04)."""
 
     def __init__(
         self,
@@ -96,10 +169,19 @@ class BaseSpecialist(ABC):
     ) -> None:
         self.manifest = manifest
         self.gateway = model_gateway
+        self.scratchpad = SpecialistScratchpad(specialist_role=manifest.role)
 
     @property
     def role(self) -> SpecialistRole:
         return self.manifest.role
+
+    def reset_scratchpad(self) -> None:
+        """Reset the internal scratchpad buffer."""
+        self.scratchpad.clear()
+
+    def get_scratchpad(self) -> SpecialistScratchpad:
+        """Access the specialist's isolated scratchpad."""
+        return self.scratchpad
 
     @abstractmethod
     async def propose(
@@ -125,3 +207,16 @@ class BaseSpecialist(ABC):
     ) -> str:
         """Synthesize tool observation results into a user-facing response."""
         pass
+
+    async def health_probe(self) -> HealthProbeResult:
+        """Evaluate operational readiness of the specialist (Contract 16)."""
+        return HealthProbeResult(
+            component_id=f"specialist:{self.role.value}",
+            healthy=True,
+            details={"manifest": self.manifest.name, "role": self.role.value},
+        )
+
+    async def repair(self) -> bool:
+        """Self-healing routine: clears scratchpad and resets transient state."""
+        self.reset_scratchpad()
+        return True
