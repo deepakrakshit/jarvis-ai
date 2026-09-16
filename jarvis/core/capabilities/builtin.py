@@ -70,6 +70,30 @@ BUILTIN_CAPABILITIES: list[CapabilityManifest] = [
         approval_requirement=True,
     ),
     CapabilityManifest(
+        capability_id="native:fs:delete_file",
+        owner="core",
+        version="1.0.0",
+        provider="builtin",
+        tool_type=ToolType.NATIVE,
+        description="Deletes a specified file within the allowed workspace boundary.",
+        required_scopes=["filesystem:delete"],
+        input_schema={
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Path of the file to delete"}
+            },
+            "required": ["file_path"],
+        },
+        output_schema={"type": "object", "properties": {"status": {"type": "string"}}},
+        risk_class=RiskClass.DANGEROUS,
+        side_effect_class=SideEffectClass.NON_IDEMPOTENT,
+        allowed_trust_sources=[TrustLevel.USER_INPUT, TrustLevel.SYSTEM_POLICY],
+        allowed_sinks=[SinkType.FILE_SYSTEM_WRITE],
+        sandbox_requirement=False,
+        approval_requirement=True,
+        verification_requirement=True,
+    ),
+    CapabilityManifest(
         capability_id="native:shell:execute",
         owner="core",
         version="1.0.0",

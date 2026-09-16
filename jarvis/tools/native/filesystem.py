@@ -79,3 +79,18 @@ def list_dir(dir_path: str = ".", workspace_root: Path | str | None = None) -> d
         "entries": entries,
         "count": len(entries),
     }
+
+
+def delete_file(file_path: str, workspace_root: Path | str | None = None) -> dict[str, Any]:
+    """Delete a single file within the workspace boundary."""
+    target = resolve_confined_path(file_path, workspace_root)
+    if not target.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    if not target.is_file():
+        raise IsADirectoryError(f"Target is a directory, not a file: {file_path}")
+
+    target.unlink()
+    return {
+        "file_path": str(target),
+        "status": "deleted",
+    }

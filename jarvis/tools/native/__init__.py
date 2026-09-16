@@ -7,7 +7,7 @@ from typing import Any
 
 from jarvis.tools.native.calculator import evaluate_expression
 from jarvis.tools.native.clock import get_time
-from jarvis.tools.native.filesystem import list_dir, read_file, write_file
+from jarvis.tools.native.filesystem import delete_file, list_dir, read_file, write_file
 from jarvis.tools.native.shell import execute_shell
 from jarvis.tools.native.system import get_system_stats
 from jarvis.tools.native.web import fetch_url, search_web
@@ -17,16 +17,24 @@ async def dispatch_native_tool(tool_id: str, arguments: dict[str, Any]) -> Any:
     """Execute a native capability by its capability ID."""
     if tool_id in ("native:fs:read_file", "fs.read", "read_file"):
         path = arguments.get("file_path") or arguments.get("path") or ""
-        return read_file(path)
+        ws = arguments.get("workspace_root")
+        return read_file(path, workspace_root=ws)
 
     if tool_id in ("native:fs:write_file", "fs.write", "write_file"):
         path = arguments.get("file_path") or arguments.get("path") or ""
         content = arguments.get("content") or ""
-        return write_file(path, content)
+        ws = arguments.get("workspace_root")
+        return write_file(path, content, workspace_root=ws)
+
+    if tool_id in ("native:fs:delete_file", "fs.delete", "delete_file"):
+        path = arguments.get("file_path") or arguments.get("path") or ""
+        ws = arguments.get("workspace_root")
+        return delete_file(path, workspace_root=ws)
 
     if tool_id in ("native:fs:list_dir", "fs.list", "list_dir"):
         path = arguments.get("dir_path") or arguments.get("path") or "."
-        return list_dir(path)
+        ws = arguments.get("workspace_root")
+        return list_dir(path, workspace_root=ws)
 
     if tool_id in ("native:clock:get_time", "clock.get_time", "get_time"):
         return get_time()
@@ -56,6 +64,7 @@ async def dispatch_native_tool(tool_id: str, arguments: dict[str, Any]) -> Any:
 
 
 __all__ = [
+    "delete_file",
     "dispatch_native_tool",
     "evaluate_expression",
     "execute_shell",

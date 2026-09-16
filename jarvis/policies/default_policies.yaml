@@ -76,3 +76,13 @@ rules:
       autonomy_level: ">=2"
       max_risk: 0.40
     decision: "ALLOW"
+
+  # 8. File deletion strictly requires explicit human approval
+  - rule_id: "require-hitl-for-file-delete"
+    description: "File deletion requires human approval"
+    priority: 850
+    tool_pattern: "native:fs:delete_file"
+    decision: "REQUIRE_HITL"
+    obligations:
+      - "hitl"
+

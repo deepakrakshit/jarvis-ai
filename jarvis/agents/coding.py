@@ -30,6 +30,8 @@ Available Tools:
   Arguments: {"file_path": string}
 - "native:fs:write_file": Writes text content to a destination file path.
   Arguments: {"file_path": string, "content": string}
+- "native:fs:delete_file": Deletes a file within the workspace boundary safely.
+  Arguments: {"file_path": string}
 - "native:shell:execute": Runs a shell command inside the process sandbox.
   Arguments: {"command": string}
 
@@ -37,7 +39,7 @@ Analyze the user message and conversation context.
 You MUST output ONLY a valid JSON object matching this schema:
 {
   "action": "tool_call" | "clarify" | "direct_answer",
-  "tool_id": "native:fs:list_dir" | "native:fs:read_file" | "native:fs:write_file" | "native:shell:execute" | null,
+  "tool_id": "native:fs:list_dir" | "native:fs:read_file" | "native:fs:write_file" | "native:fs:delete_file" | "native:shell:execute" | null,
   "arguments": dict,
   "intent": string,
   "clarification_question": string | null,
@@ -46,7 +48,7 @@ You MUST output ONLY a valid JSON object matching this schema:
 }
 
 Rules:
-1. If the user wants to list files/directories, read a file, write a file, or run a command, and specifies the required file/directory or command, set action='tool_call' and provide tool_id and exact arguments.
+1. If the user wants to list files/directories, read a file, write a file, delete a file, or run a command, and specifies the required file/directory or command, set action='tool_call' and provide tool_id and exact arguments.
 2. If the user asks to analyze, inspect, review, or view a file, but DOES NOT specify which file (or asks to create a file without path/content), set action='clarify' and ask a helpful question requesting the file name or path.
 3. If it is a conceptual coding question or general code advice that does not need a tool, set action='direct_answer' and provide direct_response.
 """
@@ -64,10 +66,12 @@ class CodingSpecialist(BaseSpecialist):
                 allowed_tool_scopes=[
                     "native:fs:read_file",
                     "native:fs:write_file",
+                    "native:fs:delete_file",
                     "native:fs:list_dir",
                     "native:shell:execute",
                     "fs.read",
                     "fs.write",
+                    "fs.delete",
                     "git.read",
                     "git.write",
                     "code.ast",
@@ -249,7 +253,24 @@ class CodingSpecialist(BaseSpecialist):
                 target_resource=file_path,
             )
 
-        # 5. Shell execution
+        # 5. File deletion
+        if any(w in lower for w in ("delete file", "remove file", "delete ", "remove ", "unlink ")):
+            path_match = re.search(
+                r"(?:file\s+|delete\s+|remove\s+|unlink\s+)([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)",
+                msg,
+                re.I,
+            )
+            if path_match:
+                file_path = path_match.group(1).strip()
+                return SpecialistProposal(
+                    specialist_role=self.role,
+                    intent=f"Delete file '{file_path}'",
+                    tool_id="native:fs:delete_file",
+                    arguments={"file_path": file_path},
+                    target_resource=file_path,
+                )
+
+        # 6. Shell execution
         if any(w in lower for w in ("run test", "run command", "execute command", "run pytest")):
             cmd = "pytest" if "pytest" in lower else msg
             return SpecialistProposal(
@@ -288,6 +309,11 @@ class CodingSpecialist(BaseSpecialist):
                     self.scratchpad.add_note(
                         f"Wrote file '{p}' ({tool_result.get('bytes_written', 0)} bytes)"
                     )
+            elif proposal.tool_id == "native:fs:delete_file":
+                p = str(tool_result.get("file_path") or proposal.arguments.get("file_path") or "")
+                if p:
+                    self.scratchpad.add_artifact(p)
+                    self.scratchpad.add_note(f"Deleted file '{p}'")
             elif proposal.tool_id == "native:fs:list_dir":
                 d = str(tool_result.get("dir_path") or proposal.arguments.get("dir_path") or ".")
                 self.scratchpad.add_artifact(d)
@@ -334,6 +360,9 @@ class CodingSpecialist(BaseSpecialist):
 
         if proposal.tool_id == "native:fs:write_file":
             return f"Successfully wrote **{tool_result.get('bytes_written', 0)} bytes** to `{tool_result.get('file_path')}`."
+
+        if proposal.tool_id == "native:fs:delete_file":
+            return f"Successfully deleted `{tool_result.get('file_path')}`."
 
         if proposal.tool_id == "native:fs:list_dir":
             entries = tool_result.get("entries", [])

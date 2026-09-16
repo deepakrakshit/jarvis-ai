@@ -61,7 +61,58 @@ class LocalProcessSandbox(SandboxRunner):
     def __init__(self, allowed_root: Path | None = None) -> None:
         self.allowed_root = allowed_root.resolve() if allowed_root else None
 
-    def _sanitize_environment(self, custom_env: dict[str, str] | None) -> dict[str, str]:
+    @staticmethod
+    def _resolve_runtime_path(existing_path: str, workdir: Path | None = None) -> str:
+        """Dynamically resolve and prepend active Python virtual environment paths."""
+        import sys
+
+        paths_to_prepend: list[str] = []
+
+        # 1. Check active virtual environment from host environment
+        virtual_env = os.environ.get("VIRTUAL_ENV")
+        if virtual_env:
+            vpath = Path(virtual_env)
+            bin_dir = vpath / ("Scripts" if sys.platform == "win32" else "bin")
+            if bin_dir.is_dir():
+                paths_to_prepend.append(str(bin_dir))
+
+        # 2. Check current Python executable directory and Scripts/bin
+        exec_path = Path(sys.executable)
+        exec_dir = exec_path.parent
+        if exec_dir.is_dir():
+            paths_to_prepend.append(str(exec_dir))
+        scripts_dir = exec_dir / ("Scripts" if sys.platform == "win32" else "bin")
+        if scripts_dir.is_dir():
+            paths_to_prepend.append(str(scripts_dir))
+
+        # 3. Discover project-local virtual environments in workdir or parents
+        if workdir:
+            search_dirs = [workdir, *workdir.parents]
+            for search_dir in search_dirs[:3]:
+                for candidate_name in (".venv", "venv", "env"):
+                    candidate = search_dir / candidate_name
+                    candidate_bin = candidate / ("Scripts" if sys.platform == "win32" else "bin")
+                    if candidate_bin.is_dir():
+                        paths_to_prepend.append(str(candidate_bin))
+                        break
+
+        # Deduplicate while preserving order
+        seen: set[str] = set()
+        ordered_prepend: list[str] = []
+        for p in paths_to_prepend:
+            norm = os.path.normcase(os.path.abspath(p))
+            if norm not in seen:
+                seen.add(norm)
+                ordered_prepend.append(p)
+
+        if ordered_prepend:
+            sep = ";" if sys.platform == "win32" else ":"
+            return sep.join(ordered_prepend) + sep + existing_path
+        return existing_path
+
+    def _sanitize_environment(
+        self, custom_env: dict[str, str] | None, workdir: Path | None = None
+    ) -> dict[str, str]:
         """Produce a clean environment scrubbed of sensitive host credentials."""
         clean_env: dict[str, str] = {}
 
@@ -90,6 +141,9 @@ class LocalProcessSandbox(SandboxRunner):
                     )
                 clean_env[k] = v
 
+        if "PATH" in clean_env:
+            clean_env["PATH"] = self._resolve_runtime_path(clean_env["PATH"], workdir=workdir)
+
         return clean_env
 
     async def execute(
@@ -110,7 +164,7 @@ class LocalProcessSandbox(SandboxRunner):
             )
 
         resolved_workdir.mkdir(parents=True, exist_ok=True)
-        sanitized_env = self._sanitize_environment(env)
+        sanitized_env = self._sanitize_environment(env, workdir=resolved_workdir)
 
         start_time = time.monotonic()
         logger.debug("executing_sandboxed_command", cmd=command[0], workdir=str(resolved_workdir))

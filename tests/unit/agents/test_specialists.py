@@ -35,6 +35,11 @@ async def test_coding_specialist_proposals_and_clarifications() -> None:
     assert p3.tool_id == "native:fs:list_dir"
     assert p3.arguments.get("dir_path") == "jarvis"
 
+    # 4. File delete proposal
+    p4 = await specialist.propose("Delete file jarvis_test.txt")
+    assert p4.tool_id == "native:fs:delete_file"
+    assert p4.arguments.get("file_path") == "jarvis_test.txt"
+
 
 @pytest.mark.asyncio
 async def test_analysis_specialist_math_evaluation() -> None:
@@ -100,6 +105,14 @@ async def test_research_specialist_url_fetch() -> None:
     # Vague search -> asks question
     p2 = await specialist.propose("search for")
     assert p2.needs_clarification is True
+
+    # Conceptual CPU execution question -> comprehensive direct response
+    p3 = await specialist.propose(
+        "Explain how a CPU executes an instruction, like I'm a first-year CS student."
+    )
+    assert p3.direct_response is not None
+    assert "Fetch-Decode-Execute" in p3.direct_response
+    assert p3.tool_id is None
 
 
 def test_specialist_router_intent_mapping() -> None:

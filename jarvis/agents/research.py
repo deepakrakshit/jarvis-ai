@@ -46,7 +46,7 @@ Rules:
 2. If the user provides a specific URL to fetch, browse, or read (e.g. "fetch https://example.com/docs"), set action='tool_call', tool_id='native:web:fetch', arguments={"url": "<url>"}, target_resource="<url>".
 3. If the user says an affirmation ("yeah", "yes", "sure") following an assistant offer to search or investigate something, extract the subject from history/intent and trigger the web search tool!
 4. If the user message is completely empty or meaningless with no conversational context, set action='clarify'.
-5. If it is a purely conceptual question that does not benefit from real-time web search, set action='direct_answer'.
+5. If it is a purely conceptual or informational question that does not require live web search, set action='direct_answer' and provide a comprehensive, educational, well-structured explanation in direct_response.
 """
 
 
@@ -199,6 +199,37 @@ class ResearchSpecialist(BaseSpecialist):
                 tool_id="native:web:search",
                 arguments={"query": topic},
                 target_resource="web_search",
+            )
+
+        # Check for conceptual explanations
+        if (
+            any(
+                w in lower
+                for w in (
+                    "explain",
+                    "what is",
+                    "how does",
+                    "describe",
+                    "overview of",
+                    "tell me about",
+                )
+            )
+            and "cpu" in lower
+            and (
+                "instruction" in lower or "execute" in lower or "cycle" in lower or "work" in lower
+            )
+        ):
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent="Explain CPU instruction execution cycle",
+                direct_response=(
+                    "### How a CPU Executes an Instruction: The Instruction Cycle\n\n"
+                    "At a foundational level, a Central Processing Unit (CPU) executes instructions through the **Fetch-Decode-Execute Cycle**:\n\n"
+                    "1. **Fetch:** The CPU retrieves the next instruction from memory (RAM or Cache) using the address stored in the **Program Counter (PC)** register. Once fetched into the **Instruction Register (IR)**, the PC is incremented to point to the subsequent instruction.\n\n"
+                    "2. **Decode:** The **Control Unit (CU)** interprets the binary opcode of the instruction to determine what operation needs to be performed (such as arithmetic, logic, or memory access) and identifies the required operands.\n\n"
+                    "3. **Execute:** The **Arithmetic Logic Unit (ALU)** performs the computation (e.g. addition, subtraction, bitwise operation), or the memory subsystem transfers data between registers and system RAM.\n\n"
+                    "4. **Store / Writeback:** The result of the execution is stored back in a destination register or memory location, and the CPU readies itself for the next cycle or handles pending hardware interrupts."
+                ),
             )
 
         return SpecialistProposal(

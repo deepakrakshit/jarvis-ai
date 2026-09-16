@@ -18,13 +18,32 @@ async def execute_shell(
     resolved_dir = Path(workdir).resolve() if workdir else Path.cwd().resolve()
     sandbox = LocalProcessSandbox()
 
-    # Normalize command into list of tokens
-    import shlex
+    import os
+    import sys
 
-    try:
-        cmd_tokens = shlex.split(command, posix=False)
-    except Exception:
-        cmd_tokens = command.split()
+    # Route through the host's standard system shell to properly support
+    # shell operators (&&, ||, |), builtins (dir, echo), and chained commands.
+    # On Windows, normalize common Unix commands (like rm / rm -f) for portability.
+    cmd_to_run = command.strip()
+    if sys.platform == "win32":
+        if cmd_to_run.startswith("rm -rf "):
+            target = cmd_to_run[7:].strip()
+            cmd_to_run = f"rmdir /s /q {target}"
+        elif cmd_to_run.startswith("rm -r "):
+            target = cmd_to_run[6:].strip()
+            cmd_to_run = f"rmdir /s /q {target}"
+        elif cmd_to_run.startswith("rm -f "):
+            target = cmd_to_run[6:].strip()
+            cmd_to_run = f"del /f /q {target}"
+        elif cmd_to_run.startswith("rm "):
+            target = cmd_to_run[3:].strip()
+            cmd_to_run = f"del /f /q {target}"
+
+        shell_executable = os.environ.get("COMSPEC", "cmd.exe")
+        cmd_tokens = [shell_executable, "/d", "/c", cmd_to_run]
+    else:
+        shell_executable = os.environ.get("SHELL", "/bin/sh")
+        cmd_tokens = [shell_executable, "-c", cmd_to_run]
 
     res = await sandbox.execute(
         command=cmd_tokens,
