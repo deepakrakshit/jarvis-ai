@@ -53,6 +53,7 @@ sessions.json
 conversations.json
 *.jsonl
 *.log
+safe.txt
 
 # OS Artifacts
 .DS_Store

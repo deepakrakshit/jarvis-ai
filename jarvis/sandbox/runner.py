@@ -33,12 +33,23 @@ class SandboxRunner(ABC):
     @abstractmethod
     async def execute(
         self,
-        command: list[str],
+        command: list[str] | str,
         workdir: Path,
         env: dict[str, str] | None = None,
         timeout_seconds: float = 30.0,
     ) -> SandboxResult:
         """Execute a command within sandbox constraints."""
+        pass
+
+    @abstractmethod
+    async def execute_shell(
+        self,
+        command: str,
+        workdir: Path,
+        env: dict[str, str] | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> SandboxResult:
+        """Execute a raw shell command string directly in the system shell within sandbox constraints."""
         pass
 
 
@@ -148,12 +159,20 @@ class LocalProcessSandbox(SandboxRunner):
 
     async def execute(
         self,
-        command: list[str],
+        command: list[str] | str,
         workdir: Path,
         env: dict[str, str] | None = None,
         timeout_seconds: float = 30.0,
     ) -> SandboxResult:
         """Execute command via subprocess with argument list (shell=False) and confinement check."""
+        if isinstance(command, str):
+            return await self.execute_shell(
+                command=command,
+                workdir=workdir,
+                env=env,
+                timeout_seconds=timeout_seconds,
+            )
+
         if not command:
             raise SandboxExecutionError("Command list cannot be empty.")
 
@@ -184,7 +203,7 @@ class LocalProcessSandbox(SandboxRunner):
                 )
                 duration = time.monotonic() - start_time
                 return SandboxResult(
-                    exit_code=process.returncode or 0,
+                    exit_code=process.returncode if process.returncode is not None else 0,
                     stdout=stdout_bytes.decode(errors="replace"),
                     stderr=stderr_bytes.decode(errors="replace"),
                     duration_seconds=duration,
@@ -207,3 +226,67 @@ class LocalProcessSandbox(SandboxRunner):
             if isinstance(e, (SandboxExecutionError, SandboxTimeoutError)):
                 raise
             raise SandboxExecutionError(f"Process execution error: {e}") from e
+
+    async def execute_shell(
+        self,
+        command: str,
+        workdir: Path,
+        env: dict[str, str] | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> SandboxResult:
+        """Execute a raw shell command string directly in the system shell with confinement and sanitization."""
+        if not command or not command.strip():
+            raise SandboxExecutionError("Command string cannot be empty.")
+
+        resolved_workdir = workdir.resolve()
+        if self.allowed_root and not resolved_workdir.is_relative_to(self.allowed_root):
+            raise SandboxExecutionError(
+                f"Confinement breach: Workdir '{resolved_workdir}' is outside allowed root '{self.allowed_root}'."
+            )
+
+        resolved_workdir.mkdir(parents=True, exist_ok=True)
+        sanitized_env = self._sanitize_environment(env, workdir=resolved_workdir)
+
+        start_time = time.monotonic()
+        logger.debug(
+            "executing_sandboxed_shell_command", cmd=command, workdir=str(resolved_workdir)
+        )
+
+        try:
+            process = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(resolved_workdir),
+                env=sanitized_env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            try:
+                stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                    process.communicate(), timeout=timeout_seconds
+                )
+                duration = time.monotonic() - start_time
+                return SandboxResult(
+                    exit_code=process.returncode if process.returncode is not None else 0,
+                    stdout=stdout_bytes.decode(errors="replace"),
+                    stderr=stderr_bytes.decode(errors="replace"),
+                    duration_seconds=duration,
+                    timed_out=False,
+                )
+            except TimeoutError as err:
+                process.kill()
+                await process.wait()
+                duration = time.monotonic() - start_time
+                logger.warning(
+                    "sandboxed_shell_command_timed_out", cmd=command, timeout=timeout_seconds
+                )
+                raise SandboxTimeoutError(
+                    f"Command '{command}' timed out after {timeout_seconds} seconds."
+                ) from err
+
+        except FileNotFoundError as e:
+            raise SandboxExecutionError(f"Shell executable not found: {e}") from e
+        except Exception as e:
+            if isinstance(e, (SandboxExecutionError, SandboxTimeoutError)):
+                raise
+            raise SandboxExecutionError(f"Shell process execution error: {e}") from e

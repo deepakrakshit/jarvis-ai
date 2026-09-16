@@ -18,7 +18,6 @@ async def execute_shell(
     resolved_dir = Path(workdir).resolve() if workdir else Path.cwd().resolve()
     sandbox = LocalProcessSandbox()
 
-    import os
     import sys
 
     # Route through the host's standard system shell to properly support
@@ -39,14 +38,8 @@ async def execute_shell(
             target = cmd_to_run[3:].strip()
             cmd_to_run = f"del /f /q {target}"
 
-        shell_executable = os.environ.get("COMSPEC", "cmd.exe")
-        cmd_tokens = [shell_executable, "/d", "/c", cmd_to_run]
-    else:
-        shell_executable = os.environ.get("SHELL", "/bin/sh")
-        cmd_tokens = [shell_executable, "-c", cmd_to_run]
-
-    res = await sandbox.execute(
-        command=cmd_tokens,
+    res = await sandbox.execute_shell(
+        command=cmd_to_run,
         workdir=resolved_dir,
         timeout_seconds=timeout_seconds,
     )
