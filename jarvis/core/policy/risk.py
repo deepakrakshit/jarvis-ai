@@ -133,9 +133,14 @@ class RiskCalculator:
     def _is_within_workspace(target: str, workspace_root: Path | str) -> bool:
         """Determine if target path resolves within allowed workspace directory."""
         try:
-            target_path = Path(target).resolve()
             ws_path = Path(workspace_root).resolve()
-            return ws_path in target_path.parents or target_path == ws_path
+            raw_target = Path(target)
+            target_path = (
+                raw_target.resolve()
+                if raw_target.is_absolute()
+                else (ws_path / raw_target).resolve()
+            )
+            return target_path == ws_path or ws_path in target_path.parents
         except Exception:
             # If target cannot be resolved cleanly as a filesystem path, fail closed
             return False

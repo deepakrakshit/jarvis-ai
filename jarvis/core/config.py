@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     LOCAL_AUTONOMOUS_MODEL_ID: str = "gemma-4-31b-it"
     BACKUP_MODEL_ID: str = "openai/gpt-oss-120b"
     EMBEDDING_MODEL_ID: str = "gemini-embedding-2"
+    REALTIME_VOICE_MODEL_ID: str = "gemini-3.8-live"
+    REALTIME_VOICE_THINKING_MODEL_ID: str = "gemini-3.8-live-extended-thinking"
+    COMPRESSION_MODEL_ID: str = "gemini-3.8-flash-lite-context-compress"
+    VOICE_DEFAULT_NAME: str = "Puck"
 
     @field_validator("AUTONOMY_LEVEL")
     @classmethod

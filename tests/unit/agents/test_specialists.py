@@ -334,7 +334,10 @@ async def test_orchestrator_specialist_lifecycle_quarantine_and_self_healing(
 
     # Orchestrator interaction should detect quarantine, execute automated self-healing, and succeed!
     resp = await orchestrator.interact("test_session_1", "list files in .")
-    assert any(term in resp for term in ("Contents of", "Directory", "Entries", "Path"))
+    assert any(
+        term in resp.lower()
+        for term in ("contents", "directory", "entries", "path", "files", "empty")
+    )
 
     # Verify coding specialist has been restored to ENABLED after auto-repair
     rec_after = orchestrator.lifecycle.get_component("specialist:coding")

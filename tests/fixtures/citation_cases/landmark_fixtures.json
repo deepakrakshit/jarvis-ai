@@ -1,0 +1,23 @@
+{
+  "davenport_kalakota": {
+    "title": "The potential for artificial intelligence in healthcare",
+    "authors": "Thomas Davenport and Ravi Kalakota",
+    "year": 2019,
+    "venue": "Future Healthcare Journal",
+    "doi": "10.7861/futurehosp.6-2-94"
+  },
+  "topol_nature_medicine": {
+    "title": "High-performance medicine: the convergence of human and artificial intelligence",
+    "authors": "Eric J. Topol",
+    "year": 2019,
+    "venue": "Nature Medicine",
+    "doi": "10.1038/s41591-018-0300-7"
+  },
+  "who_ai_ethics": {
+    "title": "Ethics and governance of artificial intelligence for health: WHO guidance",
+    "authors": "World Health Organization",
+    "year": 2021,
+    "venue": "WHO Guidelines Approved by the Guidelines Review Committee",
+    "url": "https://www.who.int/publications/i/item/9789240029200"
+  }
+}

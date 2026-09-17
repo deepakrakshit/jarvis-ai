@@ -617,3 +617,347 @@ Implementation proceeds strictly in order of foundational dependencies.
 
 ---
 *End of Master Architecture Specification v1.0.0-CANONICAL. Frozen as the permanent engineering baseline for JARVIS-AI.*
+
+
+# JARVIS v1.0.0 — Realtime Voice Architecture Amendment
+## Version 1.0.1 — Supplemental to the frozen canonical baseline
+### Status: Engineering Amendment / Pre-Milestone-14 Validation Architecture
+
+> This document supplements the frozen `ARCHITECTURE.md`. It does not revoke or silently
+> rewrite the canonical zero-trust axioms, control-plane/data-plane split, or hardened effect path.
+
+---
+
+## 1. Reason for amendment
+
+The frozen architecture describes Voice + Blue HUD as the formal Milestone 14 experience and
+mentions Edge-TTS as the original voice implementation.
+
+The current implementation has introduced native Gemini Live realtime voice before Milestone 14
+for engineering validation.
+
+This amendment records that provider-aligned realtime plane while preserving the canonical
+core.
+
+---
+
+## 2. Realtime Voice Plane
+
+```text
+                        USER
+                         │
+                 microphone / voice
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │ Gemini 3.8 Live     │
+              │ Realtime Voice      │
+              └──────────┬──────────┘
+                         │
+                  function proposal
+                         │
+                         ▼
+              ┌─────────────────────┐
+              │ Live Capability     │
+              │ Projection          │
+              └──────────┬──────────┘
+                         │
+                         ▼
+                 JARVIS CONTROL PLANE
+                         │
+              Capability Firewall
+                         │
+                   Policy Engine
+                         │
+                ┌────────┴────────┐
+                │                 │
+             READ PATH        EFFECT PATH
+                │                 │
+          governed read      HITL / revalidate
+                │                 │
+                │          commit-time auth
+                │                 │
+                │           Action Broker
+                │                 │
+                └────────┬────────┘
+                         │
+                  Execution Fabric
+                         │
+                    Verification
+                         │
+                    Effect Receipt
+                         │
+                         ▼
+                    Gemini Live
+                         │
+                         ▼
+                      speaker
+```
+
+---
+
+## 3. Live is not an authority layer
+
+Gemini Live is a realtime interface/model. Its audio, text, reasoning, and function-call
+outputs are untrusted model-generated content.
+
+A Live function call is a proposed intent, not an authorization token.
+
+---
+
+## 4. Canonical capability projection
+
+Exactly one canonical capability registry exists.
+
+The Live session receives a policy-constrained projection:
+
+```text
+Canonical Registry
+    ↓
+Task/session context
+    ↓
+Capability Firewall / Policy projection
+    ↓
+Google Live declarations
+```
+
+User-legitimate capabilities may be exposed, including:
+
+```text
+current time
+file read
+directory listing
+file write
+calculator
+web search/fetch
+system metrics
+sandboxed shell
+task status
+task creation
+task cancellation
+```
+
+subject to scope, sandbox, autonomy, policy and approval requirements.
+
+Internal governance primitives remain invisible to the model.
+
+---
+
+## 5. No parallel security path
+
+The current implementation audit found a temporary divergence where the Live bridge performs
+some inline native execution and bypasses the Action Broker.
+
+That is not production-conformant.
+
+The required final path is:
+
+```text
+Live proposal
+→ capability firewall
+→ policy engine
+→ read path OR hardened effect path
+→ Action Broker where required
+→ execution
+→ verification
+→ response
+```
+
+`REQUIRE_HITL` must never fall through as `ALLOW`.
+
+---
+
+## 6. Voice approval integrity
+
+For effect-producing actions, the canonical deterministic approval record remains authoritative.
+
+A spoken confirmation is only valid when bound to:
+
+```text
+proposal_id
+task_id
+session/user identity
+capability digest
+canonical argument hash
+target/resource witness
+policy version
+approval timestamp
+expiration
+nonce
+```
+
+The model's explanatory prose is never itself the approval payload.
+
+---
+
+## 7. Continuous conversation and background work
+
+Logical JARVIS session, provider WebSocket connection, and background task are separate
+lifecycles.
+
+```text
+JARVIS logical session
+   ├── Live connection A
+   ├── Live connection B
+   └── Background Task T
+```
+
+Connection rollover must not implicitly cancel Task T.
+
+The user can:
+
+```text
+ask questions
+request status
+continue unrelated conversation
+cancel work
+```
+
+while Task T continues.
+
+---
+
+## 8. Gemini 3.8 Live vs Extended Thinking
+
+`gemini-3.8-live` is the default low-latency realtime voice model.
+
+`gemini-3.8-live-extended-thinking` is selected for complex realtime reasoning and uses
+async-only `NON_BLOCKING` function calls with `interaction_status`.
+
+For Extended Thinking:
+
+```text
+turnComplete == true
+```
+
+does not by itself imply overall idle.
+
+Use:
+
+```text
+interaction_status == IN_PROGRESS
+interaction_status == IDLE
+```
+
+for interaction lifecycle state.
+
+---
+
+## 9. Audio and interruption
+
+Normalize the realtime edge to:
+
+```text
+16-bit PCM
+16 kHz input
+24 kHz output
+small low-latency chunks
+```
+
+The Live VAD/interruption signal can terminate active model speech and queued playback.
+
+Interrupting speech MUST NOT automatically cancel an unrelated JARVIS background task.
+
+---
+
+## 10. Session resilience
+
+The Live session manager must handle:
+
+```text
+GoAway
+reconnect
+session resumption
+context compression
+late function responses
+duplicate tool-call defense
+```
+
+The logical JARVIS session must remain stable while the provider connection changes.
+
+---
+
+## 11. Voice-specific failure register additions
+
+When the canonical failure register is next revised, add:
+
+```text
+VOICE-01  Live capability projection drift
+VOICE-02  Live Action Broker bypass
+VOICE-03  REQUIRE_HITL fall-through
+VOICE-04  stale capability declaration after policy change
+VOICE-05  duplicate effect after Live reconnect
+VOICE-06  false progress narration
+VOICE-07  stale function response applied to new task
+VOICE-08  resumption handle mix-up
+VOICE-09  audio/transcript privacy leakage
+VOICE-10  transient Live connection admission throttling
+VOICE-11  cancellation/state divergence between voice and task planes
+VOICE-12  Live tool schema drift
+```
+
+---
+
+## 12. Architectural Milestone Relationship
+
+This amendment does not reorder the 14 engineering milestones.
+
+The current Gemini Live implementation is an **early validation overlay**.
+
+Formal Milestone 14 remains responsible for:
+
+```text
+production voice UX
+Blue HUD
+deterministic state display
+voice configuration
+privacy/retention controls
+deployment hardening
+```
+
+Formal Milestone 7 remains the deep-agent/sandbox milestone.
+
+---
+
+## 13. External evidence used for this amendment
+
+Google:
+- https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live
+- https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking
+- https://ai.google.dev/gemini-api/docs/live-api/tools
+- https://ai.google.dev/gemini-api/docs/live-api/capabilities
+- https://ai.google.dev/gemini-api/docs/live-api/session-management
+- https://ai.google.dev/gemini-api/docs/live-api/best-practices
+- https://ai.google.dev/gemini-api/docs/live-api/thinking
+- https://ai.google.dev/gemini-api/docs/rate-limits
+- https://ai.google.dev/gemini-api/docs/pricing
+
+Security/ecosystem:
+- https://genai.owasp.org/llmrisk/llm062025-excessive-agency/
+- https://genai.owasp.org/resource/agent-control-standard-acs/
+- https://a2a-protocol.org/latest/topics/key-concepts/
+- https://a2a-protocol.org/latest/topics/streaming-and-async/
+- https://modelcontextprotocol.io/
+- https://opentelemetry.io/docs/specs/semconv/
+
+---
+
+## 14. Amendment closure gate
+
+The Live plane is not production-conformant until:
+
+```text
+canonical capability projection
++
+centralized Policy Engine
++
+correct HITL behavior
++
+commit-time authorization
++
+Action Broker
++
+verification
+```
+
+are enforced for Live-originated actions.

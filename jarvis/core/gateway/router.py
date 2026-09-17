@@ -17,13 +17,43 @@ from jarvis.core.gateway.interfaces import (
     ModelProviderAdapter,
     StreamChunk,
 )
-from jarvis.core.gateway.quota import ModelQuotaManager, QuotaDomain
+from jarvis.core.gateway.quota import ModelQuotaManager, QuotaDomain, QuotaMeterType
 from jarvis.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Canonical Model Pool Definitions (MODEL_ROSTER.md Section 4 & 43)
+POOL_A_FLASH_QUALITY: list[str] = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+]
+
+POOL_B_FLASH_LITE: list[str] = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+]
+
+POOL_C_COMPRESSION: list[str] = [
+    "gemma-4-31b-it",
+]
+
+POOL_D_GROQ_SPECIALISTS: list[str] = [
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+]
+
+POOL_E_REALTIME_VOICE: list[str] = [
+    "gemini-3.8-live",
+    "gemini-3.8-live-extended-thinking",
+]
+
 # Fallback chains per model role (derived from MODEL_ROSTER.md)
 FALLBACK_CHAINS: dict[str, list[str]] = {
+    # Realtime Voice Plane
+    "gemini-3.8-live": ["gemini-3.8-live-extended-thinking"],
+    "gemini-3.8-live-extended-thinking": ["gemini-3.8-live"],
     # Workhorse Quality: Flash -> Flash-Lite -> Groq
     "gemini-2.5-flash": ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite", "qwen/qwen3.8-27b"],
     "gemini-3.6-flash": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite"],
@@ -58,15 +88,37 @@ class ModelGateway:
         """Get or lazily initialize ModelQuotaManager for a specific model."""
         if model_id not in self._quota_managers:
             # Configure limits according to MODEL_ROSTER.md specifications
-            rpm = 30 if "qwen" in model_id or "gpt-oss" in model_id else 15
-            rpd = 1000 if "qwen" in model_id or "gpt-oss" in model_id else 500
-            tpm = 8000 if "qwen" in model_id or "gpt-oss" in model_id else 250000
+            meter_type = QuotaMeterType.LIMITED
+            if model_id in POOL_E_REALTIME_VOICE:
+                meter_type = QuotaMeterType.UNMETERED_REPORTED
+                rpm = None
+                rpd = None
+                tpm = None
+            elif any(p in model_id for p in ("qwen", "gpt-oss", "groq")):
+                rpm = 30
+                rpd = 1000
+                tpm = 8000
+            elif any(f in model_id for f in ("3.8-flash", "3.7-flash", "3.6-flash", "3.5-flash")):
+                # Scarce Flash Pool A models (~20 RPD free tier observation)
+                rpm = 15
+                rpd = 20
+                tpm = 1000000
+            elif "flash-lite" in model_id:
+                # High-volume Flash-Lite models (~1500 RPD)
+                rpm = 15
+                rpd = 1500
+                tpm = 1000000
+            else:
+                rpm = 15
+                rpd = 500
+                tpm = 250000
 
             self._quota_managers[model_id] = ModelQuotaManager(
                 model_id=model_id,
                 rpm_limit=rpm,
                 rpd_limit=rpd,
                 tpm_limit=tpm,
+                meter_type=meter_type,
             )
         return self._quota_managers[model_id]
 

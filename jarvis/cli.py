@@ -40,6 +40,12 @@ def print_banner() -> None:
 
 async def run_cli() -> None:
     """Main interactive terminal loop."""
+    if "--voice" in sys.argv or "-v" in sys.argv:
+        from jarvis.voice_cli import run_voice_plane
+
+        await run_voice_plane()
+        return
+
     print_banner()
 
     session_mgr = SessionManager(

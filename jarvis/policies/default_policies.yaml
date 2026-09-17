@@ -86,3 +86,13 @@ rules:
     obligations:
       - "hitl"
 
+  # 9. Python script and test execution directly on host requires human approval pending container isolation
+  - rule_id: "require-hitl-for-host-code-execution"
+    description: "Python script and test execution directly on host requires human approval due to lack of OS-level container isolation"
+    priority: 850
+    tool_pattern: "native:code:run_test"
+    decision: "REQUIRE_HITL"
+    obligations:
+      - "hitl"
+      - "sandbox"
+

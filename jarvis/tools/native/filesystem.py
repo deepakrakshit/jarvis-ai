@@ -34,11 +34,15 @@ def read_file(file_path: str, workspace_root: Path | str | None = None) -> dict[
     if not target.is_file():
         raise IsADirectoryError(f"Target is a directory, not a file: {file_path}")
 
+    disk_bytes = target.stat().st_size
     content = target.read_text(encoding="utf-8", errors="replace")
+    content_bytes = len(content.encode("utf-8"))
     return {
         "file_path": str(target),
         "content": content,
-        "size_bytes": len(content.encode("utf-8")),
+        "size_bytes": disk_bytes,
+        "disk_bytes": disk_bytes,
+        "content_bytes": content_bytes,
     }
 
 
@@ -49,10 +53,13 @@ def write_file(
     target = resolve_confined_path(file_path, workspace_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-    bytes_written = len(content.encode("utf-8"))
+    disk_bytes = target.stat().st_size
+    content_bytes = len(content.encode("utf-8"))
     return {
         "file_path": str(target),
-        "bytes_written": bytes_written,
+        "bytes_written": disk_bytes,
+        "disk_bytes": disk_bytes,
+        "content_bytes": content_bytes,
         "status": "success",
     }
 

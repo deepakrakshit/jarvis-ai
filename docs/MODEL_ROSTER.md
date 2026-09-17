@@ -1,843 +1,2566 @@
 # JARVIS v1.0.0: Model Roster & Quota-Aware Gateway Specification
+
 ## Operational Model Inventory, Capability Routing & Quota Allocation Matrix
-*Classification: Engineering Design Document (Model Plane Baseline)*  
-*Version: 1.0.0-CANONICAL*  
-*Target System: Free-Tier Distributed Inference Reservoir for JARVIS v1.0.0*
+
+**Classification:** Engineering Design Document (Model Plane Baseline)
+**Status:** Proposed successor to the previous canonical roster
+**Target System:** JARVIS v1.0.0 Free-Tier Distributed Inference Reservoir + Realtime Voice Plane
+**Research Cutoff:** 16 September 2026
+**Primary change:** Addition of Gemini 3.8 Live and Gemini 3.8 Live Extended Thinking as first-class realtime voice models.
+
+> **Naming correction:** Google’s official API model identifier is `gemini-3.8-live`, not “Gemini 3.8 Flash Live”. The corresponding high-reasoning model is `gemini-3.8-live-extended-thinking`.
 
 ---
 
-## 1. Executive Summary & The "Zero-Cost, Quota-Resilient Availability" Strategy
+# 0. Executive Decision
 
-In production agent systems, relying on a single frontier model results in rapid rate-limit failures (HTTP 429), token exhaustion, or unsustainable operational bills. 
+JARVIS should **not** collapse the entire model roster into Gemini 3.8 Live.
 
-JARVIS v1.0.0 addresses this by engineering a **Heterogeneous Model Reservoir**. By decomposing agentic responsibilities across model classes with independent quotas on Google AI Studio and Groq Cloud, JARVIS operates under a **nominal aggregate daily operation ceiling of 18,980 operations** and **1,562,000 aggregate nominal configured per-minute token quota across generation + embedding domains** across multiple isolated operational pools.
-
-> [!IMPORTANT]
-> **Heterogeneous, Non-Fungible Ceilings:** The aggregate figure of 18,980 daily operations represents a mathematical summation of distinct, independently enforced quota dimensions across providers:
-> * 80 Flash Quality generation requests (Pool A: 4 models @ 20 RPD)
-> * 1,000 Flash-Lite operational generation requests (Pool B: 2 models @ 500 RPD)
-> * 14,400 Gemma 4 31B IT compression/summarization operations (Pool C: `gemma-4-31b-it` @ 14,400 RPD)
-> * 2,000 Groq speed specialist requests (Pool D: 2 models @ 1,000 RPD)
-> * 1,000 Multimodal vector embedding operations (`gemini-embedding-2`)
-> * 500 Google Search grounding operations (`gemini-2.5-flash` / Lite shared grounding allowance)
-> 
-> These quotas are **not** fungible. An unused search-grounding allowance cannot be converted into a code-generation request, nor does a high RPD on Gemma 4 compensate for TPM exhaustion on Groq. The Model Gateway manages each dimension as an isolated rate-limit domain. The figure of 1,562,000 TPM represents an aggregate nominal configured per-minute token quota across generation + embedding domains, not a single shared throughput capacity or homogeneous token metric (*Google Gemini TPM is an input-token/minute dimension; Groq TPM is a combined token/minute dimension unless separate ITPM/OTPM limits are configured*). Search Grounding is a separate 500 grounded-prompts/day quota domain and is excluded from the TPM aggregate.
-
-### Core Architectural Invariants
-
-1. **Architecture is Frozen; Provider Quota Values Are Runtime Configuration:** Google AI Studio and Groq rate limits vary by model, region, and project, and can be adjusted dynamically by providers. The gateway architecture, role policies, three-layer quota isolation, and recovery contracts are permanent; the numeric quota limits are loaded from configuration and continuously calibrated by provider response headers.
-2. **Quotas Are Project-Scoped and Model-Specific:** Quota limits are enforced at the project level and vary by model and applicable quota dimension; the gateway treats each model/domain bucket independently according to the active runtime configuration. Invoking `gemini-3.6-flash` does not consume the rate-limit bucket of `gemini-3.8-flash` or `gemini-3.5-flash-lite`.
-3. **Capability-Weighted Allocation > Dumb Round-Robin:** Models are invoked according to empirical benchmark strengths, task capability constraints, and real-time quota availability, preserving scarce frontier reasoning models for genuinely complex problems.
-4. **Resilience Over Absolute Guarantees:** Third-party free-tier endpoints cannot guarantee zero downtime. JARVIS is engineered for **Quota-Resilient High Availability & Graceful Degradation** through two-phase token/request reservation, atomic admission control, rate-limit header reconciliation, and capability-aware fallback ladders.
-5. **Token Economics Over Raw RPD:** Raw Request-Per-Day (RPD) does not equal useful task capacity. A 14,400 RPD model with a 16K TPM limit requires different operational pacing than a 20 RPD model with a 250K TPM window. Capacity is planned around **Effective Daily Tasks**, with task estimates calibrated empirically by runtime telemetry.
-6. **Decoupled Autonomy & Model Selection:** Autonomy level (Levels 0–5) is a security/authorization property governed by the Policy Engine. Model selection is a technical capability optimization governed by the Model Gateway. High autonomy does not automatically force Gemini 3.8; selection is driven by task complexity, required modalities, context length, and tool constraints.
-7. **Zero-Trust Model Boundary:** Models only propose intent. Authorization, action brokering, circuit breaking, and external-state verification remain strictly deterministic and centralized outside the LLM.
-
----
-
-## 2. Master Model Plane Architecture & Topology Diagram
-
-The following diagrams illustrate the flow of inference requests through the Model Gateway into the operational pools, memory domain, and search grounding allowance:
-
-### Visual Mermaid Topology
-
-```mermaid
-flowchart TD
-    subgraph Gateway ["JARVIS Model Gateway (Three-Layer Architecture · Atomic Dispatch)"]
-        RouterEntry["Inference Request Dispatcher"]
-    end
-
-    subgraph PoolB ["Pool B: Gemini Flash-Lite High-Volume Operational Brain"]
-        M_31Lite["Gemini 3.1 Flash-Lite<br/><b>Role: Router & Classifier</b><br/>500 RPD · 250K TPM · 363 t/s"]
-        M_35Lite["Gemini 3.5 Flash-Lite<br/><b>Role: Default Everyday Brain</b><br/>500 RPD · 250K TPM · 1M Context"]
-    end
-
-    subgraph PoolA ["Pool A: Gemini Flash Quality Reservoir (Capability-Ranked)"]
-        M_36Flash["Gemini 3.6 Flash<br/><b>Role: Workhorse Quality Model</b><br/>20 RPD · 250K TPM · SWE: 58.7%"]
-        M_37Flash["Gemini 3.7 Flash<br/><b>Role: Advanced Agentic/Coding</b><br/>20 RPD · 250K TPM · Term: 85.8%"]
-        M_38Flash["Gemini 3.8 Flash<br/><b>Role: Premium Escalation Brain</b><br/>20 RPD · 250K TPM · DeepSWE: 73.7%"]
-        M_35Flash["Gemini 3.5 Flash<br/><b>Role: Compatibility / Fallback</b><br/>20 RPD · 250K TPM"]
-    end
-
-    subgraph PoolD ["Pool D: Groq Speed Specialists (~500 t/s)"]
-        M_Qwen["Qwen 3.8-27B (Preview)<br/><b>Role: Coding & Visual Specialist</b><br/>1K RPD · 8K TPM · 131K Context"]
-        M_GPTOSS["GPT-OSS 120B<br/><b>Role: Heavy Reasoning & Search</b><br/>1K RPD · 8K TPM · 131K Context"]
-    end
-
-    subgraph PoolC ["Pool C: High-Volume Compression Pool"]
-        M_Gemma["Gemma 4 31B IT (gemma-4-31b-it)<br/><b>Role: Bulk Compression & Summary</b><br/>14,400 RPD · 16K TPM · 256K Context"]
-    end
-
-    subgraph MemoryDomain ["Memory Domain (Isolated Vector Pipeline)"]
-        M_Embed["Gemini Embedding 2<br/><b>Role: Multimodal Vector Memory</b><br/>1,000 RPD · 30K TPM · 128-3072 dims"]
-    end
-
-    subgraph SearchDomain ["Search Grounding Domain (Shared Allowance)"]
-        M_Search["Gemini 2.5 Flash / Flash-Lite<br/><b>Role: Free Google Search Grounding</b><br/>500 Grounded Prompts/Day Shared"]
-    end
-
-    RouterEntry --> PoolB
-    RouterEntry --> PoolA
-    RouterEntry --> PoolD
-    RouterEntry --> PoolC
-    RouterEntry --> MemoryDomain
-    RouterEntry --> SearchDomain
-
-    M_GPTOSS -.->|"Raw Research Payload (Structured Fallback)"| M_35Lite
-```
-
-### Complete Operational Flowchart
+Instead, JARVIS should evolve from a single generalized model reservoir into two coordinated model planes:
 
 ```text
-                                 JARVIS MODEL GATEWAY
-                     (Three-Layer Architecture · Atomic Dispatch)
-                                          │
-                  ┌───────────────────────┴───────────────────────┐
-                  │                                               │
-           POOL B (FLASH-LITE)                             POOL A (FLASH)
-                  │                                               │
-       3.1 Lite = ROUTER / CLASSIFIER                 3.6 Flash = QUALITY WORKHORSE
-       (500 RPD · 250K TPM)                           (20 RPD · 250K TPM)
-                  │                                               │
-       3.5 Lite = DEFAULT EVERYDAY BRAIN              3.7 Flash = ADVANCED AGENTIC/CODING
-       (500 RPD · 250K TPM)                           (20 RPD · 250K TPM)
-                  │                                               │
-                  │                                   3.8 Flash = PREMIUM ESCALATION
-                  │                                   (20 RPD · 250K TPM)
-                  │                                               │
-                  │                                   3.5 Flash = COMPATIBILITY FALLBACK
-                  │                                   (20 RPD · 250K TPM)
-                  │                                               │
-                  └───────────────────────┬───────────────────────┘
-                                          │
-                 ┌────────────────────────┼────────────────────────┐
-                 ▼                        ▼                        ▼
-              POOL D                   POOL D                   POOL C
-       QWEN 3.8-27B (PREVIEW)       GPT-OSS 120B            GEMMA 4 31B IT
-           Coding & Visual         Heavy Reasoning &        (gemma-4-31b-it)
-             Specialist              Browser Search         Bulk Compression
-          (1K RPD · 8K TPM)        (1K RPD · 8K TPM)      (14.4K RPD · 16K TPM)
-                                          │
-                                          └── Multi-Stage Structured Fallback
-                                              (Search via OSS ──► Extract via Lite)
-
-                 ┌────────────────────────┴────────────────────────┐
-                 ▼                                                 ▼
-            MEMORY DOMAIN                                SEARCH GROUNDING DOMAIN
-         Gemini Embedding 2                           Gemini 2.5 Flash / Flash-Lite
-       (1K RPD · 30K TPM Unified)                     (500 Grounded Prompts/Day Shared)
+                         JARVIS MODEL PLANE
+                                │
+              ┌─────────────────┴─────────────────┐
+              │                                   │
+       REALTIME VOICE PLANE                  WORK / REASONING PLANE
+              │                                   │
+   ┌──────────┴──────────┐               ┌─────────┴─────────────┐
+   │                     │               │                       │
+3.8 Live           3.8 Live ET      3.8 Flash              Specialist Pool
+Fast voice         Deep voice       Structured/deep        Qwen / GPT-OSS
+conversation       reasoning        agent work             / Gemma
+   │                     │               │
+   └──────────┬──────────┘               │
+              │                           │
+              └──────────────┬────────────┘
+                             ↓
+                    JARVIS MODEL GATEWAY
+                             ↓
+               Policy / Capability / Quota
+                             ↓
+                  JARVIS CONTROL PLANE
 ```
 
----
+The key design rule is:
 
-## 3. Complete Model Quota Inventory Table
+> **Gemini 3.8 Live is a realtime conversational model, not the JARVIS authority layer.**
 
-The following matrix represents the **observed free-tier limits in the project environment at baseline capture time**, categorized by **Quota Domain**:
-
-| Domain | Pool | Model Identifier | Provider | RPM | TPM | RPD | TPD | Native Context | Primary Role |
-| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **GENERATION** | **Pool B** | `gemini-3.1-flash-lite` | Google | 15 | 250K | **500** | - | 1,048,576 | Preferred Router & Lightweight Classifier |
-| **GENERATION** | **Pool B** | `gemini-3.5-flash-lite` | Google | 15 | 250K | **500** | - | 1,048,576 | **Default Everyday Brain** |
-| **GENERATION** | **Pool A** | `gemini-3.6-flash` | Google | 5 | 250K | **20** | - | 1,048,576 | **Workhorse Quality Model** |
-| **GENERATION** | **Pool A** | `gemini-3.7-flash` | Google | 5 | 250K | **20** | - | 1,048,576 | Advanced Agentic & Coding Tier |
-| **GENERATION** | **Pool A** | `gemini-3.8-flash` | Google | 5 | 250K | **20** | - | 1,048,576 | **Premium Escalation Brain & Vision** |
-| **GENERATION** | **Pool A** | `gemini-3.5-flash` | Google | 5 | 250K | **20** | - | 1,048,576 | Compatibility / Fallback Slot |
-| **GENERATION** | **Pool C** | `gemma-4-31b-it` | Google | 30 | 16K | **14,400** | - | 262,144 | High-Volume Compression & Summarizer |
-| **GENERATION** | **Pool D** | `qwen/qwen3.8-27b` *(Preview)* | Groq | 30 | 8K | **1,000** | 200K | 131,072 | Fast Multimodal / Coding Specialist (~450 t/s) |
-| **GENERATION** | **Pool D** | `openai/gpt-oss-120b` | Groq | 30 | 8K | **1,000** | 200K | 131,072 | Heavy Reasoning & Browser Search (~500 t/s) |
-| **EMBEDDING**  | **Memory** | `gemini-embedding-2` | Google | 100 | 30K | **1,000** | - | Unified | Multimodal Vector Embeddings |
-| **SEARCH_GROUNDING** | **Search** | `gemini-2.5-flash` / `lite` | Google | - | - | **500\*** | - | 1,048,576 | Shared Free Google Search Grounding Allowance (500 grounded prompts/day shared) |
-
-*\*Note on Quota Domains: The nominal aggregate daily operation ceiling is **18,980 operations/day** across independently enforced quota domains. The **1,562,000 TPM** figure represents the aggregate nominal configured per-minute token quota across generation + embedding domains, representing the mathematical sum of distinct, non-fungible provider pipes (*Google Gemini TPM is an input-token/minute dimension; Groq TPM is a combined token/minute dimension unless separate ITPM/OTPM limits are configured*). Search Grounding is a separate 500 grounded-prompts/day quota domain and is excluded from the TPM aggregate (RPM/TPM are not applied to the grounding allowance itself; standard generation RPM/TPM apply separately to underlying model calls).*
+It can receive audio, produce spoken audio, reason, and make function calls. Those function calls enter JARVIS as untrusted proposed intent and are still governed by the existing deterministic Policy Engine, Capability Firewall, Action Broker, verification, and audit mechanisms.
 
 ---
 
-## 4. Detailed Specification of the Operational Pools
+# 1. Research Scope & Evidence Quality
 
-### Pool A: The Gemini Flash Quality Reservoir
-* **Nominal Aggregate Capacity:** 80 Requests / Day · 1,000,000 Combined TPM (4 independent 250K TPM buckets).
-* **Conceptual Hierarchy:**  
-  $$\text{Gemini 3.8 Flash} > \text{Gemini 3.7 Flash} > \text{Gemini 3.6 Flash} > \text{Gemini 3.5 Flash}$$
-* **Generational Roles & Empirical Justifications:**
-  * `Gemini 3.6 Flash` (**The Workhorse Quality Model**): Google explicitly designates 3.6 as its workhorse, delivering significant gains over 3.5 in coding, knowledge work, multimodal performance, and token efficiency. In Google's evaluations, 3.6 outperforms 3.5 across critical agentic benchmarks: SWE-Bench Pro (58.7% vs 55.1%), MLE-Bench (63.9% vs 49.7%), OSWorld (83.0% vs 78.4%), and 128K MRCR (91.8% vs 77.3%).
-  * `Gemini 3.7 Flash` (**Advanced Agentic Coding Tier**): Delivers higher agentic coding performance (DeepSWE: 65.3%, Terminal-Bench: 85.8%, 128K MRCR: 97.0%, HLE-Verified: 53.6%). Deployed for deep terminal interactions, multi-file code editing, and complex algorithmic debugging.
-  * `Gemini 3.8 Flash` (**Premium Escalation Brain & Vision**): Google's most intelligent Flash model, specifically engineered for long-horizon software engineering, autonomous agents, and complex workflows. Features 1M context, 64K output, function calling, Search, computer use, code execution, file search, structured output, thinking, and URL context. Benchmark metrics: DeepSWE v1.1: **73.7%**, GDPVal-AA v2: **1545 Elo**, Finance Agent v2: **61.4%**. Reserved for high-complexity escalations, long-horizon SWE tasks, and multimodal screen perception.
-  * `Gemini 3.5 Flash` (**Compatibility & Fallback Slot**): High-stability baseline model with 1M context and 64K output, acting as the stable model fallback buffer within Pool A. (Security boundaries remain strictly governed by the Policy Engine and Action Broker, not model tiers.)
+This roster is based on:
 
-### Pool B: The Gemini Flash-Lite High-Volume Operational Brain Pool
-* **Nominal Aggregate Capacity:** 1,000 Requests / Day · 500,000 Combined TPM (2 independent 250K TPM buckets) · 1,048,576-token native context per Gemini model.
-* **Preferred Router & Lightweight Classifier (`gemini-3.1-flash-lite`):**
-  * Primary responsibility: Layer 07 (Capability Router & Intent Classifier).
-  * Fast generation (363 t/s) and GPQA Diamond (86.9%) provide high-precision classification into Fast, Specialist, Deep, or Event paths.
-  * *Non-Exclusive Role:* When routing traffic is low, 3.1 Flash-Lite remains fully eligible for intent normalization, lightweight preprocessing, memory candidate extraction, translation, and structured data extraction.
-* **Default Everyday Brain (`gemini-3.5-flash-lite`):**
-  * Handles ~80% of all user interactions, tool invocations, and domain specialist execution.
-  * Targeted by Google specifically at high-throughput agentic workflows, subagent loops, and document processing.
-  * Published benchmark advantage over 3.1 Flash-Lite: SWE-Bench Pro (54.2% vs 38.3%), Terminal-Bench 2.1 (54.0% vs 31.0%), OSWorld (74.0% vs 54.3%), and 128K MRCR (72.2% vs 60.1%), combining strong agentic competence with a 500 RPD / 250K TPM allocation.
+1. The complete previously supplied JARVIS model-roster document, including its model inventory, quotas, gateway contract, quota-reservation implementation, failure semantics, scoring function, and operational role assignments.
+2. Current Google AI for Developers documentation for Gemini 3.8 Flash, Gemini 3.8 Live, Gemini 3.8 Live Extended Thinking, Live API tools, Live API session management, Live API capabilities, pricing, models, deprecations, and embeddings.
+3. Google DeepMind model-card material for Gemini 3.8 Audio and Gemma 4.
+4. Current Groq documentation for Qwen 3.8 27B, GPT-OSS 120B, built-in tools, rate-limit headers, and model capabilities.
+5. Independent benchmark/reporting sources used only for supplementary cross-checking of voice-agent benchmark results.
 
-### Pool C: The Gemma 4 31B IT High-Volume Compression Pool (`gemma-4-31b-it`)
-* **Canonical API Identifier:** `gemma-4-31b-it`
-* **Total Capacity:** 14,400 Requests / Day · 30 RPM · 16K TPM · 256K Context Window.
-* **Role:** Context Compaction, Transcript Summarization, Fact Extraction & Output Polish.
-* **Response Policy (Semantic Fidelity Preservation):**  
-  To prevent lower-intelligence models from distorting or omitting subtle facts on complex tasks, the final synthesis follows an explicit policy:
-  * **Simple / Conversational Tasks:** Gemma 4 31B IT (`gemma-4-31b-it`) synthesizes final concise prose.
-  * **Normal Tool Tasks:** Gemini 3.5 Flash-Lite produces the verified response.
-  * **Complex / High-Stakes / Escalated Work:** The **originating reasoning model** (e.g., Gemini 3.8 Flash, Gemini 3.7 Flash, Qwen 3.8, or GPT-OSS 120B) generates the final user-facing response directly, ensuring zero semantic degradation.
-* **Architectural Restriction:** Gemma 4 31B IT is strictly a worker. It is **never** authorized to approve policies, bypass verification, or execute side-effect tools.
+### Evidence hierarchy
 
-### Pool D: The Groq Speed Specialist Pool
-* **Nominal Aggregate Capacity:** 2,000 Requests / Day · 60 RPM Combined · 16K Combined TPM · 400K Combined TPD.
-* **Fast Interactive Multimodal / Coding Specialist (`qwen/qwen3.8-27b` - Preview):**
-  * *Status:* Preview model on GroqCloud; treated as a preview dependency with automated fallback.
-  * LiveCodeBench: 90.3%, SWE-Bench Pro: 61.7%, GPQA Diamond: 89.2%, Terminal-Bench: 73.0%.
-  * Ultra-low latency (~450+ t/s) with 131,072 context, 16K max output, and native image perception.
-  * Dispatched for rapid coding loops, visual debugging, AST refactoring, and compact subagent turns.
-* **Heavy Reasoning & Browser Search Specialist (`openai/gpt-oss-120b`):**
-  * 117B total / 5.1B active parameter open-weight reasoning MoE (~500 t/s, 131K context, 65K output).
-  * Native Groq built-in **Browser Search** and **Code Execution**.
-  * Dispatched for deep multi-source research, competitor analysis, and literature exploration.
-* **Crucial Tool-Mode Compatibility Constraint:**
-  > [!WARNING]
-  > **Groq Incompatibility:** On Groq Cloud, **Browser Search cannot be combined with strict structured output mode (`json_schema`)**. 
-  > The Model Gateway treats `required_tool_mode = BROWSER_SEARCH` and `structured_output = True` as mutually exclusive constraints. When structured extraction is required alongside search, the gateway routes to a multi-stage pipeline:
-  > $$\text{GPT-OSS 120B (Browser Search)} \longrightarrow \text{Raw Research Payload} \longrightarrow \text{Gemini 3.1 / 3.5 Flash-Lite (Structured JSON Extraction)}$$
-  > or dispatches directly to Gemini 2.5 Flash with native Google Search grounding.
-
----
-
-## 5. Capability-Aware Dynamic Failover Matrix & Role Rankings
-
-Failover never follows a blind universal chain. The Model Gateway selects the **Nearest Semantically Compatible Model** satisfying required capabilities:
+When sources disagree:
 
 ```text
-┌───────────────────────────┬───────────────────────────────┬───────────────────────────────┐
-│ Task Capability Required  │ Primary Model                 │ Capability-Aware Fallback     │
-├───────────────────────────┼───────────────────────────────┼───────────────────────────────┤
-│ Multimodal / Screen Vision│ Gemini 3.8 Flash (Pool A)     │ Qwen 3.8-27B (Groq)           │
-│ Long Context (>131K)      │ Gemini 3.5 Flash-Lite (Pool B)│ Gemini 3.6 / 3.5 Flash (Pool A)│
-│ Built-in Browser Search   │ GPT-OSS 120B (Groq)           │ Gemini 2.5 Flash + Search API │
-│ Fast Interactive Coding   │ Qwen 3.8-27B (Groq)           │ Gemini 3.5 Flash-Lite (Pool B)│
-│ General Tool Orchestration│ Gemini 3.5 Flash-Lite (Pool B)│ Gemini 3.1 Flash-Lite (Pool B)│
-│ Deep Planning / SWE       │ Gemini 3.8 Flash (Pool A)     │ Gemini 3.7 Flash (Pool A)     │
-└───────────────────────────┴───────────────────────────────┴───────────────────────────────┘
+JARVIS runtime observation / provider response headers
+        ↓
+Provider API documentation
+        ↓
+Provider model cards / release notes
+        ↓
+Independent benchmark sources
+        ↓
+Third-party articles / community reports
 ```
 
-### Operational Suitability Ranking Under JARVIS Free-Tier Constraints
-> *(Reflects composite operational suitability under free-tier quotas, latency requirements, and tool constraints; this is an operational resource allocation matrix, not a raw parameter-intelligence ranking.)*
-
-1. **Default Everyday Agent:**  
-   `Gemini 3.5 Flash-Lite` > `Gemini 3.1 Flash-Lite` > `Gemini 3.6 Flash` > `Qwen 3.8-27B` > `GPT-OSS 120B` > `Gemma 4 31B IT`
-2. **Hard Reasoning / Escalation:**  
-   `Gemini 3.8 Flash` > `Gemini 3.7 Flash` > `Gemini 3.6 Flash` > `GPT-OSS 120B` > `Qwen 3.8-27B` > `Gemini 3.5 Flash-Lite`
-3. **Agentic Coding & Terminal:**  
-   `Gemini 3.8 Flash` > `Qwen 3.8-27B` > `Gemini 3.7 Flash` > `Gemini 3.6 Flash` > `GPT-OSS 120B` > `Gemini 3.5 Flash-Lite`
-4. **High-Volume Summarization & Compaction:**  
-   `Gemma 4 31B IT` (`gemma-4-31b-it`) > `Gemini 3.5 Flash-Lite` > `Gemini 3.1 Flash-Lite`
-5. **Vision & Multimodal Perception:**  
-   `Gemini 3.8 Flash` > `Gemini 3.7 Flash` > `Gemini 3.6 Flash` > `Gemini 3.5 Flash-Lite` > `Qwen 3.8-27B` > `Gemma 4 31B IT`
-6. **Memory Embeddings:**  
-   `Gemini Embedding 2`
-7. **Built-in Web Research:**  
-   `GPT-OSS 120B` (Groq Browser Search) > `Gemini 2.5 Flash` (Search Grounding) > Native JARVIS Search Tool + Any Reasoner
-
-*Emergency Fallback:* If all primary Google and Groq pools are exhausted, the gateway can degrade to the **OpenRouter Emergency Reservoir** (`:free` endpoints) or transition to state `DEGRADED`, alerting the user via the Blue HUD.
+Provider dashboards and response headers remain authoritative for the actual runtime project state.
 
 ---
 
-## 6. Token Economics & Effective Daily Task Capacity
+# 2. Critical Findings From the Previous Roster
 
-Raw request count does not represent actual agent throughput. JARVIS v1.0.0 plans capacity around **Effective Daily Tasks**:
+The previous roster correctly established several principles that remain unchanged:
 
-$$\text{Daily Task Capacity} = \min\left(\frac{\text{RPD Ceiling}}{\text{Avg Calls/Task}}, \frac{\text{Daily Token Budget}}{\text{Avg Tokens/Task}}\right)$$
+- quotas are non-fungible;
+- model selection is capability-aware;
+- free-tier quotas must be treated as runtime configuration rather than permanent guarantees;
+- model selection and autonomy are separate concerns;
+- model outputs never form the authorization boundary;
+- quota state requires provider observation + local reservations + atomic admission;
+- ambiguous post-dispatch failures must become orphaned leases rather than being silently released;
+- fallback must be capability-aware rather than blind round-robin;
+- raw RPD is not equivalent to useful task capacity.
 
-> [!NOTE]
-> **Engineering Estimates Subject to Telemetry Calibration:** The following figures are initial engineering design estimates. Because Google free-tier daily token ceilings (TPD) are unstated and subject to dynamic server-side load throttling, actual operational throughput will be measured and continuously calibrated by the Observability Plane (Component 19).
+These principles remain canonical for the gateway design.
 
-* **Lightweight Tasks** (System control, calendar, app launch: ~1,500 tokens, 1-2 calls):
-  * Primary Engine: Gemini 3.5 Flash-Lite + 3.1 Flash-Lite Router.
-  * **Initial Design Estimate:** ~300–400 tasks/day (gated primarily by RPD).
-* **Interactive Coding Bursts** (Refactoring, debugging: ~2,000 tokens, 2-3 calls):
-  * Primary Engine: Qwen 3.8-27B on Groq (strictly gated by 8K TPM rate-limit pacing).
-  * **Initial Design Estimate:** ~250–300 tasks/day.
-* **Deep Agentic Workflows** (Multi-step research, codebase audits: ~20,000–50,000 tokens, 5-10 calls):
-  * Primary Engine: Gemini Flash Reservoir (Pool A) + GPT-OSS 120B (Groq).
-  * **Initial Design Estimate:** ~15–25 deep workflows/day (gated by Pool A's 20 RPD per model).
-* **Bulk Compaction & Fact Mining**:
-  * Engine: Gemma 4 31B (14,400 RPD).
-  * **Initial Design Estimate:** Thousands of background operations per day.
-
-### `ExpectedToolTokens` Semantics & Role-Based Output Caps
-In the reservation protocol:
-$$\text{ReservedTokens} = \text{PromptTokens} + \text{EstimatedOutputTokens} + \text{ExpectedToolTokens}$$
-
-1. **`ExpectedToolTokens` Semantics:** `ExpectedToolTokens` **must** represent the estimated token size of the **tool result payloads that will be fed back into downstream model context**. It does not represent external tool execution duration or wall-clock latency.
-   * Reading a 500-line source file: ~2,000 expected tool tokens.
-   * Terminating a process via PID: ~20 expected tool tokens.
-   * Shell command returning a 10-line stdout: ~100 expected tool tokens.
-2. **Role-Based Maximum Output Reservation Caps:** To prevent the reservation scheduler from being overly pessimistic (e.g., reserving 64K tokens for a simple routing query), `EstimatedOutputTokens` is capped according to the dispatched role:
-   * **Router / Classifier:** 1,024 tokens.
-   * **Default Everyday Brain:** 4,096 tokens.
-   * **Coding Specialist:** 8,192 tokens.
-   * **Research & Synthesis:** 8,192 tokens.
-   * **Frontier Escalation (3.8 Flash):** 16,384 tokens.
-
----
-
-## 7. Concurrency-Safe Quota & Reservation Architecture (`core/gateway/model_router.py`)
-
-To eliminate concurrent RPM/RPD oversubscription races, handle provider window reset semantics accurately, and withstand ambiguous network or provider outcomes, the Model Gateway implements a **Three-Layer Quota Architecture**.
+The previous roster also established the current work-plane pools:
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│ Layer 1: Authoritative Provider Quota State             │
-│ Snapshot captured at provider_observed_at:              │
-│ • provider_remaining_requests / provider_remaining_tokens│
-│ • provider_reset_at (Midnight PT for Google, UTC/header)│
-└────────────────────────────┬────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│ Layer 2: Local Reservation & Lease State                │
-│ Active commitments tracked locally:                     │
-│ • active_leases (UUID, reserved_tokens, expires_at)     │
-│ • orphaned_leases (expired in-flight, held until sync)  │
-│ • local_sliding_log (rolling 60s consumption history)   │
-└────────────────────────────┬────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│ Layer 3: Admission Prediction & Atomic Dispatch         │
-│ Critical-section evaluation:                            │
-│ • EffectiveRemaining = ProviderRemaining - InFlightPost │
-│   - UncertaintyMargin                                   │
-│ • Atomic Test-and-Set lease commitment                  │
-└─────────────────────────────────────────────────────────┘
+Pool A   Gemini Flash Quality
+Pool B   Gemini Flash-Lite
+Pool C   Gemma 4 31B compression
+Pool D   Groq specialists
+Memory   Gemini Embedding 2
+Search   Google Search grounding
 ```
 
-### Architectural Requirements
+Those are not removed by introducing Live.
 
-1. **The Three-Layer Quota Model:**
-   * **Layer 1: Authoritative Provider Observation:** Captures the provider's reported remaining quota at `provider_observed_at`. It is treated as an authoritative point-in-time observation, not an assumed real-time universal truth.
-   * **Layer 2: Local Reservation & Lease State:** Tracks active leases, orphaned leases, and rolling sliding consumption logs.
-   * **Layer 3: Admission Prediction Engine:** Evaluates headroom accounting for observation staleness ($\Delta t$), leases committed *after* the provider snapshot, and dimension-specific uncertainty margins (`uncertainty_margin_requests`, `uncertainty_margin_tokens`).
-2. **Atomic Quota Mutation & Dispatch Boundary:**  
-   Checking available headroom, committing a reservation, reconciling consumed tokens, recording failures, and ingesting provider rate-limit headers must all execute under the **same per-model critical section**. A naive design where only reservation is locked allows background header synchronization or reconciliation to race with admission headroom checks, producing inconsistent state.
-   * *Local Python AsyncIO Runtime:* Enforced via a per-model `ModelQuotaManager` wrapping an `asyncio.Lock()` per model bucket.
-   * *Multi-Process / Distributed Runtime:* Enforced via Redis Lua atomic scripts, PostgreSQL row locks (`FOR UPDATE`), or SQLite write transactions (`BEGIN IMMEDIATE`).
-3. **Lease Lifecycle & Ambiguous Failure Handling (Failure Mode #46 Defense):**  
-   Every reservation acquires a `ReservationLease` with an explicit Time-To-Live (default: 60 seconds).
-   * **Known Failure (`outcome_known_not_consumed=True`):** A lease transitions `ACTIVE` $\rightarrow$ `FAILED` **only** when an authoritative signal proves the request was never processed or debited by the provider (e.g., local pre-dispatch validation error, HTTP 401/403 authentication failure, HTTP 400 rejection before execution). This safely releases the in-flight reservation.
-   * **Ambiguous Failure (`outcome_known_not_consumed=False`):** Any post-dispatch failure where outcome is uncertain (e.g., transport timeout, connection reset, HTTP 502/503/504, broken streaming pipe, client disconnect during generation) must transition `ACTIVE` $\rightarrow$ `ORPHANED`. The provider may have already consumed RPM/TPM/RPD. Orphaned leases continue to hold an in-flight reservation penalty until:
-     - Late response or explicit provider error arrives (`reconcile()` transitions to `RECONCILED`).
-     - Explicit provider-state proof covering that specific lease is received.
-     - A defined authoritative quota boundary reset occurs.
-   *(Note: An orphan is **never** cleared merely because 60 seconds or an arbitrary time elapsed, nor does a generic health-check probe release it).*
-   * **Operational Quarantine & Degraded Fallback:** If a model bucket accumulates unresolved orphaned leases exceeding a safety threshold (e.g., $\ge 5$ orphans or $(\text{len}(\text{orphaned}) \times 2) \ge \text{RPM limit}$ for a positive RPM limit), the Model Gateway flags the model as `is_quarantined = True`. This preserves all outstanding in-flight reservation penalties without deleting them and automatically routes new requests to the next compatible fallback model in the pool, preventing gateway lockups.
-4. **Provider-Specific Calendar Reset Semantics:**  
-   * **Google Gemini RPD:** Resets authoritatively at **midnight Pacific Time (PT)** (`America/Los_Angeles`). The local day window tracks this exact calendar boundary and initializes `provider_reset_at` immediately upon instantiation, rather than an arbitrary 24-hour elapsed timer from script launch.
-   * **Groq Cloud Limits:** Groq Cloud limits use provider-supplied reset intervals when available (parsed from `x-ratelimit-reset-requests` and `x-ratelimit-reset-tokens`); before the first authoritative header observation, a UTC-calendar fallback may be used only as a conservative provisional estimate.
-5. **Rolling Sliding-Window Accounting (Token-Bucket implementation permitted as an optimization):**  
-   Minute limits are evaluated as a rolling 60-second sliding log of timestamped request executions and token weights, preventing double-rate burst spikes at fixed window edges.
+---
 
-### Pydantic Implementation Contract
+# 3. New Architectural Concept: Realtime Voice Plane
+
+## 3.1 Purpose
+
+Gemini 3.8 Live and Gemini 3.8 Live Extended Thinking introduce a dedicated realtime conversational interface.
+
+They should be treated as:
+
+```text
+ears + conversational brain + mouth + realtime tool caller
+```
+
+not:
+
+```text
+JARVIS security authority
+```
+
+The Live API provides bidirectional WebSocket streaming, native audio generation, multimodal inputs, and function calling.
+
+---
+
+# 4. Complete Updated Model Inventory
+
+## 4.1 Realtime Voice Pool — New
+
+### `gemini-3.8-live`
+
+**Official name:** Gemini 3.8 Live
+**Pool:** `POOL_E_REALTIME_VOICE`
+**Provider:** Google
+**Status:** Stable / GA
+**Release:** 15 September 2026
+**Primary role:** Realtime conversational voice agent
+
+### API capabilities
+
+- Text input
+- Image input
+- Video input
+- Audio input
+- Native audio output
+- Function calling
+- Asynchronous function calling
+- Search grounding
+- Interleaved reasoning
+- Live API
+- Proactive audio
+- Client content updates
+- Session resumption
+- Context window compression
+- Input/output transcription support
+
+### Explicitly unavailable
+
+- Code execution
+- File Search
+- URL Context
+- Structured Outputs
+- Image generation
+- Google Maps grounding
+- Batch API
+
+### Runtime limits
+
+Google’s model page currently reports:
+
+```text
+Input context:   131,072 tokens
+Output limit:     65,536 tokens
+```
+
+Google DeepMind’s model card describes the audio models as having up to approximately 128K token context; the API model page should be treated as the runtime contract.
+
+### Tool semantics
+
+Function calling is supported.
+
+For Gemini 3.8 Live:
+
+- asynchronous / `NON_BLOCKING` execution is the default;
+- synchronous `BLOCKING` execution is still supported for backwards compatibility;
+- function-result scheduling supports `INTERRUPT`, `WHEN_IDLE`, and `SILENT`.
+
+JARVIS should prefer `NON_BLOCKING` for long-running read/research work.
+
+### JARVIS role
+
+Use Gemini 3.8 Live for:
+
+```text
+wake / conversational interaction
+voice questions
+fast spoken answers
+voice-controlled JARVIS functions
+lightweight multimodal interaction
+voice navigation
+interactive tool requests
+hands-free conversational control
+```
+
+---
+
+## 4.2 Realtime Voice Deep-Reasoning Pool — New
+
+### `gemini-3.8-live-extended-thinking`
+
+**Official name:** Gemini 3.8 Live Extended Thinking
+**Pool:** `POOL_E_REALTIME_VOICE`
+**Provider:** Google
+**Status:** Stable / GA
+**Release:** 15 September 2026
+**Primary role:** High-reasoning realtime voice agent
+
+### Capabilities
+
+- Text input
+- Image input
+- Video input
+- Audio input
+- Native audio output
+- Background reasoning
+- Thinking levels: low / medium / high
+- Asynchronous function calling
+- Search grounding
+- Proactive audio
+- Session resumption
+- Context compression
+- Continuous streamed audio
+
+### Important restrictions
+
+- Function calling is async-only.
+- `behavior: NON_BLOCKING` is required.
+- Blocking function calls are not supported.
+- Function scheduling modes are not supported.
+- Structured output is not supported.
+- Code execution is not supported.
+- File Search is not supported.
+- URL context is not supported.
+
+### Interaction lifecycle
+
+The client must not assume:
+
+```text
+turnComplete == system idle
+```
+
+For Extended Thinking, JARVIS must observe `interaction_status`:
+
+```text
+IN_PROGRESS
+    =
+background reasoning and/or async tool calls may still be active
+
+IDLE
+    =
+model is finished with the interaction
+```
+
+### JARVIS role
+
+Use this model for:
+
+```text
+complex voice requests
+multi-step reasoning
+voice + research
+voice + coding orchestration
+voice + external tools
+multi-phase planning
+tasks where the user wants continuous spoken progress
+```
+
+Example:
+
+```text
+USER:
+"JARVIS, investigate why my project build is failing."
+
+Gemini 3.8 Live Extended Thinking:
+"Sure, I'll inspect the build and trace the failure."
+
+        ↓ async function call
+
+JARVIS CONTROL PLANE
+        ↓
+Coding Specialist
+        ↓
+Model Gateway
+        ↓
+local / remote work-plane model
+        ↓
+tool execution
+        ↓
+verification
+        ↓
+FunctionResponse
+
+Gemini:
+"I found the issue..."
+```
+
+---
+
+# 5. Realtime Voice Quota Policy
+
+## 5.1 Current Project Dashboard Observation
+
+The current Google AI Studio project dashboard supplied with this roster shows:
+
+```text
+Gemini 3.8 Live
+    RPM: Unlimited
+    TPM: 65K
+    RPD: Unlimited
+
+Gemini 3.8 Live Extended Thinking
+    RPM: Unlimited
+    TPM: 65K
+    RPD: Unlimited
+```
+
+These are **project-environment observations**, not permanent provider guarantees.
+
+### Critical interpretation
+
+Do NOT calculate:
+
+```text
+"Unlimited RPM + Unlimited RPD = infinite capacity"
+```
+
+Instead:
+
+```text
+Unlimited dashboard dimension
++
+finite TPM / token consumption
++
+session constraints
++
+connection lifecycle
++
+provider load / service controls
+=
+actual capacity
+```
+
+The Live models therefore receive a new quota domain rather than being added into the old finite `18,980 operations/day` arithmetic.
+
+---
+
+# 6. New Quota Domain
+
+The previous quota enum was:
 
 ```python
-import asyncio
-from datetime import datetime, timezone, timedelta
-from enum import Enum
-import re
-from typing import Dict, List, Optional
-import uuid
-import zoneinfo
-from pydantic import BaseModel, Field
-
-
-def parse_groq_duration(duration_str: str) -> timedelta:
-    """
-    Parses Groq rate-limit duration strings such as '2m59.56s', '7.66s', '1h2m3s', '450ms'.
-    Converts relative duration into a concrete datetime.timedelta.
-    Fails closed: raises ValueError on empty, invalid or malformed duration strings.
-    """
-    cleaned = duration_str.strip()
-    if not cleaned:
-        raise ValueError("Empty Groq rate-limit duration string")
-
-    pattern = re.compile(
-        r"(?:(\d+(?:\.\d+)?)h)?"
-        r"(?:(\d+(?:\.\d+)?)m(?!s))?"
-        r"(?:(\d+(?:\.\d+)?)s)?"
-        r"(?:(\d+(?:\.\d+)?)ms)?"
-    )
-    match = pattern.fullmatch(cleaned)
-    if match and any(match.groups()):
-        hours, minutes, seconds, milliseconds = match.groups()
-        total_seconds = (
-            (float(hours or 0) * 3600)
-            + (float(minutes or 0) * 60)
-            + float(seconds or 0)
-            + (float(milliseconds or 0) / 1000)
-        )
-        return timedelta(seconds=total_seconds)
-
-    try:
-        return timedelta(seconds=float(cleaned.rstrip("s")))
-    except ValueError:
-        raise ValueError(f"Invalid Groq rate-limit duration format: {duration_str!r}")
-
-
 class QuotaDomain(str, Enum):
     GENERATION = "GENERATION"
     EMBEDDING = "EMBEDDING"
     SEARCH_GROUNDING = "SEARCH_GROUNDING"
-
-
-class ModelPool(str, Enum):
-    POOL_A_FLASH_QUALITY = "POOL_A_FLASH_QUALITY"
-    POOL_B_FLASH_LITE = "POOL_B_FLASH_LITE"
-    POOL_C_GEMMA_COMPRESSION = "POOL_C_GEMMA_COMPRESSION"
-    POOL_D_GROQ_SPECIALIST = "POOL_D_GROQ_SPECIALIST"
-    MEMORY_EMBEDDING = "MEMORY_EMBEDDING"
-    SEARCH_GROUNDING = "SEARCH_GROUNDING"
-    EMERGENCY_OPENROUTER = "EMERGENCY_OPENROUTER"
-
-
-class ToolMode(str, Enum):
-    STANDARD = "STANDARD"
-    BROWSER_SEARCH = "BROWSER_SEARCH"
-    CODE_EXECUTION = "CODE_EXECUTION"
-    STRUCTURED_OUTPUT = "STRUCTURED_OUTPUT"
-
-
-class LeaseState(str, Enum):
-    ACTIVE = "ACTIVE"
-    RECONCILED = "RECONCILED"
-    ORPHANED = "ORPHANED"
-    FAILED = "FAILED"
-
-
-class ReservationLease(BaseModel):
-    lease_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    model_id: str
-    reserved_tokens: int
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    expires_at: datetime
-    state: LeaseState = LeaseState.ACTIVE
-
-
-class ModelQuotaState(BaseModel):
-    model_id: str
-    provider: str
-    domain: QuotaDomain = QuotaDomain.GENERATION
-    pool: ModelPool
-
-    # Static Rate Limits (None = unmetered / unstated)
-    rpm_limit: Optional[int] = None
-    tpm_limit: Optional[int] = None
-    rpd_limit: Optional[int] = None
-    tpd_limit: Optional[int] = None
-
-    # Layer 1: Authoritative Provider Observation (from response headers)
-    provider_remaining_requests: Optional[int] = None
-    provider_remaining_tokens: Optional[int] = None
-    provider_observed_at: Optional[datetime] = None
-    provider_reset_requests_at: Optional[datetime] = None
-    provider_reset_tokens_at: Optional[datetime] = None
-
-    # Layer 2: Local Reservation Leases
-    active_leases: Dict[str, ReservationLease] = Field(default_factory=dict)
-    orphaned_leases: Dict[str, ReservationLease] = Field(default_factory=dict)
-
-    # Layer 2: Local Rolling 60s Sliding Log (timestamp, tokens)
-    minute_requests_log: List[datetime] = Field(default_factory=list)
-    minute_tokens_log: List[tuple[datetime, int]] = Field(default_factory=list)
-    day_requests_count: int = 0
-
-    # Health, Quarantine, and Circuit Breaker State
-    is_healthy: bool = True
-    is_quarantined: bool = False
-    consecutive_failures: int = 0
-    last_failure_timestamp: Optional[datetime] = None
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if self.provider_reset_requests_at is None:
-            self.provider_reset_requests_at = self.get_next_provider_rpd_reset_utc()
-
-    def get_next_provider_rpd_reset_utc(self) -> datetime:
-        """
-        Computes the daily reset boundary.
-        - Google: Authoritatively at Midnight Pacific Time.
-        - Groq: Provisional conservative UTC calendar fallback until explicit provider header sync.
-        """
-        now_utc = datetime.now(timezone.utc)
-        if self.provider.lower() == "google":
-            pt_tz = zoneinfo.ZoneInfo("America/Los_Angeles")
-            now_pt = datetime.now(pt_tz)
-            midnight_pt = (now_pt + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            return midnight_pt.astimezone(timezone.utc)
-        else:
-            midnight_utc = (now_utc + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
-            return midnight_utc
-
-    def purge_and_audit_leases(self) -> None:
-        """
-        Manages lease lifecycle transitions.
-        Expired active leases transition to ORPHANED.
-        Orphaned leases are NEVER cleared merely by a daily quota reset.
-        Evaluates orphan accumulation quarantine thresholds.
-        """
-        now = datetime.now(timezone.utc)
-
-        # 1. Transition expired active leases to ORPHANED (held until authoritative sync)
-        expired_active = [k for k, v in self.active_leases.items() if v.expires_at < now]
-        for k in expired_active:
-            lease = self.active_leases.pop(k)
-            lease.state = LeaseState.ORPHANED
-            self.orphaned_leases[k] = lease
-
-        # 2. Purge rolling 60-second sliding logs
-        cutoff_minute = now - timedelta(seconds=60)
-        self.minute_requests_log = [t for t in self.minute_requests_log if t > cutoff_minute]
-        self.minute_tokens_log = [
-            (t, tok) for t, tok in self.minute_tokens_log if t > cutoff_minute
-        ]
-
-        # 3. Check daily reset boundary (resets counter only; never wipes in-flight orphans)
-        if self.provider_reset_requests_at and now >= self.provider_reset_requests_at:
-            self.day_requests_count = 0
-            self.provider_reset_requests_at = self.get_next_provider_rpd_reset_utc()
-
-        # 4. Evaluate orphan accumulation quarantine threshold
-        # If unresolved orphans reach 5 or consume >= 50% of positive RPM limit, quarantine to protect gateway
-        if len(self.orphaned_leases) >= 5 or (
-            self.rpm_limit is not None
-            and self.rpm_limit > 0
-            and (len(self.orphaned_leases) * 2) >= self.rpm_limit
-        ):
-            self.is_quarantined = True
-        else:
-            self.is_quarantined = False
-
-    @property
-    def in_flight_requests(self) -> int:
-        return len(self.active_leases) + len(self.orphaned_leases)
-
-    @property
-    def in_flight_tokens(self) -> int:
-        active_tok = sum(lease.reserved_tokens for lease in self.active_leases.values())
-        orphaned_tok = sum(lease.reserved_tokens for lease in self.orphaned_leases.values())
-        return active_tok + orphaned_tok
-
-    def check_headroom(
-        self,
-        estimated_tokens: int,
-        uncertainty_margin_requests: int = 1,
-        uncertainty_margin_tokens: int = 0,
-    ) -> bool:
-        """
-        Layer 3: Evaluates headroom considering authoritative provider state,
-        local sliding log, and post-observation in-flight reservations.
-        Rejects admission if healthy is False or model is quarantined.
-        """
-        self.purge_and_audit_leases()
-        if not self.is_healthy or self.is_quarantined:
-            return False
-
-        # 1. Provider-Header Headroom Check (if authoritative observation exists)
-        if self.provider_remaining_requests is not None and self.provider_observed_at is not None:
-            # Count only leases committed AFTER the provider snapshot was taken
-            leases_after_obs = [
-                l
-                for l in list(self.active_leases.values()) + list(self.orphaned_leases.values())
-                if l.created_at > self.provider_observed_at
-            ]
-            in_flight_after_requests = len(leases_after_obs)
-            in_flight_after_tokens = sum(l.reserved_tokens for l in leases_after_obs)
-
-            effective_rem_requests = (
-                self.provider_remaining_requests
-                - in_flight_after_requests
-                - uncertainty_margin_requests
-            )
-            if effective_rem_requests < 1:
-                return False
-
-            if self.provider_remaining_tokens is not None:
-                effective_rem_tokens = (
-                    self.provider_remaining_tokens
-                    - in_flight_after_tokens
-                    - estimated_tokens
-                    - uncertainty_margin_tokens
-                )
-                if effective_rem_tokens < 0:
-                    return False
-
-        # 2. Local Sliding-Window Minute Limits (RPM & TPM)
-        if (
-            self.rpm_limit
-            and (len(self.minute_requests_log) + self.in_flight_requests + 1) > self.rpm_limit
-        ):
-            return False
-
-        consumed_minute_tokens = sum(tok for _, tok in self.minute_tokens_log)
-        if (
-            self.tpm_limit
-            and (consumed_minute_tokens + self.in_flight_tokens + estimated_tokens) > self.tpm_limit
-        ):
-            return False
-
-        # 3. Local Day Limits (RPD)
-        if (
-            self.rpd_limit
-            and (self.day_requests_count + self.in_flight_requests + 1) > self.rpd_limit
-        ):
-            return False
-
-        return True
-
-    def commit_lease(self, estimated_tokens: int, ttl_seconds: float = 60.0) -> ReservationLease:
-        """Atomically mints and registers an active reservation lease."""
-        now = datetime.now(timezone.utc)
-        lease = ReservationLease(
-            model_id=self.model_id,
-            reserved_tokens=estimated_tokens,
-            created_at=now,
-            expires_at=now + timedelta(seconds=ttl_seconds),
-            state=LeaseState.ACTIVE,
-        )
-        self.active_leases[lease.lease_id] = lease
-        return lease
-
-    def reconcile(
-        self, lease_id: str, actual_input_tokens: int, actual_output_tokens: int
-    ) -> ReservationLease:
-        """
-        Reconciles a completed call against its lease and records consumed tokens.
-        Transitions lease state from ACTIVE or ORPHANED to RECONCILED.
-        """
-        now = datetime.now(timezone.utc)
-        total_tokens = actual_input_tokens + actual_output_tokens
-
-        # Locate and transition lease through explicit lifecycle state
-        lease = self.active_leases.pop(lease_id, None)
-        if lease is None:
-            lease = self.orphaned_leases.pop(lease_id, None)
-
-        if lease is None:
-            raise KeyError(f"Unknown or already reconciled lease: {lease_id}")
-
-        lease.state = LeaseState.RECONCILED
-
-        # Append actual usage to sliding logs
-        self.minute_requests_log.append(now)
-        self.minute_tokens_log.append((now, total_tokens))
-        self.day_requests_count += 1
-        self.consecutive_failures = 0
-        self.purge_and_audit_leases()
-        return lease
-
-    def mark_failed(self, lease_id: str, error: Optional[Exception] = None) -> ReservationLease:
-        """
-        Transitions lease to FAILED only when the request is definitively known
-        NOT to have consumed provider quota (e.g. pre-dispatch validation, HTTP 401/403/400).
-        Releases the in-flight reservation penalty.
-        """
-        now = datetime.now(timezone.utc)
-        lease = self.active_leases.pop(lease_id, None)
-        if lease is None:
-            lease = self.orphaned_leases.pop(lease_id, None)
-
-        if lease is None:
-            raise KeyError(f"Unknown or already terminated lease: {lease_id}")
-
-        lease.state = LeaseState.FAILED
-        self.consecutive_failures += 1
-        self.last_failure_timestamp = now
-        if self.consecutive_failures >= 3:
-            self.is_healthy = False
-
-        self.purge_and_audit_leases()
-        return lease
-
-    def mark_orphaned(self, lease_id: str, reason: str = "ambiguous_outcome") -> ReservationLease:
-        """
-        Transitions an ACTIVE lease to ORPHANED when invocation outcome is ambiguous
-        (e.g. transport timeout, connection reset, HTTP 5xx, broken streaming pipe).
-        Preserves the in-flight reservation penalty because the provider may have debited quota.
-        """
-        now = datetime.now(timezone.utc)
-        lease = self.active_leases.pop(lease_id, None)
-        if lease is None:
-            lease = self.orphaned_leases.get(lease_id)
-
-        if lease is None:
-            raise KeyError(f"Unknown lease: {lease_id}")
-
-        lease.state = LeaseState.ORPHANED
-        self.orphaned_leases[lease.lease_id] = lease
-        self.consecutive_failures += 1
-        self.last_failure_timestamp = now
-        if self.consecutive_failures >= 3:
-            self.is_healthy = False
-
-        self.purge_and_audit_leases()
-        return lease
-
-    def fail_lease(
-        self,
-        lease_id: str,
-        error: Optional[Exception] = None,
-        outcome_known_not_consumed: bool = False,
-    ) -> ReservationLease:
-        """
-        Processes a failed inference call according to failure ambiguity.
-        - outcome_known_not_consumed=True: transitions to FAILED and clears reservation penalty.
-        - outcome_known_not_consumed=False: transitions to ORPHANED and retains reservation penalty.
-        """
-        if outcome_known_not_consumed:
-            return self.mark_failed(lease_id, error)
-        return self.mark_orphaned(lease_id, reason=str(error))
-
-    def reconcile_from_headers(self, headers: dict[str, str]) -> None:
-        """
-        Updates Layer 1 provider-observed state from response headers.
-        Preserves Layer 2 local in-flight leases and timestamps the observation.
-
-        Header Semantic Mapping (e.g. Groq):
-        - x-ratelimit-remaining-requests: RPD (Daily requests, NOT RPM)
-        - x-ratelimit-reset-requests: RPD reset interval/duration
-        - x-ratelimit-remaining-tokens: TPM (Minute tokens, NOT TPD)
-        - x-ratelimit-reset-tokens: TPM reset interval/duration
-        (Note: RPM is enforced strictly via local sliding window).
-        """
-        now = datetime.now(timezone.utc)
-        self.provider_observed_at = now
-
-        # 1. Parse Remaining Requests (RPD on Groq)
-        if "x-ratelimit-remaining-requests-day" in headers:
-            self.provider_remaining_requests = int(headers["x-ratelimit-remaining-requests-day"])
-        elif "x-ratelimit-remaining-requests" in headers:
-            self.provider_remaining_requests = int(headers["x-ratelimit-remaining-requests"])
-
-        # 2. Parse Remaining Tokens (TPM on Groq)
-        if "x-ratelimit-remaining-tokens-minute" in headers:
-            self.provider_remaining_tokens = int(headers["x-ratelimit-remaining-tokens-minute"])
-        elif "x-ratelimit-remaining-tokens" in headers:
-            self.provider_remaining_tokens = int(headers["x-ratelimit-remaining-tokens"])
-
-        # 3. Parse Independent Reset Timestamps (Groq returns relative durations e.g. "2m59.56s", "7.66s")
-        # Fails closed: if provider duration is malformed, do NOT advance reset timestamp prematurely.
-        if "x-ratelimit-reset-requests" in headers:
-            try:
-                self.provider_reset_requests_at = now + parse_groq_duration(
-                    headers["x-ratelimit-reset-requests"]
-                )
-            except ValueError:
-                pass
-        if "x-ratelimit-reset-tokens" in headers:
-            try:
-                self.provider_reset_tokens_at = now + parse_groq_duration(
-                    headers["x-ratelimit-reset-tokens"]
-                )
-            except ValueError:
-                pass
-
-        # 4. Invariant: Orphaned leases are NEVER cleared merely by elapsed time (e.g. 60s) or by generic header arrival.
-        # An orphan is released ONLY via:
-        #   (a) Specific lease reconciliation (reconcile() on late provider response or error callback)
-        #   (b) Explicit provider-state proof covering that specific lease
-        #   (c) Defined authoritative quota boundary resets that make the reservation irrelevant
-        self.purge_and_audit_leases()
 ```
 
-### The Atomic Dispatch & Lifecycle Management Protocol
-
-In the Model Gateway (`core/gateway/model_router.py`), dispatching an inference request and mutating quota state follows an explicit critical-section pattern where **all mutations for a model are serialized under the exact same lock**:
+The updated gateway should add:
 
 ```python
-class ModelQuotaManager:
-    """
-    Gateway-level concurrency and lifecycle coordinator.
-    Serializes ALL mutations of ModelQuotaState for each model bucket
-    through a dedicated asyncio.Lock, eliminating race conditions across
-    reservation, reconciliation, failure accounting, and header calibration.
-    """
+class QuotaDomain(str, Enum):
+    GENERATION = "GENERATION"
+    LIVE_AUDIO = "LIVE_AUDIO"
+    EMBEDDING = "EMBEDDING"
+    SEARCH_GROUNDING = "SEARCH_GROUNDING"
+```
 
-    def __init__(self, state: ModelQuotaState):
-        self.state = state
-        self.lock = asyncio.Lock()
+## 6.1 Live quota dimensions
 
-    async def acquire_reservation(self, estimated_tokens: int) -> Optional[ReservationLease]:
-        """Atomic Test-and-Set Reservation Protocol."""
-        async with self.lock:
-            if not self.state.check_headroom(estimated_tokens):
-                return None
-            return self.state.commit_lease(estimated_tokens, ttl_seconds=60.0)
+The Live quota manager should track, where available:
 
-    async def reconcile_success(
-        self, lease_id: str, actual_input_tokens: int, actual_output_tokens: int
-    ) -> ReservationLease:
-        """Atomic Success Reconciliation: serializes state updates and audit under lock."""
-        async with self.lock:
-            return self.state.reconcile(lease_id, actual_input_tokens, actual_output_tokens)
+```text
+rpm_limit
+rpd_limit
+tpm_limit
+tpd_limit
 
-    async def reconcile_failure(
-        self,
-        lease_id: str,
-        error: Optional[Exception] = None,
-        outcome_known_not_consumed: bool = False,
-    ) -> ReservationLease:
-        """
-        Atomic Failure Reconciliation:
-        - outcome_known_not_consumed=True: transitions to FAILED (safely releasing reservation).
-        - outcome_known_not_consumed=False: transitions to ORPHANED (retaining reservation penalty).
-        """
-        async with self.lock:
-            return self.state.fail_lease(
-                lease_id, error, outcome_known_not_consumed=outcome_known_not_consumed
-            )
+provider_remaining_requests
+provider_remaining_tokens
 
-    async def reconcile_known_failure(
-        self, lease_id: str, error: Optional[Exception] = None
-    ) -> ReservationLease:
-        """Atomic Known Failure: transitions to FAILED and releases reservation penalty."""
-        async with self.lock:
-            return self.state.mark_failed(lease_id, error)
+active_live_sessions
+active_session_seconds
+audio_input_tokens
+audio_output_tokens
 
-    async def reconcile_ambiguous_failure(
-        self, lease_id: str, error: Optional[Exception] = None
-    ) -> ReservationLease:
-        """Atomic Ambiguous Failure: transitions to ORPHANED and retains reservation penalty."""
-        async with self.lock:
-            return self.state.mark_orphaned(lease_id, reason=str(error))
+connection_reconnects
+session_resumptions
 
-    async def sync_provider_headers(self, headers: dict[str, str]) -> None:
-        """Atomic Layer 1 Provider Sync: calibrates remaining limits under the same lock."""
-        async with self.lock:
-            self.state.reconcile_from_headers(headers)
+context_compression_events
+```
+
+For the current project:
+
+```text
+RPM = provider dashboard reports Unlimited
+RPD = provider dashboard reports Unlimited
+TPM = 65K observed
 ```
 
 ---
 
-## 8. Multi-Dimensional Gateway Scoring Function
+# 7. Why Live Sessions Are Different From Normal Generation Calls
 
-When selecting a candidate model from an operational pool, the gateway computes:
+The previous gateway was request-oriented:
 
-$$\text{Score}(\text{model}, \text{task}) = \text{CapabilityFit} \times \text{AvailabilityWeight} \times \text{HealthWeight} \times \text{QuotaHeadroom} \times \text{LatencyFit}$$
+```text
+reserve
+→ dispatch
+→ reconcile
+```
 
-Subject to hard evaluation filters:
-1. **Domain & Modality Match:** Task requires image/vision $\rightarrow$ Model must have native vision perception. Embedding task $\rightarrow$ Routes strictly to `QuotaDomain.EMBEDDING`.
-2. **Tool-Mode Compatibility:** Task requires Groq Browser Search $\rightarrow$ Structured Output must NOT be active.
-3. **Context Length Feasibility:** Prompt + expected tokens $\le$ Model context window.
-4. **Quota Feasibility:** `check_headroom(estimated_tokens) == True`.
-5. **Circuit State:** `is_healthy == True`.
+Live requires an additional session-oriented layer:
 
-A model with high remaining quota will **never** be selected over a better-fit model if the high-quota model lacks the necessary capabilities or violates tool-mode constraints.
+```text
+session admission
+        ↓
+WebSocket connection
+        ↓
+audio streaming
+        ↓
+function calls
+        ↓
+tool execution
+        ↓
+function responses
+        ↓
+continued audio
+        ↓
+session resumption
+        ↓
+session termination
+```
+
+The gateway therefore needs **two related ledgers**:
+
+```text
+REQUEST / INFERENCE LEASE
++
+LIVE SESSION LEASE
+```
+
+A Live session is not equivalent to one ordinary generation request.
 
 ---
-*End of Model Roster & Quota-Aware Gateway Specification v1.0.0-CANONICAL.*
+
+# 8. Continuous Conversation: What “Unlimited” Actually Means
+
+Google documents several independent session constraints.
+
+Without context compression:
+
+```text
+audio-only session ≈ 15 minutes
+audio + video session ≈ 2 minutes
+```
+
+The WebSocket connection itself can terminate after roughly 10 minutes.
+
+Google recommends:
+
+1. Context window compression.
+2. Session resumption.
+3. Handling server `GoAway`.
+4. Maintaining the latest resumption token.
+
+With context window compression, the effective conversation can be extended for an unlimited duration.
+
+Therefore JARVIS should implement:
+
+```text
+LIVE SESSION
+      │
+      ├── connection A
+      │       ↓
+      │   GoAway / close
+      │
+      ├── session resumption
+      │       ↓
+      │   connection B
+      │
+      ├── context compression
+      │       ↓
+      │   compacted conversation state
+      │
+      └── continued conversation
+```
+
+The user should experience this as one continuous JARVIS conversation even though the underlying WebSocket connection may be repeatedly renewed.
+
+---
+
+# 9. Live Audio Engineering Contract
+
+Google recommends sending microphone audio in small chunks, approximately:
+
+```text
+20ms – 100ms
+```
+
+Microphone audio should generally be resampled to:
+
+```text
+16 kHz input
+```
+
+Google's Live examples use:
+
+```text
+24 kHz output audio
+```
+
+JARVIS should therefore normalize audio at the edge instead of allowing arbitrary device sample rates to leak into the Live adapter.
+
+---
+
+# 10. Proactive Audio and Cost/Resource Behavior
+
+Gemini 3.8 Live and Gemini 3.8 Live Extended Thinking have proactive audio permanently enabled.
+
+This has an architectural consequence:
+
+```text
+microphone is continuously listened to
+        ↓
+input audio tokens can accumulate continuously
+```
+
+Therefore:
+
+**Always-listening is a resource policy decision.**
+
+JARVIS should support modes such as:
+
+```text
+PUSH_TO_TALK
+WAKE_WORD
+ACTIVE_CONVERSATION
+ALWAYS_LISTEN
+```
+
+The last mode should not be treated as the default purely because the model supports it.
+
+---
+
+# 11. Transcription Strategy
+
+Gemini Live can provide input/output transcriptions.
+
+This enables JARVIS to persist:
+
+```text
+audio
++
+user transcript
++
+model transcript
++
+function calls
++
+task IDs
++
+verification records
+```
+
+However, transcription may create additional text-token billing on paid usage.
+
+The JARVIS voice adapter should therefore make transcription configurable:
+
+```text
+DISPLAY_ONLY
+DISPLAY_AND_SESSION_LOG
+FULL_AUDIT
+DISABLED
+```
+
+Privacy and retention remain governed by JARVIS policy.
+
+---
+
+# 12. Function Calling Is the Bridge Between Live and the JARVIS Core
+
+The critical architecture is:
+
+```text
+                 GEMINI 3.8 LIVE
+                        │
+                        │ function call
+                        ↓
+              JARVIS LIVE ADAPTER
+                        │
+                        ↓
+               TRUST CLASSIFICATION
+                        │
+                        ↓
+               CAPABILITY FIREWALL
+                        │
+                        ↓
+                 POLICY ENGINE
+                        │
+              ┌─────────┴─────────┐
+              │                   │
+          Read path          Effect path
+              │                   │
+              ↓                   ↓
+       Model / Tool         HITL / Revalidate
+                                  ↓
+                           Commit-Time Auth
+                                  ↓
+                            Action Broker
+                                  ↓
+                              Effect
+                                  ↓
+                            Verification
+                                  ↓
+                          FunctionResponse
+                                  ↓
+                         GEMINI LIVE
+```
+
+Gemini's function call is therefore analogous to any other model proposal.
+
+It is **not an authorization token**.
+
+---
+
+# 13. Live Capability Exposure Policy — Canonical Projection, Not Raw Registry Dump
+
+The original proposal to expose only seven high-level functions is now superseded by the
+current implementation audit and by the capability model already present in the frozen
+architecture.
+
+The correct rule is:
+
+> **Expose every user-legitimate capability that the current task policy permits to Gemini Live,
+> but never expose raw internal governance primitives or grant the model execution authority.**
+
+This is a policy projection, not a blind export of the entire registry.
+
+## 13.1 Single source of truth
+
+The canonical capability registry remains the source of truth:
+
+```text
+Canonical Capability Registry
+        ↓
+Capability Manifest
+        ↓
+Task/Session Policy Projection
+        ↓
+LIVE-EXPOSABLE capability filter
+        ↓
+Provider schema translation
+        ↓
+Gemini Live function declarations
+```
+
+The Live plane MUST NOT maintain a second independent capability registry.
+
+For each registry capability, the projection evaluates:
+
+```text
+capability_id
+name
+description
+input_schema
+output_schema
+risk_class
+side_effect_class
+required_scopes
+allowed_autonomy_levels
+approval_requirement
+verification_requirement
+sandbox_requirement
+network_requirement
+supports_async
+idempotency_semantics
+live_exposure_policy
+```
+
+## 13.2 Live-exposure classes
+
+Each capability should resolve to one of:
+
+```text
+LIVE_ALLOWED
+LIVE_ALLOWED_WITH_APPROVAL
+LIVE_ALLOWED_ONLY_IN_SANDBOX
+LIVE_NOT_EXPOSED
+INTERNAL_CONTROL_ONLY
+```
+
+Examples of likely user-facing capabilities:
+
+```text
+native:clock:get_time
+native:fs:read_file
+native:fs:list_dir
+native:fs:write_file
+native:shell:execute
+native:web:search
+native:web:fetch
+native:calc:evaluate
+native:system:get_stats
+```
+
+Whether a particular mutation is actually executable is decided by policy at invocation time.
+
+Internal control capabilities remain hidden:
+
+```text
+quota-state mutation
+lease mutation
+policy-version mutation
+authorization-token minting
+Action Broker internal dispatch
+secret-vault administration
+provider credential management
+raw registry mutation
+```
+
+## 13.3 Provider-facing names vs canonical capability IDs
+
+Gemini Live can receive stable provider-safe aliases:
+
+```text
+Gemini Live function name
+        ↕
+Live Capability Projection
+        ↕
+canonical capability_id
+```
+
+Example:
+
+```yaml
+name: jarvis_write_file
+capability_id: native:fs:write_file
+```
+
+The alias is not an authorization record.
+
+## 13.4 Schema translation
+
+Do not manually maintain Google-specific copies of every capability schema.
+
+Generate provider-facing declarations from canonical capability schemas and translate at the
+adapter boundary:
+
+```text
+canonical JSON Schema
+        ↓
+Live schema adapter
+        ↓
+Google GenAI function declaration
+```
+
+Translation is deterministic and must have contract tests.
+
+## 13.5 Tool-selection rules
+
+Gemini Live should use a capability when the user request requires:
+
+```text
+current / external / authoritative state
+filesystem state
+system state
+network state
+deterministic computation
+any mutation
+any operation explicitly requiring a JARVIS capability
+```
+
+Examples:
+
+```text
+"What time is it?"
+→ native:clock:get_time
+
+"List the files here."
+→ native:fs:list_dir
+
+"Read requirements.txt."
+→ native:fs:read_file
+
+"Create safe.txt with this content."
+→ native:fs:write_file
+
+"Run a speed test using the sandbox."
+→ native:shell:execute, subject to sandbox and policy
+
+"Search the web for the latest..."
+→ native:web:search
+
+"Calculate..."
+→ native:calc:evaluate
+```
+
+General conceptual conversation can be answered directly without a tool.
+
+## 13.6 Security boundary
+
+The Live model receives capability visibility, not execution authority.
+
+Every function call remains an untrusted model proposal:
+
+```text
+Gemini Live
+    ↓
+Live Capability Projection
+    ↓
+Trust Classification
+    ↓
+Capability Firewall
+    ↓
+Policy Engine
+    ├── DENY
+    ├── ALLOW read path
+    └── REQUIRE_HITL / hardened write path
+                  ↓
+          Post-Approval Revalidation
+                  ↓
+          Commit-Time Authorization
+                  ↓
+             Action Broker
+                  ↓
+            Execution Fabric
+                  ↓
+             Verification
+                  ↓
+            FunctionResponse
+                  ↓
+             Gemini Live
+```
+
+## 13.7 Current implementation status
+
+The current implementation is NOT yet conformant because the audit found:
+
+```text
+LiveToolBridge
+    ├── hard-coded tool list
+    ├── local synthetic manifests
+    ├── inline ad-hoc execution
+    ├── Action Broker bypass
+    └── REQUIRE_HITL fall-through
+```
+
+These are pre-commit defects that must be closed.
+
+---
+
+# 14. Why Gemini 3.8 Live Does Not Replace Gemini 3.8 Flash
+
+This distinction is fundamental.
+
+## Gemini 3.8 Live
+
+Designed for:
+
+```text
+realtime audio
+voice conversation
+live multimodal interaction
+async tool use
+streaming dialogue
+```
+
+But the current API does **not** provide:
+
+```text
+Structured Outputs
+Code Execution
+File Search
+URL Context
+Computer Use
+```
+
+## Gemini 3.8 Flash
+
+Designed for:
+
+```text
+long-horizon software engineering
+autonomous agents
+structured output
+code execution
+computer use
+file search
+URL context
+Search
+function calling
+1M context
+64K output
+```
+
+Therefore:
+
+```text
+Live ≠ Flash
+```
+
+The two models are complementary.
+
+---
+
+# 15. Updated Role Matrix
+
+| Workload | Primary | Secondary | Reason |
+|---|---|---|---|
+| Realtime voice conversation | Gemini 3.8 Live | 3.8 Live ET | Lowest-latency conversational plane |
+| Difficult realtime voice task | Gemini 3.8 Live ET | 3.8 Live | Background reasoning + async tools |
+| Voice-controlled JARVIS | Gemini 3.8 Live | 3.8 Live ET | Function calling into JARVIS gateway |
+| Voice + deep research | 3.8 Live ET | 3.8 Live | Async function calling |
+| Text general reasoning | Gemini 3.8 Flash | 3.7 Flash | Structured non-realtime work |
+| Deep planning / SWE | Gemini 3.8 Flash | 3.7 Flash | Structured output + long context + code capabilities |
+| Agentic coding | Gemini 3.8 Flash | Qwen 3.8-27B | Tooling + structured work |
+| Fast multimodal coding | Qwen 3.8-27B | 3.8 Flash | Very low latency + vision + JSON |
+| Heavy browser-search reasoning | GPT-OSS 120B | Gemini Search path | Groq browser search |
+| High-volume compression | Gemma 4 31B IT | 3.5 Flash-Lite | Very high RPD allocation |
+| Lightweight routing | Gemini 3.1 Flash-Lite | 3.5 Flash-Lite | High-volume classifier |
+| Structured high-volume work | Gemini 3.5 Flash-Lite | 3.1 Flash-Lite | Structured-output capable |
+| Multimodal memory | Gemini Embedding 2 | — | Unified multimodal embedding |
+| Google Search grounding | Gemini Search path | GPT-OSS browser search | Separate grounding quota domain |
+
+---
+
+# 16. Revised Default Routing Strategy
+
+The Model Gateway should become context-aware rather than model-name-first.
+
+## Route A — User is speaking
+
+```text
+VOICE INPUT
+   ↓
+Gemini 3.8 Live
+```
+
+Use Live as the default voice conversational model.
+
+## Route B — User speaks and request is clearly complex
+
+```text
+VOICE INPUT
+   ↓
+Gemini 3.8 Live Extended Thinking
+```
+
+## Route C — Voice model needs real work
+
+```text
+Gemini Live
+   ↓
+JARVIS function call
+   ↓
+Task Router
+   ↓
+Work-plane model selected independently
+```
+
+## Route D — User is interacting by text
+
+```text
+TEXT
+ ↓
+3.1 Flash-Lite router
+ ↓
+3.5 Flash-Lite / 3.8 Flash / specialist
+```
+
+The voice entry point should therefore not bypass the existing model gateway.
+
+---
+
+# 17. Recommended Model Consolidation
+
+Gemini 3.8 Live creates an opportunity to reduce **duplicated interactive work**, not to delete specialist capabilities.
+
+## Workloads that can move substantially toward Live
+
+```text
+Conversational Q&A
+Voice navigation
+Voice status requests
+Voice task initiation
+Voice task monitoring
+Voice lightweight reasoning
+Voice multimodal discussion
+Voice tool orchestration
+```
+
+This may substantially reduce calls to:
+
+```text
+Gemini 3.5 Flash-Lite
+Gemini 3.6 Flash
+Gemini 3.7 Flash
+```
+
+for voice-originated interactive requests.
+
+## Workloads that should remain specialized
+
+```text
+Structured-output-heavy pipelines
+Code execution
+File Search
+URL Context
+Computer Use
+High-volume compression
+Embedding generation
+Groq Browser Search
+Specialized multimodal JSON workflows
+```
+
+---
+
+# 18. The Most Important Model-Plane Split
+
+JARVIS should conceptually become:
+
+```text
+                    USER
+                     │
+          ┌──────────┴───────────┐
+          │                      │
+      TEXT INPUT             VOICE INPUT
+          │                      │
+          ↓                      ↓
+   WORK-PLANE ROUTER       GEMINI 3.8 LIVE
+          │                      │
+          │                conversation
+          │                + function call
+          │                      │
+          └──────────┬───────────┘
+                     ↓
+               JARVIS GATEWAY
+                     ↓
+            DETERMINISTIC CONTROL
+                     ↓
+      ┌──────────────┼──────────────────┐
+      │              │                  │
+      ↓              ↓                  ↓
+   3.8 Flash       Qwen/GPT-OSS       Gemma
+      │              │                  │
+      └──────────────┴──────────────────┘
+                     ↓
+                 TOOLS / DATA
+                     ↓
+                VERIFICATION
+                     ↓
+                  RESULT
+                     ↓
+         ┌───────────┴───────────┐
+         │                       │
+       TEXT                  GEMINI LIVE
+                                 ↓
+                              AUDIO
+```
+
+---
+
+# 19. Extended Thinking Is Not Always the Default
+
+Do not make Extended Thinking the default for every spoken sentence.
+
+Use a router policy:
+
+```text
+LOW COMPLEXITY
+→ Gemini 3.8 Live
+
+HIGH COMPLEXITY
+→ Gemini 3.8 Live Extended Thinking
+```
+
+Examples:
+
+```text
+"What time is it?"
+→ 3.8 Live
+
+"Open my project."
+→ 3.8 Live
+
+"Explain what Docker is."
+→ 3.8 Live
+
+"Research the latest changes to Linux kernel scheduling and compare them."
+→ 3.8 Live Extended Thinking
+
+"Analyze my entire repository, identify architectural problems, patch them, test everything and report back."
+→ 3.8 Live Extended Thinking → JARVIS deep work plane
+```
+
+This preserves realtime responsiveness without paying the latency of extended reasoning for trivial turns.
+
+---
+
+# 20. Search Strategy With Live
+
+Gemini 3.8 Live supports Google Search grounding.
+
+However JARVIS should NOT automatically make Google grounding the only research mechanism.
+
+Keep:
+
+```text
+Live Search Grounding
++
+JARVIS Native Search Tools
++
+GPT-OSS Browser Search
++
+3.8 Flash reasoning
+```
+
+as separate mechanisms.
+
+This preserves:
+
+- source provenance;
+- independent verification;
+- model diversity;
+- fallback paths;
+- quota isolation.
+
+---
+
+# 21. Structured Output Policy
+
+Because Gemini 3.8 Live currently does not support Structured Outputs, JARVIS must never depend on raw Live prose for control-plane contracts.
+
+Use:
+
+```text
+Live model
+    ↓
+Function call
+    ↓
+Pydantic validation
+    ↓
+Capability manifest
+    ↓
+Policy decision
+```
+
+rather than:
+
+```text
+Live model
+    ↓
+"JSON-looking text"
+    ↓
+execute
+```
+
+The second design violates the spirit of the frozen zero-trust architecture.
+
+---
+
+# 22. Updated Failure Model for Live
+
+New failure modes must be added to the model gateway.
+
+### LIVE-01 — WebSocket disconnect
+
+Action:
+
+```text
+retain task/session state
+→ attempt session resumption
+→ continue
+```
+
+### LIVE-02 — GoAway
+
+Action:
+
+```text
+persist latest resumption token
+→ reconnect before termination
+```
+
+### LIVE-03 — Audio input interruption
+
+Action:
+
+```text
+stop / reprioritize current response
+→ preserve task state
+→ continue user interaction
+```
+
+### LIVE-04 — Async function timeout
+
+Action:
+
+```text
+function call becomes task
+→ JARVIS tracks task ID
+→ result returned later
+```
+
+### LIVE-05 — Client disconnect during active tool call
+
+Action:
+
+```text
+do NOT assume cancellation
+→ preserve task/effect state
+→ follow JARVIS cancellation semantics
+```
+
+### LIVE-06 — Live model outage
+
+Action:
+
+```text
+fallback to text / alternate voice path
+→ preserve task state
+→ mark DEGRADED when appropriate
+```
+
+### LIVE-07 — Context compression failure
+
+Action:
+
+```text
+preserve persisted JARVIS summary/state
+→ rebuild session context
+→ resume conversation
+```
+
+---
+
+# 23. New Live Session Contract
+
+Recommended model-plane contract:
+
+```python
+class LiveSessionState(str, Enum):
+    CONNECTING = "CONNECTING"
+    ACTIVE = "ACTIVE"
+    GENERATING = "GENERATING"
+    TOOL_PENDING = "TOOL_PENDING"
+    BACKGROUND_REASONING = "BACKGROUND_REASONING"
+    RECONNECTING = "RECONNECTING"
+    DEGRADED = "DEGRADED"
+    CLOSED = "CLOSED"
+    FAILED = "FAILED"
+```
+
+A Live session must always be associated with:
+
+```text
+request_id
+session_id
+task_id
+user_id
+model_id
+provider
+connection_id
+resumption_handle
+created_at
+last_server_event_at
+audio_input_tokens
+audio_output_tokens
+```
+
+---
+
+# 24. Updated Gateway Scoring
+
+The existing scoring function remains valid for work-plane inference:
+
+```text
+Score(model, task)
+=
+CapabilityFit
+× AvailabilityWeight
+× HealthWeight
+× QuotaHeadroom
+× LatencyFit
+```
+
+For Live selection, add:
+
+```text
+RealtimeSuitability
++
+SessionHealth
++
+AudioLatencyFit
++
+ToolConcurrencyFit
+```
+
+Conceptually:
+
+```text
+LiveScore
+=
+CapabilityFit
+×
+RealtimeSuitability
+×
+SessionHealth
+×
+QuotaHeadroom
+×
+AudioLatencyFit
+×
+ToolCompatibility
+```
+
+Hard filters remain mandatory.
+
+---
+
+# 25. Updated Model Roster
+
+## Pool A — Gemini Flash Quality
+
+```text
+gemini-3.8-flash
+    Role:
+    Premium structured work / deep agent reasoning
+
+gemini-3.7-flash
+    Role:
+    Advanced agentic coding / fallback
+
+gemini-3.6-flash
+    Role:
+    Quality workhorse / fallback
+
+gemini-3.5-flash
+    Role:
+    Compatibility fallback
+```
+
+Existing observed baseline from the previous roster:
+
+```text
+RPM: 5 each
+TPM: 250K each
+RPD: 20 each
+```
+
+Runtime provider observations override static values.
+
+---
+
+## Pool B — Gemini Flash-Lite
+
+```text
+gemini-3.1-flash-lite
+    Role:
+    Router / classifier / preprocessing
+
+gemini-3.5-flash-lite
+    Role:
+    High-volume structured-output everyday brain
+```
+
+Existing observed baseline:
+
+```text
+RPM: 15 each
+TPM: 250K each
+RPD: 500 each
+```
+
+---
+
+## Pool C — Gemma Compression
+
+```text
+gemma-4-31b-it
+
+Role:
+    compression
+    summarization
+    fact extraction
+    high-volume background processing
+```
+
+Existing observed baseline:
+
+```text
+RPM: 30
+TPM: 16K
+RPD: 14,400
+Context: 256K
+```
+
+---
+
+## Pool D — Groq Specialists
+
+```text
+qwen/qwen3.8-27b
+    Role:
+    fast multimodal / coding / vision
+
+openai/gpt-oss-120b
+    Role:
+    heavy reasoning / browser search / code execution
+```
+
+Existing roster baseline:
+
+```text
+RPM: 30 each
+TPM: 8K each
+RPD: 1,000 each
+TPD: 200K each
+```
+
+**Important:** Current Groq documentation displays some rate-limit fields differently across its model and rate-limit pages. Runtime response headers must therefore remain authoritative. The previous roster's semantic interpretation of Groq headers should be retained, but the static values must be validated at runtime.
+
+---
+
+## Pool E — Realtime Voice
+
+```text
+gemini-3.8-live
+    Role:
+    Default realtime voice agent
+
+gemini-3.8-live-extended-thinking
+    Role:
+    High-reasoning realtime voice agent
+```
+
+Current project dashboard observation:
+
+```text
+RPM: Unlimited
+RPD: Unlimited
+TPM: 65K
+```
+
+Do not convert "Unlimited" to an infinite numerical quota.
+
+---
+
+## Memory Domain
+
+```text
+gemini-embedding-2
+
+Role:
+    multimodal vector embeddings
+
+Input:
+    text / image / video / audio / PDF
+
+Output:
+    embeddings
+
+Dimensions:
+    128–3072
+Recommended:
+    768 / 1536 / 3072
+```
+
+Observed baseline:
+
+```text
+RPM: 100
+TPM: 30K
+RPD: 1,000
+```
+
+---
+
+## Search Grounding Domain
+
+```text
+Gemini 2.5 Flash / Flash-Lite
+
+Role:
+    Google Search grounding allowance
+```
+
+Previous project observation:
+
+```text
+500 grounded prompts/day shared
+```
+
+Runtime project state remains authoritative.
+
+---
+
+# 26. Optional Audio Specialists
+
+The roster may retain these as secondary/experimental audio models:
+
+```text
+gemini-3.5-live-translate-preview
+gemini-3.5-transcribe
+gemini-3.5-transcribe-live
+gemini-3.1-flash-tts-preview
+```
+
+They should NOT be the main JARVIS conversational voice path by default.
+
+Reason:
+
+```text
+Gemini 3.8 Live already combines:
+audio input
++
+reasoning
++
+tool calling
++
+native audio output
+```
+
+Dedicated transcription/translation models remain useful when JARVIS specifically needs:
+
+```text
+pure transcription
+translation-only workloads
+batch transcript processing
+specialized audio processing
+```
+
+---
+
+# 27. Model Replacement / Retirement Policy
+
+Do not immediately delete old models.
+
+Instead:
+
+```text
+NEW MODEL
+   ↓
+QUALIFICATION
+   ↓
+SHADOW
+   ↓
+CANARY
+   ↓
+PRODUCTION
+   ↓
+RETIRE OLD ROLE ONLY AFTER EVIDENCE
+```
+
+For Gemini 3.8 Live specifically:
+
+### Candidate migrations
+
+```text
+Voice conversational workloads
+    old → 3.8 Live
+
+Voice complex reasoning
+    old → 3.8 Live Extended Thinking
+
+Voice tool orchestration
+    old → 3.8 Live / ET
+
+Voice live research
+    old → 3.8 Live ET
+```
+
+Do not migrate:
+
+```text
+structured output work
+code execution
+file search
+URL context
+computer use
+embedding generation
+bulk compression
+specialist browser search
+```
+
+unless a dedicated replacement capability exists.
+
+---
+
+# 28. Recommended Initial Production Architecture
+
+```text
+                           USER
+                            │
+               ┌────────────┴────────────┐
+               │                         │
+             TEXT                      VOICE
+               │                         │
+               ↓                         ↓
+      Gemini Flash-Lite            Gemini 3.8 Live
+         Router                     / Live ET
+               │                         │
+               └────────────┬────────────┘
+                            ↓
+                     JARVIS Gateway
+                            │
+           ┌────────────────┼─────────────────┐
+           │                │                 │
+           ↓                ↓                 ↓
+      3.8 Flash       Qwen / GPT-OSS      Gemma
+     Work plane        specialists       compression
+           │                │                 │
+           └────────────────┼─────────────────┘
+                            ↓
+                       TOOL PLANE
+                            ↓
+                       VERIFICATION
+                            ↓
+                       EFFECT RECEIPT
+                            ↓
+                    RESPONSE SYNTHESIS
+                            │
+                 ┌──────────┴──────────┐
+                 │                     │
+               TEXT                 VOICE
+                                      ↓
+                               Gemini Live
+```
+
+---
+
+# 29. Example End-to-End Voice Interaction
+
+## Simple task
+
+```text
+USER:
+"Hey JARVIS, what time is it?"
+
+        ↓
+
+Gemini 3.8 Live
+
+        ↓ function call
+
+jarvis_system_status / clock
+
+        ↓
+
+Capability Firewall
+        ↓
+Policy Engine
+        ↓
+Clock tool
+        ↓
+Verified observation
+
+        ↓ FunctionResponse
+
+Gemini Live
+
+        ↓
+
+"It's 3:42 PM."
+```
+
+No second general-purpose LLM is necessary.
+
+---
+
+# 30. Example Deep Voice Task
+
+```text
+USER:
+"JARVIS, audit this repository for security problems."
+
+        ↓
+
+Gemini 3.8 Live Extended Thinking
+
+        ↓
+
+jarvis_code / jarvis_task
+
+        ↓
+
+JARVIS Task
+
+        ↓
+
+Policy
+
+        ↓
+
+Coding Specialist
+
+        ↓
+
+Gemini 3.8 Flash
+or
+Qwen 3.8-27B
+or
+GPT-OSS 120B
+
+        ↓
+
+Sandbox
+
+        ↓
+
+tests
+
+        ↓
+
+verification
+
+        ↓
+
+result
+
+        ↓
+
+FunctionResponse
+
+        ↓
+
+Gemini Live ET
+
+        ↓
+
+spoken report
+```
+
+This is the intended relationship between the realtime and work-plane models.
+
+---
+
+# 31. Why This Is Better Than Using Live Alone
+
+A single model cannot simultaneously be:
+
+```text
+best realtime voice model
++
+best structured-output model
++
+best code-execution model
++
+best file-search model
++
+best high-volume compression model
++
+best embedding model
++
+best browser-search model
+```
+
+The model-plane should therefore optimize for:
+
+```text
+capability
++
+latency
++
+quota
++
+tool compatibility
++
+context requirements
++
+failure isolation
+```
+
+rather than simply:
+
+```text
+"pick the smartest available model."
+```
+
+---
+
+# 32. Updated Routing Philosophy
+
+The primary question is no longer:
+
+> Which model is smartest?
+
+The primary question becomes:
+
+> **Which model provides the required capability with the correct modality, latency, tool contract, context budget, quota headroom, and health state?**
+
+Therefore:
+
+```text
+voice
+→ Live
+
+hard voice
+→ Live Extended Thinking
+
+structured deep work
+→ 3.8 Flash
+
+fast vision/coding
+→ Qwen
+
+browser-search-heavy work
+→ GPT-OSS
+
+high-volume compression
+→ Gemma
+
+memory embeddings
+→ Embedding 2
+```
+
+---
+
+# 33. Security Invariants
+
+The following are mandatory:
+
+1. Live model output is untrusted model-generated content.
+2. Live function calls do not bypass the Capability Firewall.
+3. Live function calls do not bypass the Policy Engine.
+4. Live function calls do not bypass HITL requirements.
+5. Live function calls do not bypass commit-time authorization.
+6. Live function calls for capabilities requiring the Action Broker MUST traverse the same Action Broker path.
+7. Live function results do not become verified truth without the applicable verifier.
+8. Live-generated prose never acts as an authorization token.
+9. Raw audio/transcripts are subject to privacy and retention controls.
+10. Ephemeral Live credentials should be used for client-facing connections where appropriate.
+
+---
+
+# 34. Client Security
+
+For a browser/client-to-server voice architecture, prefer ephemeral authentication tokens rather than exposing a long-lived Gemini API key to the client.
+
+A secure pattern is:
+
+```text
+JARVIS backend
+    ↓
+create ephemeral token
+    ↓
+client
+    ↓
+Gemini Live WebSocket
+```
+
+The token should be restricted to the intended model/session configuration where possible.
+
+---
+
+# 35. Quota Architecture Update
+
+The previous three-layer quota architecture remains:
+
+```text
+Layer 1
+Provider observation
+
+Layer 2
+Local reservation / lease state
+
+Layer 3
+Admission prediction
+```
+
+But Live adds:
+
+```text
+Layer 2b
+Live Session Resource State
+```
+
+The complete structure becomes:
+
+```text
+Provider
+   ↓
+authoritative observation
+   ↓
+request reservation
+   +
+live-session reservation
+   ↓
+atomic admission
+   ↓
+dispatch / stream
+   ↓
+reconcile
+```
+
+---
+
+# 36. Effective Capacity Calculation
+
+The previous formula:
+
+```text
+Daily Task Capacity
+=
+min(
+    RPD / AvgCallsPerTask,
+    DailyTokenBudget / AvgTokensPerTask
+)
+```
+
+remains valid for ordinary generation.
+
+For Live:
+
+```text
+Live Task Capacity
+=
+min(
+    session/resource headroom,
+    token headroom,
+    connection health,
+    active-session capacity,
+    provider observations
+)
+```
+
+Do not infer unlimited task capacity from Unlimited RPD alone.
+
+---
+
+# 37. Telemetry Additions
+
+Add Live-specific spans:
+
+```text
+live.session.open
+live.connection.open
+live.audio.input
+live.audio.output
+live.interruption
+live.function_call
+live.function_response
+live.background_reasoning
+live.context_compression
+live.session_resume
+live.connection.close
+```
+
+Metrics:
+
+```text
+live_ttfa
+live_audio_input_tokens
+live_audio_output_tokens
+live_session_duration
+live_reconnect_count
+live_resume_success_rate
+live_tool_call_latency
+live_interruption_latency
+live_background_task_duration
+live_active_sessions
+```
+
+Never export raw audio or sensitive transcripts without an explicit telemetry policy.
+
+---
+
+# 38. Evaluation Plan for Gemini 3.8 Live
+
+Live models require a dedicated evaluation suite rather than being evaluated only with text benchmarks.
+
+### Conversation
+
+```text
+turn taking
+barge-in
+interruption
+silence handling
+topic switching
+conversation recovery
+long-session continuity
+```
+
+### Speech
+
+```text
+speech recognition
+accent robustness
+numbers
+names
+technical vocabulary
+Hindi
+English
+code-switching / Hinglish
+```
+
+### Agentic behavior
+
+```text
+function selection
+argument correctness
+tool latency
+async completion
+background reasoning
+task completion
+```
+
+### JARVIS security
+
+```text
+prompt injection
+voice prompt injection
+malicious function requests
+tool poisoning
+approval forgery
+privilege escalation
+data exfiltration
+cancellation races
+stale function responses
+```
+
+### Long-session resilience
+
+```text
+10-minute connection rollover
+context compression
+session resumption
+GoAway recovery
+client disconnect
+provider disconnect
+tool timeout
+late function response
+```
+
+---
+
+# 39. Recommended Live Benchmark Set
+
+The Google-published September 2026 voice evidence includes:
+
+```text
+Speech-to-Speech Quality Index
+τ-Voice
+Sierra τ-Voice Banking
+Big Bench Audio
+ServiceNow EVA-Bench
+```
+
+Published reporting currently places Gemini 3.8 Live Extended Thinking at:
+
+```text
+Speech-to-Speech Quality Index: 82.6
+τ-Voice task completion:        68.6%
+Sierra τ-Voice Banking:         35.1%
+Big Bench Audio:                97.7%
+```
+
+These numbers must remain clearly labeled as benchmark-specific and configuration-specific. The Extended Thinking results use high reasoning effort and should not be interpreted as universal performance across all tasks.
+
+The standard Gemini 3.8 Live and Extended Thinking models should therefore be evaluated separately.
+
+---
+
+# 40. Required Gateway Convergence for Live
+
+The current implementation audit identified a critical discrepancy between the intended
+architecture and the implementation:
+
+```text
+Text/CLI:
+proposal → capability → policy → EffectAuthorization → Action Broker → execution → verification
+
+Live:
+function call → local manifest → policy → inline Python branch
+```
+
+The second path is not acceptable as the final architecture.
+
+## 40.1 Mandatory convergence
+
+All model-originated capabilities, including Gemini Live, must converge on the same
+governance boundary:
+
+```text
+MODEL PROPOSAL
+      ↓
+CAPABILITY REGISTRY
+      ↓
+CAPABILITY FIREWALL
+      ↓
+POLICY ENGINE
+      ↓
+┌───────────────┴────────────────┐
+│                                │
+READ PATH                     EFFECT PATH
+│                                │
+direct governed read        HITL / revalidation
+│                                │
+result normalization        commit-time auth
+│                                │
+IFC                            Action Broker
+│                                │
+└───────────────┬────────────────┘
+                ↓
+         execution / verifier
+                ↓
+          effect receipt
+```
+
+## 40.2 HITL behavior
+
+The Live bridge MUST treat:
+
+```text
+DENY
+ALLOW
+REQUIRE_HITL
+```
+
+as distinct outcomes.
+
+`REQUIRE_HITL` MUST NOT fall through as success.
+
+Voice-originated approval must be bound to a deterministic approval payload, proposal identity,
+canonical arguments hash, target witness, policy version, and expiration. A spoken "yes" is
+only a confirmation signal for that specific pending approval; it is not a general authorization
+for subsequent model actions.
+
+## 40.3 No parallel authorization semantics
+
+The Live bridge must not maintain its own alternative risk or permission logic.
+
+Where an existing canonical capability already exists, the Live bridge should translate
+provider function-call arguments into the canonical invocation and then use the existing
+governance path.
+
+## 40.4 No inline native execution
+
+Branches equivalent to:
+
+```python
+datetime.now()
+Path.read_text()
+Path.write_text()
+subprocess.run(...)
+```
+
+must not be separate Live security semantics when a canonical capability exists.
+
+The Live adapter may translate protocol events and provider schemas, but execution authority
+belongs to the canonical capability/tool plane.
+
+## 40.5 Required interfaces
+
+```python
+class RealtimeModelAdapter(Protocol):
+    async def connect(self, ...): ...
+    async def send_audio(self, ...): ...
+    async def receive_events(self, ...): ...
+    async def close(self, ...): ...
+    async def resume(self, ...): ...
+```
+
+```python
+class LiveCapabilityProjector(Protocol):
+    def project(self, registry, session_context, policy_context): ...
+```
+
+```python
+class LiveToolBridge(Protocol):
+    async def dispatch_function_call(self, call, session_context): ...
+```
+
+The bridge must call the same central governance path used by other model-originated
+capability proposals.
+
+---
+
+# 41. Live Capability Contract
+
+Expose to the provider-facing declaration:
+
+```text
+name
+description
+parameters
+canonical capability_id
+supports_async
+```
+
+Keep internal authorization details outside the model-visible description unless needed for
+safe tool selection.
+
+## 41.1 One registry, multiple projections
+
+```text
+Canonical Registry
+   ├── CLI projection
+   ├── Specialist projection
+   ├── Deep Agent projection
+   ├── MCP/A2A projection
+   └── Gemini Live projection
+```
+
+Every projection is policy-constrained.
+
+Aliases must map deterministically to one canonical capability ID.
+
+## 41.2 Task-aware least privilege
+
+The Live tool list should be computed from:
+
+```text
+user/session identity
++
+active task
++
+current autonomy level
++
+policy state
++
+data-flow constraints
++
+sandbox availability
++
+tool health
++
+model compatibility
+```
+
+A capability legitimate for one task may be absent for another.
+
+## 41.3 Runtime capability changes
+
+If task state, policy, or environment materially changes capability visibility during a Live
+session, update the model-visible declaration using the supported Live API configuration/update
+mechanism where available.
+
+In-flight calls must always be revalidated against the current canonical manifest and policy.
+
+---
+# 42. Compatibility Matrix
+
+| Capability | 3.8 Live | 3.8 Live ET | 3.8 Flash | Qwen 3.8 | GPT-OSS 120B | Gemma 4 31B |
+|---|---:|---:|---:|---:|---:|---:|
+| Realtime audio | YES | YES | NO | NO | NO | NO |
+| Native spoken output | YES | YES | NO | NO | NO | NO |
+| Async function calls | YES | YES | YES | YES | YES | YES |
+| Thinking | Interleaved | LOW/MEDIUM/HIGH | YES | YES | YES | YES |
+| Structured output | NO | NO | YES | YES | YES | YES |
+| Code execution | NO | NO | YES | Model/tool dependent | YES | Model dependent |
+| File Search | NO | NO | YES | NO | NO | NO |
+| URL Context | NO | NO | YES | NO | NO | NO |
+| Search grounding | YES | YES | YES | External/tool dependent | Browser Search |
+| Vision | YES | YES | YES | YES | NO | YES |
+| Long context | ~131K API contract | ~131K API contract | 1M | 131K | 131K | 256K |
+| Low-latency voice | PRIMARY | PRIMARY | NO | NO | NO | NO |
+| High-volume compression | NO | NO | NO | NO | NO | PRIMARY |
+
+---
+
+# 43. Final Recommended Roster
+
+```text
+════════════════════════════════════════════════════════════
+JARVIS MODEL ROSTER
+════════════════════════════════════════════════════════════
+
+REALTIME VOICE
+────────────────────────────────────────────────────────────
+Gemini 3.8 Live
+    realtime conversational voice
+    default voice model
+
+Gemini 3.8 Live Extended Thinking
+    complex realtime voice
+    background reasoning
+    async tool workflows
+
+
+WORK / REASONING
+────────────────────────────────────────────────────────────
+Gemini 3.8 Flash
+    structured deep work
+    coding
+    computer use
+    file search
+    URL context
+    long-context work
+
+Gemini 3.7 Flash
+    advanced coding fallback
+
+Gemini 3.6 Flash
+    quality workhorse fallback
+
+Gemini 3.5 Flash
+    compatibility fallback
+
+
+HIGH-VOLUME OPERATIONS
+────────────────────────────────────────────────────────────
+Gemini 3.5 Flash-Lite
+    everyday structured work
+
+Gemini 3.1 Flash-Lite
+    router / classifier / preprocessing
+
+Gemma 4 31B IT
+    compression / summarization / fact extraction
+
+
+SPECIALISTS
+────────────────────────────────────────────────────────────
+Qwen 3.8-27B
+    fast coding + visual understanding
+
+GPT-OSS 120B
+    heavy reasoning + browser search
+
+
+MEMORY
+────────────────────────────────────────────────────────────
+Gemini Embedding 2
+    multimodal embeddings
+
+
+SEARCH
+────────────────────────────────────────────────────────────
+Gemini Search Grounding
+    Google Search grounding quota
+
+
+OPTIONAL AUDIO SPECIALISTS
+────────────────────────────────────────────────────────────
+Gemini 3.5 Transcribe Live
+Gemini 3.5 Live Translate
+Gemini 3.1 Flash TTS
+```
+
+---
+
+# 44. Final Architecture Decision
+
+The introduction of Gemini 3.8 Live does **not** mean:
+
+```text
+"JARVIS uses Gemini Live for everything."
+```
+
+It means:
+
+```text
+"JARVIS finally has a first-class realtime voice model plane."
+```
+
+The recommended operating model is:
+
+```text
+                GEMINI 3.8 LIVE
+                      │
+                realtime voice
+                      │
+          ┌───────────┴───────────┐
+          │                       │
+      simple work             complex work
+          │                       │
+      3.8 Live          3.8 Live Extended Thinking
+                                  │
+                                  ↓
+                         JARVIS function call
+                                  │
+                                  ↓
+                         JARVIS Control Plane
+                                  │
+                 ┌────────────────┼─────────────────┐
+                 ↓                ↓                 ↓
+             3.8 Flash         Qwen            GPT-OSS
+             deep work         specialist       specialist
+                 │                │                 │
+                 └────────────────┼─────────────────┘
+                                  ↓
+                               Tools
+                                  ↓
+                             Verification
+                                  ↓
+                              Result
+                                  ↓
+                           Gemini Live
+                                  ↓
+                                VOICE
+```
+
+The model roster therefore becomes **simpler at the user-facing level without becoming weaker at the capability level**.
+
+---
+
+# 45. Source Register
+
+Primary provider sources:
+
+1. Google AI for Developers — Gemini 3.8 Live
+   https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live
+
+2. Google AI for Developers — Gemini 3.8 Live Extended Thinking
+   https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking
+
+3. Google AI for Developers — Live API capabilities
+   https://ai.google.dev/gemini-api/docs/live-api/capabilities
+
+4. Google AI for Developers — Live API tools
+   https://ai.google.dev/gemini-api/docs/live-api/tools
+
+5. Google AI for Developers — Live API session management
+   https://ai.google.dev/gemini-api/docs/live-api/session-management
+
+6. Google AI for Developers — Live API best practices
+   https://ai.google.dev/gemini-api/docs/live-api/best-practices
+
+7. Google AI for Developers — Live API thinking
+   https://ai.google.dev/gemini-api/docs/live-api/thinking
+
+8. Google AI for Developers — Live API SDK quickstart
+   https://ai.google.dev/gemini-api/docs/live-api/get-started-sdk
+
+9. Google AI for Developers — Gemini pricing
+   https://ai.google.dev/gemini-api/docs/pricing
+
+10. Google AI for Developers — Gemini model catalog
+    https://ai.google.dev/gemini-api/docs/models
+
+11. Google AI for Developers — Gemini deprecations
+    https://ai.google.dev/gemini-api/docs/deprecations
+
+12. Google AI for Developers — Gemini 3.8 Flash
+    https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+
+13. Google AI for Developers — Gemini Embedding 2
+    https://ai.google.dev/gemini-api/docs/models/gemini-embedding-2
+
+14. Google DeepMind — Gemini 3.8 Audio model card
+    https://deepmind.google/models/model-cards/gemini-3-8-audio/
+
+15. Google AI for Developers — Gemma 4 model card
+    https://ai.google.dev/gemma/docs/core/model_card_4
+
+16. Google DeepMind — Gemma 4
+    https://deepmind.google/models/gemma/gemma-4/
+
+17. Groq Docs — Rate limits
+    https://console.groq.com/docs/rate-limits
+
+18. Groq Docs — Qwen 3.8 27B
+    https://console.groq.com/docs/model/qwen/qwen3.8-27b
+
+19. Groq Docs — GPT-OSS 120B
+    https://console.groq.com/docs/model/openai/gpt-oss-120b
+
+20. Groq Docs — Built-in tools
+    https://console.groq.com/docs/tool-use/built-in-tools
+
+21. Groq Docs — Browser Search
+    https://console.groq.com/docs/tool-use/built-in-tools/browser-search
+
+22. Groq Docs — Code Execution
+    https://console.groq.com/docs/tool-use/built-in-tools/code-execution
+
+23. Groq Docs — Vision
+    https://console.groq.com/docs/vision
+
+24. Google Gemini API GitHub skills / Live API implementation material
+    https://github.com/google-gemini/gemini-skills
+
+Supplementary independent benchmark/reporting material was consulted for cross-checking the newly released 3.8 Audio evaluation claims, but provider documentation is the authoritative source for API semantics and the user's own Google AI Studio dashboard is authoritative for current project-specific quota observations.
+
+---
+
+# 46. Implementation Recommendation
+
+The current implementation audit changes the immediate priority.
+
+Before any commit, the Live plane must converge with the canonical security architecture.
+
+Implement in this order:
+
+```text
+1. Replace the hard-coded Live capability registry with a canonical capability projection.
+2. Map Live aliases deterministically to canonical capability IDs.
+3. Route Live read capabilities through canonical governed dispatch.
+4. Route Live write/effect capabilities through the full HITL → revalidation → commit-time authorization → Action Broker path.
+5. Eliminate ad-hoc inline Live execution where a canonical capability already exists.
+6. Add Live capability projection contract tests.
+7. Add Live REQUIRE_HITL tests.
+8. Add Live Action Broker execution tests.
+9. Add Live verification/effect-receipt tests.
+10. Re-run continuous voice/background-task tests.
+11. Re-run Flash Pool protection tests.
+12. Only then qualify Live as the production realtime interface.
+```
+
+The existing work-plane model reservoir remains active throughout this process.
+
+The Live voice plane may be implemented before the formal Milestone 14 HUD release as an
+engineering validation overlay, but this does not reorder the canonical 14 milestones and does
+not mean Milestone 14 is complete.
+
+---
+
+# 47. Current Implementation Audit Alignment — 16 September 2026
+
+The current implementation audit identified these pre-commit discrepancies:
+
+```text
+1. Live capability declarations are hard-coded.
+2. Live uses a second local capability namespace.
+3. Live read/write execution is partly implemented inline.
+4. Live bypasses the Action Broker.
+5. Live does not correctly handle REQUIRE_HITL.
+6. Several canonical user-facing capabilities are not Live-visible.
+```
+
+These are implementation gaps, not changes to the frozen JARVIS trust model.
+
+### Required closure criteria
+
+```text
+[ ] Canonical registry is the source of Live capability projection.
+[ ] Per-task least-privilege projection works.
+[ ] Canonical capability IDs and provider aliases are mapped deterministically.
+[ ] Live reads traverse the governed read path.
+[ ] Live effects traverse the full hardened write path.
+[ ] REQUIRE_HITL cannot fall through.
+[ ] Action Broker remains authoritative.
+[ ] External-state verification remains authoritative.
+[ ] No raw JSON/prose is treated as authorization.
+[ ] Real manual tests prove current-state tools.
+[ ] Real manual tests prove user-facing filesystem/shell capabilities subject to policy.
+[ ] Flash Pool A remains protected for ordinary voice interaction.
+```
+
+## Canonical Design Principle
+
+> **Gemini 3.8 Live is the realtime voice interface to JARVIS — not the authority inside JARVIS; all Live-originated effects remain subject to the canonical capability, policy, approval, broker, and verification path.**
+
+That single rule allows JARVIS to gain continuous, natural voice interaction without sacrificing the zero-trust control architecture.

@@ -65,3 +65,9 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Scratch, Telemetry & Temporary Test Artifacts
+scratch/
+*_telemetry.json
+*_results.json
+*_audit*.json

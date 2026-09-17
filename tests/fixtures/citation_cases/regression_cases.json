@@ -1,0 +1,24 @@
+{
+  "rajkomar_fabricated_author": {
+    "raw_citation": "1. Rajkomar, A. et al. (2025). Generative artificial intelligence in medicine. Nature. https://www.nature.com/articles/s41591-025-03983-2",
+    "doi": "10.1038/s41591-025-03983-2",
+    "claimed_author": "Rajkomar",
+    "expected_status": "INVALID",
+    "reason": "Rajkomar is not an author on s41591-025-03983-2 (actual first author is Zhen Ling Teo)"
+  },
+  "liu_fabricated_author": {
+    "raw_citation": "2. Liu, X. et al. (2024). Randomised controlled trials evaluating artificial intelligence in clinical practice: a scoping review. The Lancet Digital Health. https://www.thelancet.com/journals/landig/article/PIIS2589-7500(24)00047-5/fulltext",
+    "doi": "10.1016/S2589-7500(24)00047-5",
+    "claimed_author": "Liu",
+    "expected_status": "INVALID",
+    "reason": "Liu is not an author on PIIS2589-7500(24)00047-5 (actual first author is Ryan Han)"
+  },
+  "davenport_year_upgraded": {
+    "raw_citation": "Davenport, T. and Kalakota, R. (2026). The potential for artificial intelligence in healthcare. Future Healthcare Journal.",
+    "doi": "10.7861/futurehosp.6-2-94",
+    "claimed_year": 2026,
+    "actual_year": 2019,
+    "expected_status": "INVALID",
+    "reason": "Publication year upgraded from 2019 to 2026"
+  }
+}

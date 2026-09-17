@@ -59,14 +59,25 @@ class LocalProcessSandbox(SandboxRunner):
     # Environment variables strictly forbidden from leaking into sandbox processes
     FORBIDDEN_ENV_PREFIXES = (
         "GEMINI_",
+        "GOOGLE_",
+        "OPENAI_",
+        "ANTHROPIC_",
         "GROQ_",
         "OPENROUTER_",
+        "JARVIS_",
         "VAULT_",
         "API_KEY",
         "SECRET",
         "AWS_",
         "AZURE_",
         "GCP_",
+    )
+    FORBIDDEN_ENV_SUBSTRINGS = (
+        "_API_KEY",
+        "_SECRET",
+        "_TOKEN",
+        "_PASSWORD",
+        "_CREDENTIAL",
     )
 
     def __init__(self, allowed_root: Path | None = None) -> None:
@@ -139,14 +150,22 @@ class LocalProcessSandbox(SandboxRunner):
             "COMSPEC",
         }
         for k, v in os.environ.items():
-            if k.upper() in safe_keys or not any(
-                k.upper().startswith(p) for p in self.FORBIDDEN_ENV_PREFIXES
-            ):
+            k_upper = k.upper()
+            if k_upper in safe_keys:
                 clean_env[k] = v
+                continue
+            if any(k_upper.startswith(p) for p in self.FORBIDDEN_ENV_PREFIXES):
+                continue
+            if any(sub in k_upper for sub in self.FORBIDDEN_ENV_SUBSTRINGS):
+                continue
+            clean_env[k] = v
 
         if custom_env:
             for k, v in custom_env.items():
-                if any(k.upper().startswith(p) for p in self.FORBIDDEN_ENV_PREFIXES):
+                k_upper = k.upper()
+                if any(k_upper.startswith(p) for p in self.FORBIDDEN_ENV_PREFIXES) or any(
+                    sub in k_upper for sub in self.FORBIDDEN_ENV_SUBSTRINGS
+                ):
                     raise SandboxExecutionError(
                         f"Attempted to inject sensitive credential key '{k}' into sandbox."
                     )

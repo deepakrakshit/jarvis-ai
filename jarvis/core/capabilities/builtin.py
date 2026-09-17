@@ -126,6 +126,61 @@ BUILTIN_CAPABILITIES: list[CapabilityManifest] = [
         verification_requirement=True,
     ),
     CapabilityManifest(
+        capability_id="native:code:run_test",
+        owner="core",
+        version="1.0.0",
+        provider="builtin",
+        tool_type=ToolType.NATIVE,
+        description=(
+            "HOST PROCESS EXECUTION: Executes a workspace-local Python test or script via direct host subprocess "
+            "execution (shell=False). CAUTION: Does not provide OS-level container isolation "
+            "(sandbox_status=NOT_ISOLATED); process retains host user permissions and network access. "
+            "Requires explicit human authorization."
+        ),
+        required_scopes=["code:execute"],
+        input_schema={
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Workspace-relative path to Python file (.py)",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["script", "pytest"],
+                    "default": "script",
+                },
+                "test_args": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional safe argument flags",
+                },
+                "timeout_seconds": {"type": "number", "default": 30.0},
+            },
+            "required": ["file_path"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "file_path": {"type": "string"},
+                "exit_code": {"type": "integer"},
+                "stdout": {"type": "string"},
+                "stderr": {"type": "string"},
+                "duration_seconds": {"type": "number"},
+                "timed_out": {"type": "boolean"},
+                "truncated": {"type": "boolean"},
+            },
+        },
+        risk_class=RiskClass.UNBOUNDED_MUTATION,
+        side_effect_class=SideEffectClass.NON_IDEMPOTENT,
+        allowed_trust_sources=[TrustLevel.USER_INPUT, TrustLevel.SYSTEM_POLICY],
+        allowed_sinks=[SinkType.SHELL_EXECUTION],
+        sandbox_requirement=True,
+        approval_requirement=True,
+        verification_requirement=True,
+    ),
+    CapabilityManifest(
         capability_id="native:web:fetch",
         owner="core",
         version="1.0.0",

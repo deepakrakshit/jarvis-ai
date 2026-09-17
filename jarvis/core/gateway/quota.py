@@ -31,6 +31,25 @@ class QuotaDomain(StrEnum):
     SEARCH_GROUNDING = "SEARCH_GROUNDING"
     """Google Search grounding operations (isolated 500/day allowance)."""
 
+    LIVE_AUDIO = "LIVE_AUDIO"
+    """Dedicated realtime bidirectional voice and audio streaming domain."""
+
+
+class QuotaMeterType(StrEnum):
+    """Typed representation of provider quota accounting semantics.
+
+    Prevents representing 'unlimited' as float('inf') or mathematical infinity.
+    """
+
+    LIMITED = "LIMITED"
+    """Enforces strict discrete RPM, RPD, or TPM limits."""
+
+    UNMETERED_REPORTED = "UNMETERED_REPORTED"
+    """Provider reports unmetered/unlimited capacity; system measures actual usage without infinite assumptions."""
+
+    UNKNOWN = "UNKNOWN"
+    """Quota limit is unmeasured or dynamically inferred from HTTP response headers."""
+
 
 class LeaseState(StrEnum):
     """Lifecycle state of a two-phase quota reservation lease."""
@@ -71,17 +90,24 @@ class ModelQuotaManager:
         rpm_limit: int | None = None,
         rpd_limit: int | None = None,
         tpm_limit: int | None = None,
+        meter_type: QuotaMeterType = QuotaMeterType.LIMITED,
     ) -> None:
         self.model_id = model_id
         self.rpm_limit = rpm_limit
         self.rpd_limit = rpd_limit
         self.tpm_limit = tpm_limit
+        self.meter_type = meter_type
 
         # Live counters
         self.requests_this_minute = 0
         self.tokens_this_minute = 0
         self.requests_today = 0
         self.minute_window_start = datetime.now(UTC)
+
+        # Live audio specific tracking metrics
+        self.active_live_sessions = 0
+        self.total_audio_seconds = 0.0
+        self.live_audio_tokens = 0
 
         # Leases and quarantine state
         self.active_leases: dict[str, QuotaLease] = {}
@@ -90,6 +116,20 @@ class ModelQuotaManager:
 
         # CRITICAL: Serialized per-model lock for all quota mutations
         self._lock = asyncio.Lock()
+
+    def register_live_session_start(self) -> None:
+        """Track initiation of an active bidirectional live audio session."""
+        self.active_live_sessions += 1
+
+    def register_live_session_end(self, duration_seconds: float = 0.0) -> None:
+        """Track termination of a live audio session and accumulate total duration."""
+        self.active_live_sessions = max(0, self.active_live_sessions - 1)
+        self.total_audio_seconds += max(0.0, duration_seconds)
+
+    def record_live_audio_usage(self, audio_seconds: float, tokens: int = 0) -> None:
+        """Record real-time audio chunk metrics and token usage."""
+        self.total_audio_seconds += max(0.0, audio_seconds)
+        self.live_audio_tokens += max(0, tokens)
 
     def _reset_minute_window_if_needed(self) -> None:
         """Reset 60-second sliding/minute window counters."""
@@ -133,35 +173,37 @@ class ModelQuotaManager:
                     f"orphaned/failed leases. Failover required."
                 )
 
-            # Check RPM limit
-            if self.rpm_limit is not None and self.requests_this_minute >= self.rpm_limit:
-                logger.warning(
-                    "model_rpm_exhausted", model_id=self.model_id, rpm=self.requests_this_minute
-                )
-                raise QuotaExceededError(
-                    f"Model '{self.model_id}' RPM limit ({self.rpm_limit}) exhausted."
-                )
+            # Enforce limits only for metered configurations (unmetered models measure usage without hard blocking)
+            if self.meter_type != QuotaMeterType.UNMETERED_REPORTED:
+                # Check RPM limit
+                if self.rpm_limit is not None and self.requests_this_minute >= self.rpm_limit:
+                    logger.warning(
+                        "model_rpm_exhausted", model_id=self.model_id, rpm=self.requests_this_minute
+                    )
+                    raise QuotaExceededError(
+                        f"Model '{self.model_id}' RPM limit ({self.rpm_limit}) exhausted."
+                    )
 
-            # Check TPM limit
-            if (
-                self.tpm_limit is not None
-                and (self.tokens_this_minute + estimated_tokens) > self.tpm_limit
-            ):
-                logger.warning(
-                    "model_tpm_exhausted", model_id=self.model_id, tpm=self.tokens_this_minute
-                )
-                raise QuotaExceededError(
-                    f"Model '{self.model_id}' TPM limit ({self.tpm_limit}) exhausted."
-                )
+                # Check TPM limit
+                if (
+                    self.tpm_limit is not None
+                    and (self.tokens_this_minute + estimated_tokens) > self.tpm_limit
+                ):
+                    logger.warning(
+                        "model_tpm_exhausted", model_id=self.model_id, tpm=self.tokens_this_minute
+                    )
+                    raise QuotaExceededError(
+                        f"Model '{self.model_id}' TPM limit ({self.tpm_limit}) exhausted."
+                    )
 
-            # Check RPD limit
-            if self.rpd_limit is not None and self.requests_today >= self.rpd_limit:
-                logger.warning(
-                    "model_rpd_exhausted", model_id=self.model_id, rpd=self.requests_today
-                )
-                raise QuotaExceededError(
-                    f"Model '{self.model_id}' RPD limit ({self.rpd_limit}) exhausted."
-                )
+                # Check RPD limit
+                if self.rpd_limit is not None and self.requests_today >= self.rpd_limit:
+                    logger.warning(
+                        "model_rpd_exhausted", model_id=self.model_id, rpd=self.requests_today
+                    )
+                    raise QuotaExceededError(
+                        f"Model '{self.model_id}' RPD limit ({self.rpd_limit}) exhausted."
+                    )
 
             # Tentatively reserve capacity
             self.requests_this_minute += 1
