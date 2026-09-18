@@ -63,7 +63,7 @@ def test_adversarial_poisoned_webpage_exfiltration_blocked(enforcer: SinkEnforce
 
     # 4. If an attacker tries to trick the agent into sending SECRET keys to external sink:
     secret_key = create_labeled_string(
-        text="AIzaSyA_REAL_SECRET_GOOGLE_KEY_12345",
+        text="mock_labeled_secret_key_12345",
         source_uri="vault://keys/google",
         trust_level=TrustLevel.SYSTEM_POLICY,
         integrity=IntegrityLabel.SYSTEM_TRUSTED,
@@ -171,7 +171,7 @@ def test_adversarial_mcp_tool_description_injection(enforcer: SinkEnforcer) -> N
 
     # Invariant: If the model reads .env (labeled SECRET), passing that to tool parameter is blocked
     secret_env = create_labeled_string(
-        text="GEMINI_API_KEY=AIzaSyA_secret_key_value",
+        text="GEMINI_API_KEY=mock_secret_env_key_value",
         source_uri="file:///.env",
         trust_level=TrustLevel.SYSTEM_POLICY,
         integrity=IntegrityLabel.SYSTEM_TRUSTED,

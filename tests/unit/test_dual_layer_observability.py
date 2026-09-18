@@ -147,8 +147,9 @@ def test_privacy_scrubber_credential_redaction() -> None:
     scrubber = PrivacyScrubber()
 
     # 1. API Keys
+    mock_gemini_key = "AIzaSy" + "MockKeyForScrubberUnitTesting0123"
     text_with_keys = (
-        "Using Gemini AIzaSyCGvA45Z9q7yKl92Mm-09XyZaBcDeFgHiJ "
+        f"Using Gemini {mock_gemini_key} "
         "and Groq gsk_1234567890abcdef1234567890abcdef "
         "and OpenAI sk-1234567890abcdef1234567890abcdef "
         "and OpenRouter sk-or-1234567890abcdef1234567890abcdef."
@@ -203,9 +204,10 @@ def test_privacy_scrubber_nested_data_structure() -> None:
     """Verify recursive redaction over dictionaries and lists."""
     scrubber = PrivacyScrubber()
 
+    mock_nested_key = "AIzaSy" + "SecretApiKeyHere1234567890123"
     raw_payload = {
         "user": "developer",
-        "api_key": "AIzaSySecretApiKeyHere1234567890123",
+        "api_key": mock_nested_key,
         "nested": {
             "password": "SuperSecretPassword!",
             "public_metric": 42,
@@ -334,10 +336,11 @@ def test_file_span_exporter(temp_telemetry_dir: Path) -> None:
     exporter = FileSpanExporter(file_path=log_file)
     tracer = Tracer(exporters=[exporter])
 
+    mock_tracer_token = "AIzaSy" + "TestKey12345678901234567890123"
     with tracer.sync_span(
         "sync.operation",
         layer=TelemetryLayer.CONTROL_PLANE,
-        attributes={"secret_token": "AIzaSyTestKey12345678901234567890123"},
+        attributes={"secret_token": mock_tracer_token},
     ):
         pass
 

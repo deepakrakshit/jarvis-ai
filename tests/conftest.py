@@ -51,7 +51,7 @@ def test_vault() -> LocalSecretVault:
     return LocalSecretVault(
         initial_secrets={
             "TEST_API_KEY": SecretStr("test-secret-value-123"),
-            "GEMINI_API_KEY": SecretStr("AIzaSyFakeGoogleApiKeyForTesting001"),
+            "GEMINI_API_KEY": SecretStr("test-fake-gemini-key-fixture"),
             "GROQ_API_KEY": SecretStr("gsk_FakeGroqApiKeyForTestingLongValue01"),
         }
     )

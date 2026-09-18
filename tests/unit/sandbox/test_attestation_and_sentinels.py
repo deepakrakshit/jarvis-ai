@@ -120,7 +120,7 @@ async def test_docker_attestation_security_failures(tmp_path: Path) -> None:
         {
             "Config": {
                 "User": "root",
-                "Env": ["PATH=/usr/bin", "GEMINI_API_KEY=AIzaSySecretLeak"],
+                "Env": ["PATH=/usr/bin", "GEMINI_API_KEY=dummy_test_credential_value"],
             },
             "HostConfig": {
                 "ReadonlyRootfs": True,
