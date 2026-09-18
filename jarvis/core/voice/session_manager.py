@@ -45,6 +45,7 @@ class LiveVoiceSession(BaseModel):
     jarvis_session_id: str
     active_connection_id: str
     model_id: str = Field(default_factory=lambda: get_settings().REALTIME_VOICE_MODEL_ID)
+    voice_name: str = Field(default_factory=lambda: get_settings().VOICE_DEFAULT_NAME)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     latest_resumption_handle: str | None = None
@@ -99,6 +100,7 @@ class LiveSessionManager:
                 jarvis_session_id=jarvis_session_id,
                 active_connection_id=conn_id,
                 model_id=config.model_id,
+                voice_name=config.voice_name,
                 latest_resumption_handle=config.resumption_handle,
                 connection_history=[conn_rec],
             )

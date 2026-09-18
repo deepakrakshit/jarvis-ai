@@ -12,8 +12,9 @@ import asyncio
 from collections.abc import Callable, Coroutine, Set
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from jarvis.core.broker.broker import ActionBroker
@@ -25,6 +26,7 @@ from jarvis.core.capabilities.manifest import (
     SideEffectClass,
 )
 from jarvis.core.capabilities.registry import CapabilityRegistry
+from jarvis.core.exceptions import PolicyViolationError
 from jarvis.core.gateway.realtime import LiveToolCall, LiveToolResponse
 from jarvis.core.logging import get_logger
 from jarvis.core.policy.decision import (
@@ -39,6 +41,18 @@ from jarvis.core.voice.task_manager import BackgroundTaskManager
 from jarvis.tools.native import dispatch_native_tool
 
 logger = get_logger(__name__)
+
+
+class LiveToolErrorClass(StrEnum):
+    """Authoritative categorical error classifications for voice tool responses."""
+
+    NOT_FOUND = "NOT_FOUND"
+    POLICY_DENIED = "POLICY_DENIED"
+    OUTSIDE_SCOPE = "OUTSIDE_SCOPE"
+    UNAVAILABLE = "UNAVAILABLE"
+    UNSOLICITED_MUTATION = "UNSOLICITED_MUTATION"
+    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
+    UNKNOWN = "UNKNOWN"
 
 
 def json_schema_to_live_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -119,6 +133,21 @@ def is_mutation_authorized_by_intent(user_intent: str | None, tool_name: str) ->
         "save",
         "fix",
         "patch",
+        "open",
+        "launch",
+        "start",
+        "run",
+        "close",
+        "quit",
+        "terminate",
+        "kill",
+        "click",
+        "type",
+        "press",
+        "hotkey",
+        "screenshot",
+        "maximize",
+        "minimize",
     }
 
     read_verbs = {
@@ -147,6 +176,23 @@ def is_mutation_authorized_by_intent(user_intent: str | None, tool_name: str) ->
         "ls",
         "contents",
         "content",
+        "version",
+        "versions",
+        "env",
+        "environment",
+        "info",
+        "information",
+        "python",
+        "system",
+        "os",
+        "platform",
+        "diagnose",
+        "apps",
+        "processes",
+        "running",
+        "window",
+        "screen",
+        "desktop",
     }
 
     has_mutation_verb = bool(tokens & mutation_verbs)
@@ -160,6 +206,31 @@ def is_mutation_authorized_by_intent(user_intent: str | None, tool_name: str) ->
         )
 
     return True, "Authorized by user intent"
+
+
+def is_approval_intent(user_intent: str | None) -> bool:
+    """Detect whether user intent explicitly conveys approval to execute a pending action."""
+    if not user_intent:
+        return False
+    clean = user_intent.strip().lower()
+    if clean in (
+        "/approve",
+        "approve",
+        "approved",
+        "yes",
+        "confirm",
+        "proceed",
+        "authorize",
+        "authorized",
+        "run it",
+        "execute",
+    ):
+        return True
+    import re
+
+    tokens = set(re.findall(r"\b\w+\b", clean))
+    approval_tokens = {"approved", "approve", "authorized", "authorize", "proceed", "confirm"}
+    return bool(tokens & approval_tokens)
 
 
 # Curated High-Level Tool Declarations conforming to Google GenAI Tool schema
@@ -523,6 +594,293 @@ CURATED_LIVE_TOOLS: list[dict[str, Any]] = [
             "required": ["command"],
         },
     },
+    {
+        "name": "jarvis_launch_app",
+        "description": (
+            "Launch an operating system desktop application asynchronously on the host machine (e.g. 'chrome', 'notepad', 'calc', 'code'). "
+            "MANDATORY: Invoke this tool immediately whenever the user asks to open, launch, or start an application. "
+            "Never tell the user that you cannot open local applications."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "app_name": {
+                    "type": "STRING",
+                    "description": "Name or executable of the application (e.g. 'chrome', 'notepad', 'calc', 'code').",
+                },
+                "args": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "Optional command-line arguments to pass to the application.",
+                },
+            },
+            "required": ["app_name"],
+        },
+    },
+    {
+        "name": "jarvis_close_app",
+        "description": (
+            "Gracefully terminate or close running applications on the host machine by process name or PID (e.g. 'chrome', 'notepad', 'calc'). "
+            "MANDATORY: Invoke this tool whenever the user asks to close, terminate, or quit an application."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "app_name": {
+                    "type": "STRING",
+                    "description": "Name or PID of the application to close (e.g. 'chrome', 'notepad', 'calc').",
+                },
+                "force": {
+                    "type": "BOOLEAN",
+                    "description": "Whether to forcefully kill the process (default false).",
+                },
+            },
+            "required": ["app_name"],
+        },
+    },
+    {
+        "name": "jarvis_list_apps",
+        "description": (
+            "List active user-space running applications and processes on the host machine. "
+            "Invoke this tool whenever the user asks what applications or programs are currently open or running."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "filter_name": {
+                    "type": "STRING",
+                    "description": "Optional substring to filter application names.",
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Maximum number of processes to return (default 50).",
+                },
+            },
+        },
+    },
+    {
+        "name": "jarvis_screenshot",
+        "description": (
+            "Capture the active desktop screen display frame for visual grounding and inspection. "
+            "Returns image dimensions, format, and base64 preview."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "max_dimension": {
+                    "type": "INTEGER",
+                    "description": "Maximum dimension in pixels for scaling (default 1280).",
+                },
+            },
+        },
+    },
+    {
+        "name": "jarvis_click",
+        "description": (
+            "Inject a mouse click dynamically at a resolved UI element or explicit screen coordinates. "
+            "PREFER providing 'element_query' (e.g. 'Search or start a new chat', 'Type a message', 'Send', 'New tab') "
+            "over guessing coordinates."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "element_query": {
+                    "type": "STRING",
+                    "description": "Accessible name or semantic label of UI Automation element to target. PREFER this over guessing coordinates.",
+                },
+                "window_title": {
+                    "type": "STRING",
+                    "description": "Optional window title substring to focus and inspect.",
+                },
+                "semantic_role": {
+                    "type": "STRING",
+                    "description": "Optional control type (e.g. 'Edit', 'Button', 'ListItem', 'TabItem').",
+                },
+                "x": {
+                    "type": "NUMBER",
+                    "description": "Optional physical or normalized X coordinate.",
+                },
+                "y": {
+                    "type": "NUMBER",
+                    "description": "Optional physical or normalized Y coordinate.",
+                },
+                "button": {
+                    "type": "STRING",
+                    "description": "Mouse button: 'left', 'right', or 'middle' (default 'left').",
+                },
+                "clicks": {"type": "INTEGER", "description": "Number of clicks (default 1)."},
+                "normalized": {
+                    "type": "BOOLEAN",
+                    "description": "True if coordinates are 0.0-1.0 normalized.",
+                },
+            },
+        },
+    },
+    {
+        "name": "jarvis_type",
+        "description": (
+            "Inject keyboard text into the currently focused or specified target UI element with recipient safety verification."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "text": {"type": "STRING", "description": "Text content to type."},
+                "press_enter": {
+                    "type": "BOOLEAN",
+                    "description": "Whether to press Enter after typing.",
+                },
+                "element_query": {
+                    "type": "STRING",
+                    "description": "Optional UI element query to target/focus before typing (e.g. 'Search or start a new chat', 'Type a message').",
+                },
+                "window_title": {
+                    "type": "STRING",
+                    "description": "Optional target window title substring.",
+                },
+                "recipient": {
+                    "type": "STRING",
+                    "description": "Optional intended recipient validation for messaging applications.",
+                },
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "jarvis_hotkey",
+        "description": (
+            "Trigger a keyboard shortcut or hotkey combination (e.g. ['ctrl', 'c'], ['alt', 'tab'])."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "keys": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "List of key names to press together.",
+                }
+            },
+            "required": ["keys"],
+        },
+    },
+    {
+        "name": "jarvis_get_window",
+        "description": (
+            "Inspect the title, geometry, and coordinates of the active foreground window."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {},
+        },
+    },
+    {
+        "name": "jarvis_scroll",
+        "description": (
+            "Scroll the active display or window vertically or horizontally (e.g. scroll down, scroll up)."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "direction": {
+                    "type": "STRING",
+                    "description": "Direction to scroll: 'up', 'down', 'left', or 'right' (default 'down').",
+                },
+                "amount": {
+                    "type": "INTEGER",
+                    "description": "Number of scroll increments (default 3).",
+                },
+            },
+        },
+    },
+    {
+        "name": "jarvis_focus_window",
+        "description": (
+            "Bring an application window to the foreground by window title or process name (e.g. 'edge', 'chrome', 'code')."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "window_title": {
+                    "type": "STRING",
+                    "description": "Window title substring or process name to focus.",
+                },
+            },
+            "required": ["window_title"],
+        },
+    },
+    {
+        "name": "jarvis_inspect_ui",
+        "description": (
+            "Inspect accessible UI automation elements, controls, and buttons in the active or target window."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "window_title": {
+                    "type": "STRING",
+                    "description": "Optional window title to inspect. If omitted, inspects the active foreground window.",
+                },
+            },
+        },
+    },
+    {
+        "name": "jarvis_resolve_target",
+        "description": (
+            "Dynamically locate a UI control via Windows UI Automation by name, role, or semantic query to acquire "
+            "its exact physical screen coordinates without guessing."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Accessible name, label, or role of UI element (e.g. 'Search or start a new chat', 'Type a message', 'Send').",
+                },
+                "window_title": {
+                    "type": "STRING",
+                    "description": "Optional window title substring (e.g. 'WhatsApp', 'Chrome', 'Visual Studio Code').",
+                },
+                "semantic_role": {
+                    "type": "STRING",
+                    "description": "Optional control type (e.g. 'Edit', 'Button', 'ListItem', 'TabItem').",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "jarvis_navigate_browser",
+        "description": (
+            "Navigate a desktop web browser (Chrome, Edge) to a website URL (e.g. 'youtube.com', 'google.com'). "
+            "Automatically focuses or launches the browser, selects the address bar, and enters the URL."
+        ),
+        "behavior": "BLOCKING",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "url": {
+                    "type": "STRING",
+                    "description": "Target website URL or domain (e.g. 'youtube.com', 'https://github.com').",
+                },
+                "browser": {
+                    "type": "STRING",
+                    "description": "Browser name: 'chrome' or 'edge' (default 'chrome').",
+                },
+            },
+            "required": ["url"],
+        },
+    },
 ]
 
 
@@ -554,6 +912,48 @@ class LiveToolBridge:
         self._processed_call_ids: set[str] = set()
         self._blocked_attempts: dict[str, int] = {}
         self.execution_log: list[dict[str, Any]] = []
+
+        # Realtime visual perception image sink
+        self._image_sink: Callable[[bytes, str], Coroutine[Any, Any, None]] | None = None
+        self.last_captured_image_bytes: bytes | None = None
+
+    def set_image_sink(
+        self, sink: Callable[[bytes, str], Coroutine[Any, Any, None]] | None
+    ) -> None:
+        """Register the realtime image sink for streaming visual perception frames."""
+        self._image_sink = sink
+
+    def resolve_pending_approval(
+        self,
+        approved: bool = True,
+        request_id: UUID | None = None,
+        tool_id: str | None = None,
+        canonical_arguments_hash: str | None = None,
+        user_id: str = "voice_user",
+        session_id: UUID | None = None,
+    ) -> EffectAuthorization | None:
+        """Resolve a pending approval request so execution can resume immediately."""
+        hitl_pipe = getattr(self.policy_engine, "hitl_pipeline", None)
+        if not hitl_pipe:
+            return None
+        if request_id:
+            auth = hitl_pipe.resolve_approval(
+                request_id=request_id,
+                approved=approved,
+                user_id=user_id,
+                session_id=session_id,
+                agent_id="gemini-3.8-live",
+            )
+            return cast("EffectAuthorization | None", auth)
+        auth = hitl_pipe.resolve_latest_pending(
+            approved=approved,
+            user_id=user_id,
+            session_id=session_id,
+            tool_id=tool_id,
+            canonical_arguments_hash=canonical_arguments_hash,
+            agent_id="gemini-3.8-live",
+        )
+        return cast("EffectAuthorization | None", auth)
 
     def _ensure_manifests_registered(self) -> None:
         """Ensure all canonical and curated voice tools exist in the capability registry."""
@@ -631,6 +1031,91 @@ class LiveToolBridge:
                     scopes = ["filesystem:read"]
                     approval = False
                     sandbox = False
+                elif name in ("jarvis_launch_app",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["os:app:launch"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_close_app",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["os:app:close"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_list_apps",):
+                    risk_class = RiskClass.READ_ONLY
+                    side_effects = SideEffectClass.NONE
+                    scopes = ["os:app:list"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_screenshot",):
+                    risk_class = RiskClass.READ_ONLY
+                    side_effects = SideEffectClass.NONE
+                    scopes = ["screen:capture", "os:vision"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_click",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["screen:click", "os:input"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_type",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["screen:type", "os:input"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_hotkey",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["screen:hotkey", "os:input"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_get_window",):
+                    risk_class = RiskClass.READ_ONLY
+                    side_effects = SideEffectClass.NONE
+                    scopes = ["screen:window", "os:window"]
+                    approval = False
+                    sandbox = False
+                elif name in (
+                    "jarvis_inspect_ui",
+                    "inspect_ui",
+                    "computer:ui:inspect",
+                    "jarvis_resolve_target",
+                    "resolve_target",
+                    "computer:resolve_target",
+                ):
+                    risk_class = RiskClass.READ_ONLY
+                    side_effects = SideEffectClass.NONE
+                    scopes = ["screen:ui", "os:vision", "os:window", "screen:window"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_click_element", "click_element", "computer:click_element"):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["screen:click", "os:input", "screen:ui"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_scroll",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["screen:scroll", "os:input"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_focus_window",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.IDEMPOTENT
+                    scopes = ["screen:window", "os:window"]
+                    approval = False
+                    sandbox = False
+                elif name in ("jarvis_navigate_browser",):
+                    risk_class = RiskClass.BOUNDED_MUTATION
+                    side_effects = SideEffectClass.NON_IDEMPOTENT
+                    scopes = ["os:app:launch", "screen:type", "os:input"]
+                    approval = False
+                    sandbox = False
                 else:
                     risk_class = RiskClass.READ_ONLY
                     side_effects = SideEffectClass.NONE
@@ -668,6 +1153,17 @@ class LiveToolBridge:
             "jarvis_run_test": (RiskClass.BOUNDED_MUTATION, ["code:execute"]),
             "calculator": (RiskClass.READ_ONLY, ["math:evaluate"]),
             "verify_citation": (RiskClass.READ_ONLY, ["network:fetch"]),
+            "open_app": (RiskClass.BOUNDED_MUTATION, ["os:app:launch"]),
+            "launch_app": (RiskClass.BOUNDED_MUTATION, ["os:app:launch"]),
+            "close_app": (RiskClass.BOUNDED_MUTATION, ["os:app:close"]),
+            "kill_app": (RiskClass.BOUNDED_MUTATION, ["os:app:close"]),
+            "list_apps": (RiskClass.READ_ONLY, ["os:app:list"]),
+            "screenshot": (RiskClass.READ_ONLY, ["screen:capture"]),
+            "capture_screen": (RiskClass.READ_ONLY, ["screen:capture"]),
+            "click_coordinate": (RiskClass.BOUNDED_MUTATION, ["screen:click"]),
+            "type_text": (RiskClass.BOUNDED_MUTATION, ["screen:type"]),
+            "press_hotkey": (RiskClass.BOUNDED_MUTATION, ["screen:hotkey"]),
+            "get_active_window": (RiskClass.READ_ONLY, ["screen:window"]),
         }
         for alias, (risk_cls, req_scopes) in alias_map.items():
             if not self.registry.get(alias):
@@ -761,6 +1257,40 @@ class LiveToolBridge:
             "system_stats": "native:system:get_stats",
             "inspect_file": "native:fs:read_file",
             "verify_citation": "native:citation:verify",
+            "open_app": "native:app:launch",
+            "launch_app": "native:app:launch",
+            "close_app": "native:app:close",
+            "kill_app": "native:app:close",
+            "list_apps": "native:app:list",
+            "screenshot": "native:screen:capture",
+            "capture_screen": "native:screen:capture",
+            "click_coordinate": "native:screen:click",
+            "click": "computer:click",
+            "jarvis_click": "computer:click",
+            "type_text": "native:screen:type",
+            "type": "computer:type",
+            "jarvis_type": "computer:type",
+            "press_hotkey": "native:screen:hotkey",
+            "get_active_window": "native:screen:get_window",
+            "scroll": "computer:mouse:scroll",
+            "scroll_screen": "computer:mouse:scroll",
+            "focus_window": "computer:window:focus",
+            "inspect_ui": "computer:inspect_ui",
+            "jarvis_inspect_ui": "computer:inspect_ui",
+            "ui_inspect": "computer:inspect_ui",
+            "computer:ui:inspect": "computer:inspect_ui",
+            "resolve_target": "computer:resolve_target",
+            "jarvis_resolve_target": "computer:resolve_target",
+            "click_element": "computer:click_element",
+            "jarvis_click_element": "computer:click_element",
+            "double_click": "computer:mouse:double_click",
+            "right_click": "computer:mouse:right_click",
+            "drag": "computer:mouse:drag",
+            "minimize_window": "computer:window:minimize",
+            "maximize_window": "computer:window:maximize",
+            "restore_window": "computer:window:restore",
+            "navigate_browser": "computer:navigate_browser",
+            "open_url": "computer:navigate_browser",
         }
         mapped_id = alias_to_canonical.get(name)
         if mapped_id:
@@ -849,7 +1379,12 @@ class LiveToolBridge:
             return LiveToolResponse(
                 call_id=call_id,
                 name=name,
-                response={"error": f"Tool '{name}' is not authorized in JARVIS."},
+                response={
+                    "status": "error",
+                    "error_class": LiveToolErrorClass.UNAVAILABLE.value,
+                    "error": f"Tool '{name}' is not authorized in JARVIS.",
+                    "tool_name": name,
+                },
                 scheduling="WHEN_IDLE",
             )
 
@@ -873,8 +1408,11 @@ class LiveToolBridge:
                     call_id=call_id,
                     name=name,
                     response={
+                        "status": "blocked",
+                        "error_class": LiveToolErrorClass.UNSOLICITED_MUTATION.value,
                         "error": f"Security policy blocked action: {intent_reason}",
                         "unsolicited_mutation": True,
+                        "tool_name": name,
                     },
                     scheduling="WHEN_IDLE",
                 )
@@ -889,8 +1427,34 @@ class LiveToolBridge:
             or args.get("command")
             or args.get("url")
             or args.get("target")
+            or args.get("app_name")
+            or args.get("name")
             or "default_workspace"
         )
+        args_hash = ActionBroker.compute_canonical_hash(args)
+
+        # Check for pre-existing valid EffectAuthorization (e.g. granted via voice/text/CLI approval)
+        authorization: EffectAuthorization | None = None
+        hitl_pipe = getattr(self.policy_engine, "hitl_pipeline", None)
+        if hitl_pipe is not None and hasattr(hitl_pipe, "find_active_authorization"):
+            existing_auth = hitl_pipe.find_active_authorization(
+                tool_id=manifest.capability_id,
+                canonical_arguments_hash=args_hash,
+                target_resource=str(target_resource),
+            )
+            if (
+                existing_auth is not None
+                and isinstance(existing_auth, EffectAuthorization)
+                and existing_auth.is_valid()
+            ):
+                logger.info(
+                    "resuming_with_active_authorization",
+                    tool_name=name,
+                    proposal_id=str(existing_auth.proposal_id),
+                )
+                authorization = existing_auth
+                if context_state is not None:
+                    context_state["authorization"] = authorization
 
         decision = self.policy_engine.evaluate_invocation(
             task_id=task_uuid,
@@ -907,7 +1471,6 @@ class LiveToolBridge:
         # 3a. Strict Policy Denial Gate
         if decision.decision == PolicyDecisionType.DENY:
             logger.warning("policy_denied_live_tool", tool_name=name, reason=decision.reason)
-            args_hash = ActionBroker.compute_canonical_hash(args)
             call_sig = f"{manifest.capability_id}:{args_hash}"
             self._blocked_attempts[call_sig] = self._blocked_attempts.get(call_sig, 0) + 1
             attempt_count = self._blocked_attempts[call_sig]
@@ -917,50 +1480,92 @@ class LiveToolBridge:
                     name=name,
                     response={
                         "status": "blocked_repeated_attempt",
+                        "error_class": LiveToolErrorClass.POLICY_DENIED.value,
                         "attempt_count": attempt_count,
                         "error": (
                             f"Repeated invocation blocked by security policy ({attempt_count}x): {decision.reason}. "
                             "Do not repeat this tool call. Switch to an authorized alternative."
                         ),
+                        "tool_name": name,
                     },
                     scheduling="WHEN_IDLE",
                 )
             return LiveToolResponse(
                 call_id=call_id,
                 name=name,
-                response={"error": f"Security policy blocked action: {decision.reason}"},
+                response={
+                    "status": "blocked",
+                    "error_class": LiveToolErrorClass.POLICY_DENIED.value,
+                    "error": f"Security policy blocked action: {decision.reason}",
+                    "reason": decision.reason,
+                    "tool_name": name,
+                },
                 scheduling="WHEN_IDLE",
             )
 
         # 3b. Strict Human-In-The-Loop (REQUIRE_HITL) Gate
-        authorization: EffectAuthorization | None = None
-        if decision.decision == PolicyDecisionType.REQUIRE_HITL:
-            logger.info("policy_requires_hitl_approval", tool_name=name, reason=decision.reason)
-            approval_req = self.policy_engine.hitl_pipeline.create_approval_request(
-                task_id=task_uuid,
+        if (
+            decision.decision == PolicyDecisionType.REQUIRE_HITL
+            and authorization is None
+            and hitl_pipe is not None
+            and hasattr(hitl_pipe, "find_latest_pending_request")
+            and is_approval_intent(user_intent)
+        ):
+            pending_req = hitl_pipe.find_latest_pending_request(
                 tool_id=manifest.capability_id,
-                arguments=args,
-                target_resource=str(target_resource),
-                risk_score=decision.risk_score,
-                risk_factors=decision.obligations,
-                model_explanation=args.get("reason") or args.get("explanation"),
+                canonical_arguments_hash=args_hash,
             )
+            if not pending_req:
+                pending_req = hitl_pipe.find_latest_pending_request(tool_id=manifest.capability_id)
+            if pending_req:
+                try:
+                    sess_uuid = UUID(session_id)
+                except (ValueError, TypeError, AttributeError):
+                    sess_uuid = uuid4()
+                authorization = hitl_pipe.resolve_approval(
+                    request_id=pending_req.request_id,
+                    approved=True,
+                    user_id="voice_user",
+                    session_id=sess_uuid,
+                    agent_id="gemini-3.8-live",
+                )
+                if context_state is not None:
+                    context_state["authorization"] = authorization
+                logger.info(
+                    "resolved_pending_approval_from_user_intent",
+                    tool_name=name,
+                    request_id=str(pending_req.request_id),
+                )
+
+        if decision.decision == PolicyDecisionType.REQUIRE_HITL and authorization is None:
+            logger.info("policy_requires_hitl_approval", tool_name=name, reason=decision.reason)
+            approval_req = None
+            if hitl_pipe is not None and hasattr(hitl_pipe, "create_approval_request"):
+                approval_req = hitl_pipe.create_approval_request(
+                    task_id=task_uuid,
+                    tool_id=manifest.capability_id,
+                    arguments=args,
+                    target_resource=str(target_resource),
+                    risk_score=decision.risk_score,
+                    risk_factors=decision.obligations,
+                    model_explanation=args.get("reason") or args.get("explanation"),
+                )
 
             # If an interactive approval handler is registered, await resolution
             approved = False
-            if self.approval_handler:
+            if self.approval_handler and approval_req:
                 try:
                     approved = await self.approval_handler(approval_req)
                 except Exception as exc:
                     logger.error("approval_handler_error", error=str(exc))
                     approved = False
 
-            if approved:
+            if approved and approval_req and hitl_pipe and hasattr(hitl_pipe, "resolve_approval"):
                 try:
                     sess_uuid = UUID(session_id)
                 except (ValueError, TypeError, AttributeError):
                     sess_uuid = uuid4()
-                auth_res = self.policy_engine.hitl_pipeline.resolve_approval(
+                auth_res = hitl_pipe.resolve_approval(
                     request_id=approval_req.request_id,
                     approved=True,
                     user_id="voice_user",
@@ -971,8 +1576,6 @@ class LiveToolBridge:
                 if context_state is not None:
                     context_state["authorization"] = authorization
             else:
-                # Track repeated blocked invocations and provide actionable intelligent recovery
-                args_hash = ActionBroker.compute_canonical_hash(args)
                 call_sig = f"{manifest.capability_id}:{args_hash}"
                 self._blocked_attempts[call_sig] = self._blocked_attempts.get(call_sig, 0) + 1
                 attempt_count = self._blocked_attempts[call_sig]
@@ -1000,6 +1603,7 @@ class LiveToolBridge:
                             name=name,
                             response={
                                 "status": "blocked_repeated_attempt",
+                                "error_class": LiveToolErrorClass.APPROVAL_REQUIRED.value,
                                 "requires_approval": True,
                                 "attempt_count": attempt_count,
                                 "error": (
@@ -1009,6 +1613,7 @@ class LiveToolBridge:
                                 ),
                                 "suggested_tool": "jarvis_run_python_test",
                                 "suggested_arguments": {"file_path": suggested_file},
+                                "tool_name": name,
                             },
                             scheduling="WHEN_IDLE",
                         )
@@ -1017,6 +1622,7 @@ class LiveToolBridge:
                         name=name,
                         response={
                             "status": "blocked_repeated_attempt",
+                            "error_class": LiveToolErrorClass.APPROVAL_REQUIRED.value,
                             "requires_approval": True,
                             "attempt_count": attempt_count,
                             "error": (
@@ -1024,6 +1630,7 @@ class LiveToolBridge:
                                 f"Repeatedly calling '{name}' will not bypass governance policy. "
                                 "Switch to an authorized alternative tool or inform the user."
                             ),
+                            "tool_name": name,
                         },
                         scheduling="WHEN_IDLE",
                     )
@@ -1041,9 +1648,11 @@ class LiveToolBridge:
                     name=name,
                     response={
                         "status": "blocked",
+                        "error_class": LiveToolErrorClass.APPROVAL_REQUIRED.value,
                         "requires_approval": True,
-                        "request_id": str(approval_req.request_id),
+                        "request_id": str(approval_req.request_id) if approval_req else None,
                         "error": f"Human-in-the-loop approval required: {decision.reason}.{recovery_hint}",
+                        "tool_name": name,
                     },
                     scheduling="WHEN_IDLE",
                 )
@@ -1340,12 +1949,19 @@ class LiveToolBridge:
                         return LiveToolResponse(
                             call_id=call_id,
                             name=name,
-                            response={"error": "file_path is required to inspect a file"},
+                            response={
+                                "status": "error",
+                                "error_class": LiveToolErrorClass.NOT_FOUND.value,
+                                "error": "file_path is required to inspect a file",
+                                "tool_name": name,
+                            },
                             scheduling="WHEN_IDLE",
                         )
-                    read_output = await dispatch_native_tool(
-                        "native:fs:read_file", {"file_path": target_path}
-                    )
+                    read_args: dict[str, Any] = {"file_path": target_path}
+                    ws_root = getattr(self.policy_engine, "workspace_root", None)
+                    if ws_root and "workspace_root" not in read_args:
+                        read_args["workspace_root"] = str(ws_root)
+                    read_output = await dispatch_native_tool("native:fs:read_file", read_args)
                     raw_content = read_output.get("content", "")
                     disk_bytes = read_output.get("disk_bytes") or read_output.get(
                         "size_bytes", len(raw_content.encode("utf-8"))
@@ -1374,9 +1990,11 @@ class LiveToolBridge:
 
                 elif name in ("jarvis_list_dir", "list_dir", "native_fs_list_dir"):
                     dir_path = args.get("dir_path") or args.get("path") or "."
-                    list_output = await dispatch_native_tool(
-                        "native:fs:list_dir", {"dir_path": dir_path}
-                    )
+                    list_args: dict[str, Any] = {"dir_path": dir_path}
+                    ws_root = getattr(self.policy_engine, "workspace_root", None)
+                    if ws_root and "workspace_root" not in list_args:
+                        list_args["workspace_root"] = str(ws_root)
+                    list_output = await dispatch_native_tool("native:fs:list_dir", list_args)
                     return LiveToolResponse(
                         call_id=call_id,
                         name=name,
@@ -1479,6 +2097,103 @@ class LiveToolBridge:
                         scheduling="WHEN_IDLE",
                     )
 
+                elif name in ("jarvis_list_apps", "list_apps", "native_app_list"):
+                    filter_name = args.get("filter_name") or args.get("filter")
+                    limit = int(args.get("limit", 50))
+                    apps_output = await dispatch_native_tool(
+                        "native:app:list", {"filter_name": filter_name, "limit": limit}
+                    )
+                    return LiveToolResponse(
+                        call_id=call_id,
+                        name=name,
+                        response={"status": "success", **apps_output},
+                        scheduling="WHEN_IDLE",
+                    )
+
+                elif name in (
+                    "jarvis_screenshot",
+                    "screenshot",
+                    "capture_screen",
+                    "native_screen_capture",
+                    "computer:screen:capture",
+                    "computer:screenshot",
+                ):
+                    max_dim = int(args.get("max_dimension", 1280))
+                    quality = int(args.get("quality", 80))
+                    screen_output = await dispatch_native_tool(
+                        "native:screen:capture",
+                        {"max_dimension": max_dim, "quality": quality, "output_format": "both"},
+                    )
+                    raw_bytes = screen_output.get("bytes")
+                    if not raw_bytes and "base64_data" in screen_output:
+                        import base64
+
+                        with suppress(Exception):
+                            raw_bytes = base64.b64decode(screen_output["base64_data"])
+
+                    mime_type = str(screen_output.get("mime_type", "image/jpeg"))
+                    if raw_bytes:
+                        self.last_captured_image_bytes = raw_bytes
+                        if self._image_sink:
+                            try:
+                                await self._image_sink(raw_bytes, mime_type)
+                            except Exception as exc:
+                                logger.warning("failed_to_stream_image_to_sink", error=str(exc))
+
+                    # Omit large binary and base64 payloads to prevent Gemini Live 1007 WebSocket errors
+                    clean_output = {
+                        k: v for k, v in screen_output.items() if k not in ("base64_data", "bytes")
+                    }
+                    clean_output["message"] = (
+                        "Desktop screenshot captured and streamed to visual perception plane."
+                    )
+                    return LiveToolResponse(
+                        call_id=call_id,
+                        name=name,
+                        response={"status": "success", **clean_output},
+                        scheduling="WHEN_IDLE",
+                    )
+
+                elif name in (
+                    "jarvis_inspect_ui",
+                    "inspect_ui",
+                    "computer:ui:inspect",
+                    "computer:inspect_ui",
+                ):
+                    ui_output = await dispatch_native_tool("computer:inspect_ui", args)
+                    return LiveToolResponse(
+                        call_id=call_id,
+                        name=name,
+                        response={"status": "success", **ui_output},
+                        scheduling="WHEN_IDLE",
+                    )
+
+                elif name in (
+                    "jarvis_resolve_target",
+                    "resolve_target",
+                    "computer:resolve_target",
+                ):
+                    target_output = await dispatch_native_tool("computer:resolve_target", args)
+                    return LiveToolResponse(
+                        call_id=call_id,
+                        name=name,
+                        response={"status": "success", **target_output},
+                        scheduling="WHEN_IDLE",
+                    )
+
+                elif name in (
+                    "jarvis_get_window",
+                    "get_active_window",
+                    "native_screen_get_window",
+                ):
+                    win_output = await dispatch_native_tool("native:screen:get_window", {})
+                    return LiveToolResponse(
+                        call_id=call_id,
+                        name=name,
+                        response={"status": "success", **win_output},
+                        scheduling="WHEN_IDLE",
+                    )
+
             # 4c. Hardened Action Broker Write/Effect Path
             # Mint commit-time EffectAuthorization if not already resolved by HITL
             try:
@@ -1505,7 +2220,11 @@ class LiveToolBridge:
             cap_id = manifest.capability_id
 
             async def tool_runner(run_args: dict[str, Any]) -> Any:
-                return await dispatch_native_tool(cap_id, run_args)
+                effective_args = dict(run_args)
+                ws_root = getattr(self.policy_engine, "workspace_root", None)
+                if ws_root and "workspace_root" not in effective_args:
+                    effective_args["workspace_root"] = str(ws_root)
+                return await dispatch_native_tool(cap_id, effective_args)
 
             broker_result = await self.broker.execute_action(
                 task_id=task_uuid,
@@ -1534,9 +2253,43 @@ class LiveToolBridge:
 
         except Exception as exc:
             logger.error("error_executing_live_tool", tool_name=name, error=str(exc))
+            err_msg = str(exc)
+            err_lower = err_msg.lower()
+            err_cls = LiveToolErrorClass.UNKNOWN
+            if (
+                isinstance(exc, FileNotFoundError)
+                or "not found" in err_lower
+                or "no such file" in err_lower
+                or "does not exist" in err_lower
+            ):
+                err_cls = LiveToolErrorClass.NOT_FOUND
+            elif (
+                isinstance(exc, PermissionError)
+                or "outside workspace" in err_lower
+                or "traversal" in err_lower
+                or "confinement" in err_lower
+                or "forbidden" in err_lower
+            ):
+                err_cls = LiveToolErrorClass.OUTSIDE_SCOPE
+            elif (
+                isinstance(exc, PolicyViolationError)
+                or "policy" in err_lower
+                or "denied" in err_lower
+            ):
+                err_cls = LiveToolErrorClass.POLICY_DENIED
+            elif "approval" in err_lower:
+                err_cls = LiveToolErrorClass.APPROVAL_REQUIRED
+            elif "not authorized" in err_lower:
+                err_cls = LiveToolErrorClass.UNAVAILABLE
+
             return LiveToolResponse(
                 call_id=call_id,
                 name=name,
-                response={"error": str(exc)},
+                response={
+                    "status": "error",
+                    "error_class": err_cls.value,
+                    "error": err_msg,
+                    "tool_name": name,
+                },
                 scheduling="WHEN_IDLE",
             )

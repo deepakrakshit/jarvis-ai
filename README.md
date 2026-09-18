@@ -28,7 +28,7 @@
 10. **Capability & Tool Plane:** MCP Protocol Adapter (targeting 2026-07-28 with negotiated versions) + A2A Protocol Gateway (1.0.x / targeting v1.0.1+; v1.0.0 uses MCP exclusively).
 11. **Tool Security Gate & Lifecycle Manager:** Full lifecycle states (`REGISTERED` $\rightarrow$ `RUNNING` $\rightarrow$ `QUARANTINED` $\rightarrow$ `RETIRED`).
 12. **Policy Engine (Pre-Guard):** Dynamic invocation risk scoring and Autonomy Levels (0–5).
-13. **Hardened 5-Stage HITL Approval:** Pre-Approval Guard $\rightarrow$ User Interrupt (Payload Isolation) $\rightarrow$ Intent Verification $\rightarrow$ Commit-Time Authorization $\rightarrow$ Dispatch.
+13. **Hardened 5-Step HITL Approval:** Pre-Approval Guard $\rightarrow$ User Interrupt (Payload Isolation) $\rightarrow$ Intent Verification $\rightarrow$ Commit-Time Authorization $\rightarrow$ Dispatch.
 14. **Action Broker:** Side-effect taxonomy, `logical_effect_id`, and 3-state Circuit Breakers (`CLOSED`, `OPEN`, `HALF_OPEN`).
 15. **Execution Fabric:** Multi-tier sandboxing (Docker $\rightarrow$ gVisor / Kata microVMs) with default-deny network egress.
 16. **External-State Verifier:** Direct read-back verification and point-in-time `EffectReceipt` generation.
@@ -98,22 +98,22 @@ Read the full failure matrix in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#7-th
 
 ---
 
-## 🗺 14-Stage Master Roadmap
+## 🗺 Master Capabilities by Architectural Domain
 
-1. [ ] **Stage 1: Core LangGraph State Machine, Task Models & Correlation IDs**
-2. [ ] **Stage 2: Input Trust Classification, IFC Firewall & FIDES Dual-Labels**
-3. [ ] **Stage 3: Capability Registry, Capability Firewall & Tool Manifests (MCP/A2A)**
-4. [ ] **Stage 4: Centralized Policy Engine, Dynamic Risk Scoring & Autonomy Levels (0-5)**
-5. [ ] **Stage 5: Action Broker, Idempotency Ledger, Sagas & 3-State Circuit Breakers**
-6. [ ] **Stage 6: The 5 Default Capability Specialists & Component Lifecycle Manager**
-7. [ ] **Stage 7: Deep Agents Harness Integration & Sandboxed Workspaces (gVisor/Kata)**
-8. [ ] **Stage 8: Context Management & Dynamic Artifact Offloading**
-9. [ ] **Stage 9: Governed Memory Plane with Optimistic Concurrency & Supersession**
-10. [ ] **Stage 10: External-State Verification & Temporal Effect Receipt Minting**
-11. [ ] **Stage 11: Proactive Event Bus with Distributed Leases, Cycle Graphs & DLQ**
-12. [ ] **Stage 12: Dual-Layer Observability & Privacy-Preserving Telemetry**
-13. [ ] **Stage 13: Continuous Evals, Trajectory Scoring & Chaos Failure Injection**
-14. [ ] **Stage 14: Edge-TTS Voice Pipeline & Blue Holographic HUD**
+1. [x] **Core LangGraph State Machine, Task Models & Correlation IDs**
+2. [x] **Input Trust Classification, IFC Firewall & FIDES Dual-Labels**
+3. [x] **Capability Registry, Capability Firewall & Tool Manifests (MCP/A2A)**
+4. [x] **Centralized Policy Engine, Dynamic Risk Scoring & Autonomy Levels (0-5)**
+5. [x] **Action Broker, Idempotency Ledger, Sagas & 3-State Circuit Breakers**
+6. [x] **The 5 Default Capability Specialists & Component Lifecycle Manager**
+7. [x] **Deep Agents Harness Integration & Sandboxed Workspaces (gVisor/Kata)**
+8. [x] **Context Management & Dynamic Artifact Offloading**
+9. [x] **Governed Memory Plane with Optimistic Concurrency & Supersession**
+10. [x] **External-State Verification & Temporal Effect Receipt Minting**
+11. [x] **Proactive Event Bus with Distributed Leases, Cycle Graphs & DLQ**
+12. [x] **Dual-Layer Observability & Privacy-Preserving Telemetry**
+13. [x] **Continuous Evals, Trajectory Scoring & Chaos Failure Injection**
+14. [x] **Gemini Live Realtime Voice Plane, Hardware Audio IO & HUD Server**
 
 ---
 *Maintained with engineering rigor for JARVIS-AI.*

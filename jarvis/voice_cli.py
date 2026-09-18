@@ -7,6 +7,7 @@ Launches a live interactive audio session with Gemini 3.8 Live, providing:
 - Non-blocking conversational interaction throughout background execution
 """
 
+import argparse
 import asyncio
 import os
 import struct
@@ -70,16 +71,24 @@ def render_diagnostic_panel(
     table.add_column("Current Runtime Value", style="bold green")
 
     table.add_row("Live Model", f"[bold cyan]{model_id}[/bold cyan] (POOL_E_REALTIME_VOICE)")
+    table.add_row("Live Voice Identity", f"[bold magenta]{agent.voice_name}[/bold magenta]")
     table.add_row("Voice Session ID", session_id)
     table.add_row("Active Provider Connection", conn_id)
     table.add_row(
         "Reconnection / Rotations",
         str(agent.telemetry.metrics.reconnect_count),
     )
+    mic_ep = f"{audio_io.active_input_name} ({audio_io.active_input_api})"
+    if audio_io.active_needs_resampling:
+        mic_ep += f" [{audio_io.active_input_sample_rate}Hz -> 16kHz resampled]"
+    table.add_row(
+        "Microphone Endpoint",
+        f"[bold green]{mic_ep}[/bold green]" if audio_io.is_recording else "[yellow]OFF[/yellow]",
+    )
     table.add_row(
         "Audio Hardware Status",
-        f"Mic: {'[green]ON[/green]' if audio_io.is_recording else '[yellow]OFF[/yellow]'} | "
-        f"Speaker: {'[green]ON[/green]' if audio_io.is_playing else '[yellow]OFF[/yellow]'}",
+        f"Mic: {'[green]RECORDING[/green]' if audio_io.is_recording else '[yellow]OFF[/yellow]'} | "
+        f"Speaker: {'[green]ACTIVE[/green]' if audio_io.is_playing else '[yellow]OFF[/yellow]'}",
     )
     table.add_row(
         "Voice Streaming Duration",
@@ -118,7 +127,7 @@ def render_diagnostic_panel(
     )
 
 
-async def run_voice_plane() -> None:
+async def run_voice_plane(voice_name: str | None = None) -> None:
     """Run the interactive voice session loop with real audio and terminal controls."""
     settings = get_settings()
     gateway = ModelGateway()
@@ -134,7 +143,7 @@ async def run_voice_plane() -> None:
         Panel(
             "[bold cyan]JARVIS v1.0.0 — Realtime Voice Plane[/bold cyan]\n"
             "[white]Bidirectional 16kHz Streaming | Zero-Trust Tool Gating | Decoupled Background Execution[/white]\n"
-            "[dim]Controls: Speak naturally, press [bold yellow]Enter[/bold yellow] or type [bold yellow]/i[/bold yellow] to barge-in, [bold yellow]/status[/bold yellow] for live audit, [bold yellow]/task <prompt>[/bold yellow] to launch work, [bold yellow]/cancel <id>[/bold yellow] to abort, [bold yellow]exit[/bold yellow] to quit.[/dim]",
+            "[dim]Controls: Speak naturally, press [bold yellow]Enter[/bold yellow] or type [bold yellow]/i[/bold yellow] to barge-in, [bold yellow]/status[/bold yellow] for live audit, [bold yellow]/approve[/bold yellow] to grant pending action, [bold yellow]/task <prompt>[/bold yellow] to launch work, [bold yellow]/cancel <id>[/bold yellow] to abort, [bold yellow]exit[/bold yellow] to quit.[/dim]",
             border_style="cyan",
         )
     )
@@ -283,8 +292,9 @@ async def run_voice_plane() -> None:
         )
 
     # Start voice agent session
+    active_voice = voice_name or os.getenv("VOICE_DEFAULT_NAME") or settings.VOICE_DEFAULT_NAME
     try:
-        await agent.start()
+        await agent.start(voice_name=active_voice)
     except Exception as exc:
         console.print(f"\n[bold red]* Error connecting to Live Voice API: {exc}[/bold red]")
         console.print(
@@ -313,14 +323,19 @@ async def run_voice_plane() -> None:
     async def mic_streaming_loop() -> None:
         if not audio_io.audio_available:
             return
+        noise_gate = settings.VOICE_MIC_NOISE_GATE_RMS
         try:
             async for pcm_chunk in audio_io.get_microphone_stream():
                 # Pause microphone audio streaming during active typed turns so ambient noise does not override text
                 if typing_turn_active:
                     continue
-                # Voice Activity Noise Gate: ignore silence or low ambient noise
-                if get_chunk_rms(pcm_chunk) < 250:
-                    continue
+
+                # Continuous streaming with optional noise gate thresholding when configured > 0
+                if noise_gate > 0.0:
+                    chunk_rms = get_chunk_rms(pcm_chunk)
+                    if chunk_rms < noise_gate:
+                        continue
+
                 await agent.send_user_speech(pcm_chunk, end_of_turn=False)
         except asyncio.CancelledError:
             pass
@@ -376,8 +391,30 @@ async def run_voice_plane() -> None:
                     tc = event.payload
                     model_turn_active = False
                     console.print(
-                        f"\n[bold yellow]⚡ [Live Tool Executing: {tc.name}][/bold yellow] [dim]{tc.arguments}[/dim]"
+                        f"\n[bold yellow]⚡ [Live Tool Requested: {tc.name}][/bold yellow] [dim]{tc.arguments}[/dim]"
                     )
+
+                elif event.event_type == LiveEventType.TOOL_RESPONSE:
+                    resp = event.payload
+                    status = str(resp.response.get("status", "")).upper()
+                    err_cls = resp.response.get("error_class") or resp.response.get("reason_code")
+                    is_failed = "error" in resp.response or status in (
+                        "BLOCKED",
+                        "BLOCKED_REPEATED_ATTEMPT",
+                        "ERROR",
+                        "DENIED",
+                        "FAILED",
+                    )
+                    if is_failed:
+                        err_msg = resp.response.get("error") or resp.response.get(
+                            "message", "Action blocked by governance"
+                        )
+                        console.print(
+                            f"[bold red]⛔ [Tool Blocked / Denied: {resp.name}][/bold red] "
+                            f"[dim]({err_cls or 'DENIED'}): {err_msg}[/dim]"
+                        )
+                    else:
+                        console.print(f"[bold green]✅ [Tool Completed: {resp.name}][/bold green]")
 
                 elif event.event_type == LiveEventType.STATUS_CHANGE:
                     status = event.payload.get("status", "")
@@ -425,6 +462,25 @@ async def run_voice_plane() -> None:
 
             if line.lower() in ("/status", "/diag", "/audit"):
                 console.print(render_diagnostic_panel(agent, gateway, audio_io))
+                continue
+
+            if line.lower() in ("/approve", "approve", "/a"):
+                auth = agent.tool_bridge.resolve_pending_approval(approved=True)
+                if auth:
+                    console.print(
+                        f"[bold green]✔ [HITL Approved][/bold green] Authorization granted for [cyan]{auth.tool_id}[/cyan] (proposal: [dim]{str(auth.proposal_id)[:8]}[/dim])."
+                    )
+                else:
+                    console.print(
+                        "[yellow]* No pending approval request found to approve.[/yellow]"
+                    )
+                continue
+
+            if line.lower() in ("/reject", "/deny", "reject", "deny"):
+                agent.tool_bridge.resolve_pending_approval(approved=False)
+                console.print(
+                    "[bold red]✖ [HITL Rejected][/bold red] Pending approval request rejected."
+                )
                 continue
 
             if line.startswith("/task "):
@@ -480,8 +536,17 @@ async def run_voice_plane() -> None:
 
 def main() -> None:
     """Entry point for python -m jarvis.voice_cli."""
+    parser = argparse.ArgumentParser(description="JARVIS Realtime Voice Plane")
+    parser.add_argument(
+        "--voice",
+        "-v",
+        type=str,
+        default=None,
+        help="Voice identity name for Gemini Live (e.g. Algenib, Puck, Charon, Aoede, Fenrir, Kore). Defaults to settings.VOICE_DEFAULT_NAME.",
+    )
+    args = parser.parse_args()
     try:
-        asyncio.run(run_voice_plane())
+        asyncio.run(run_voice_plane(voice_name=args.voice))
     except KeyboardInterrupt:
         console.print("\n[yellow]Voice session interrupted.[/yellow]")
 

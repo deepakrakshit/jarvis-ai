@@ -6,7 +6,18 @@ assign real tasks, observe real-time execution steps, and review full session lo
 
 import asyncio
 import sys
+import time
 from pathlib import Path
+
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None  # type: ignore[assignment]
+
+try:
+    import select
+except ImportError:
+    select = None  # type: ignore[assignment]
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -29,11 +40,119 @@ if sys.platform == "win32":
 console = Console(force_terminal=True, highlight=False)
 
 
+def read_user_input(console: Console, prompt: str = "\n[bold cyan]User>[/bold cyan] ") -> str:
+    """Read user input supporting both single-line and multiline pasted text seamlessly.
+
+    Features:
+    1. Automatic paste detection: When multiple lines are pasted into the terminal,
+       all buffered lines are automatically drained and combined into a single prompt.
+    2. Explicit multiline mode: Entering '/paste' or '/multiline' allows entering or
+       pasting multi-paragraph blocks ending on an empty line or '/end'.
+    3. Block quotes: Starting with triple quotes ('\"\"\"' or "'''") collects lines until
+       the matching closing quote.
+    4. Line continuation: Ending a line with a backslash ('\\') continues on the next line.
+    """
+    first_line = console.input(prompt)
+    stripped = first_line.strip()
+
+    # 1. Explicit /paste or /multiline command
+    if stripped.lower() in ("/paste", "/multiline"):
+        console.print(
+            "[dim cyan]Multiline mode active. Paste your text, then press Enter on an empty line (or type /end) to submit:[/dim cyan]"
+        )
+        paste_lines: list[str] = []
+        while True:
+            try:
+                line = console.input("[dim]... [/dim]")
+            except (EOFError, KeyboardInterrupt):
+                break
+            if line.strip().lower() == "/end":
+                break
+            if not line.strip() and paste_lines:
+                break
+            paste_lines.append(line)
+        return "\n".join(paste_lines).strip()
+
+    # 2. Triple-quote block delimiter (""" or ''')
+    if stripped.startswith(('"""', "'''")):
+        quote = stripped[:3]
+        if len(stripped) > 3 and stripped.endswith(quote):
+            return stripped[3:-3].strip()
+        lines = [first_line[3:]]
+        while True:
+            try:
+                line = console.input("[dim]... [/dim]")
+            except (EOFError, KeyboardInterrupt):
+                break
+            if line.strip().endswith(quote):
+                cleaned = line.strip()[:-3]
+                if cleaned:
+                    lines.append(cleaned)
+                break
+            lines.append(line)
+        return "\n".join(lines).strip()
+
+    # 3. Trailing backslash line continuation
+    lines = [first_line]
+    current = first_line
+    while current.rstrip().endswith("\\"):
+        lines[-1] = current.rstrip()[:-1].rstrip()
+        try:
+            current = console.input("[dim]... [/dim]")
+            lines.append(current)
+        except (EOFError, KeyboardInterrupt):
+            break
+
+    # 4. Automatic paste detection:
+    # If the user pasted multiple lines, subsequent lines are already buffered in the
+    # OS / console input stream. Drain all buffered lines immediately.
+    if sys.stdin.isatty():
+        time.sleep(0.02)
+        pasted_count = 0
+        while True:
+            has_pending = False
+            try:
+                if msvcrt is not None:
+                    has_pending = bool(msvcrt.kbhit())
+                elif select is not None and hasattr(select, "select"):
+                    r, _, _ = select.select([sys.stdin], [], [], 0.02)
+                    has_pending = bool(r)
+            except Exception:
+                has_pending = False
+
+            if not has_pending:
+                break
+
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                lines.append(line.rstrip("\r\n"))
+                pasted_count += 1
+            except Exception:
+                break
+
+        if pasted_count > 0:
+            console.print(f"[dim]✓ Pasted {len(lines)} lines received as single prompt[/dim]")
+    else:
+        # Non-interactive / piped stream
+        try:
+            remaining = sys.stdin.read()
+            if remaining:
+                for rem_line in remaining.splitlines():
+                    if rem_line.strip():
+                        lines.append(rem_line)
+        except Exception:
+            pass
+
+    return "\n".join(lines).strip()
+
+
 def print_banner() -> None:
     banner_text = (
         "[bold cyan]JARVIS v1.0.0[/bold cyan] - [italic white]Stateful Personal AI Operating System[/italic white]\n"
         "[dim]Zero-Trust Architecture | 5 Capability Specialists | Action Broker | Point-in-Time Reality[/dim]\n"
-        "[dim]Type [bold yellow]exit[/bold yellow] or [bold yellow]quit[/bold yellow] to leave. Full logs saved to [bold green]sessions.json[/bold green] & [bold green]conversations.json[/bold green][/dim]"
+        '[dim]Multiline: Direct paste supported, or use [bold yellow]/paste[/bold yellow] (or [bold yellow]"""[/bold yellow]) | [bold yellow]exit[/bold yellow] to leave[/dim]'
     )
     console.print(Panel(banner_text, border_style="cyan", expand=False))
 
@@ -45,6 +164,35 @@ async def run_cli() -> None:
 
         await run_voice_plane()
         return
+
+    if len(sys.argv) > 1 and sys.argv[1].lower() == "sandbox":
+        import json
+
+        subcmd = sys.argv[2].lower() if len(sys.argv) > 2 else "explain"
+        if subcmd == "report":
+            from jarvis.sandbox.inspector import get_backend_capability_report
+
+            rep = get_backend_capability_report()
+            console.print(
+                Panel(
+                    json.dumps(rep, indent=2),
+                    title="[bold cyan]JARVIS Backend Capability Report[/bold cyan]",
+                    border_style="cyan",
+                )
+            )
+            return
+        elif subcmd == "explain":
+            from jarvis.sandbox.inspector import explain_sandbox_configuration
+
+            exp = explain_sandbox_configuration()
+            console.print(
+                Panel(
+                    json.dumps(exp, indent=2),
+                    title="[bold cyan]JARVIS Sandbox Security Inspector (Explain)[/bold cyan]",
+                    border_style="cyan",
+                )
+            )
+            return
 
     print_banner()
 
@@ -95,7 +243,7 @@ async def run_cli() -> None:
     try:
         while True:
             try:
-                user_msg = console.input("\n[bold cyan]User>[/bold cyan] ").strip()
+                user_msg = read_user_input(console)
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[yellow]Session interrupted by user.[/yellow]")
                 break
@@ -106,6 +254,36 @@ async def run_cli() -> None:
             if user_msg.lower() in ("exit", "quit", "q", "bye"):
                 console.print("[dim]Closing session...[/dim]")
                 break
+
+            if user_msg.lower().startswith("sandbox "):
+                parts = user_msg.lower().split()
+                sub = parts[1] if len(parts) > 1 else "explain"
+                import json
+
+                if sub == "report":
+                    from jarvis.sandbox.inspector import get_backend_capability_report
+
+                    rep = get_backend_capability_report()
+                    console.print(
+                        Panel(
+                            json.dumps(rep, indent=2),
+                            title="[bold cyan]JARVIS Backend Capability Report[/bold cyan]",
+                            border_style="cyan",
+                        )
+                    )
+                    continue
+                elif sub == "explain":
+                    from jarvis.sandbox.inspector import explain_sandbox_configuration
+
+                    exp = explain_sandbox_configuration()
+                    console.print(
+                        Panel(
+                            json.dumps(exp, indent=2),
+                            title="[bold cyan]JARVIS Sandbox Security Inspector (Explain)[/bold cyan]",
+                            border_style="cyan",
+                        )
+                    )
+                    continue
 
             console.print()
             response = await orchestrator.interact(

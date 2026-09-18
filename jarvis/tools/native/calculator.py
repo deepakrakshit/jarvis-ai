@@ -18,6 +18,7 @@ OPERATORS: dict[type[ast.AST], Callable[..., Any]] = {
     ast.FloorDiv: operator.floordiv,
     ast.Mod: operator.mod,
     ast.Pow: operator.pow,
+    ast.BitXor: operator.pow,  # Mathematical convention: caret denotes exponentiation
     ast.USub: operator.neg,
     ast.UAdd: operator.pos,
 }
@@ -83,7 +84,7 @@ def _eval_node(node: ast.AST) -> float:
 
 def evaluate_expression(expression: str) -> dict[str, Any]:
     """Safely evaluate a mathematical expression."""
-    clean_expr = expression.strip()
+    clean_expr = expression.strip().replace("^", "**")
     if not clean_expr:
         raise ValueError("Expression cannot be empty.")
 

@@ -13,11 +13,14 @@ from uuid import uuid4
 
 from jarvis.agents.base import SpecialistRole
 from jarvis.agents.router import RoutingCategory, SpecialistRouter
+from jarvis.apps.hud import get_hud_coordinator
 from jarvis.core.broker.broker import ActionBroker
 from jarvis.core.capabilities.builtin import BUILTIN_CAPABILITIES, register_builtin_capabilities
 from jarvis.core.capabilities.firewall import CapabilityFirewall
 from jarvis.core.capabilities.manifest import RiskClass
 from jarvis.core.capabilities.registry import CapabilityRegistry
+from jarvis.core.context.offloader import DynamicArtifactOffloader
+from jarvis.core.events import EventMessage, get_event_bus
 from jarvis.core.gateway.router import ModelGateway
 from jarvis.core.lifecycle.manager import LifecycleManager
 from jarvis.core.lifecycle.types import ComponentType
@@ -26,6 +29,9 @@ from jarvis.core.policy.decision import AutonomyLevel, EffectAuthorization, Poli
 from jarvis.core.policy.engine import PolicyEngine
 from jarvis.core.session.models import ConversationTurn, SystemLogEntry, ToolExecutionRecord
 from jarvis.core.session.session_manager import SessionManager
+from jarvis.core.telemetry import SpanKind, TelemetryLayer, get_tracer
+from jarvis.core.trust.taxonomy import TrustLevel
+from jarvis.core.verification.receipt import ReceiptStore
 from jarvis.tools.native import dispatch_native_tool
 
 logger = get_logger(__name__)
@@ -57,8 +63,13 @@ class JarvisOrchestrator:
             workspace_root=self.workspace_root,
             default_autonomy=self.autonomy_level,
         )
-        self.broker = ActionBroker()
+        self.event_bus = get_event_bus()
+        self.receipt_store = ReceiptStore(db_path=self.workspace_root / "data" / "receipts.db")
+        self.broker = ActionBroker(receipt_store=self.receipt_store, event_bus=self.event_bus)
         self.router = SpecialistRouter(model_gateway=self.gateway)
+        self.offloader = DynamicArtifactOffloader(
+            artifacts_dir=self.workspace_root / "data" / "artifacts"
+        )
         self.session_manager = session_manager or SessionManager(
             sessions_path=sessions_path,
             conversations_path=conversations_path,
@@ -91,10 +102,48 @@ class JarvisOrchestrator:
         on_progress: Any = None,
     ) -> str:
         """Execute a full conversational or task turn with complete logging."""
-        system_logs: list[SystemLogEntry] = []
-        tool_executions: list[ToolExecutionRecord] = []
         turn_id = uuid4()
         task_id = uuid4()
+
+        tracer = get_tracer()
+        hud = get_hud_coordinator()
+        hud.session_id = str(session_id)
+        hud.register_task(task_id=str(task_id), description=user_message)
+        async with tracer.span(
+            "orchestrator.interact",
+            layer=TelemetryLayer.CONTROL_PLANE,
+            kind=SpanKind.SERVER,
+            attributes={
+                "session_id": str(session_id),
+                "task_id": str(task_id),
+                "user_message": user_message,
+            },
+        ):
+            try:
+                result = await self._interact_inner(
+                    session_id=session_id,
+                    user_message=user_message,
+                    turn_id=turn_id,
+                    task_id=task_id,
+                    on_progress=on_progress,
+                )
+                hud.complete_task(task_id=str(task_id))
+                hud.set_response(result)
+                return result
+            except Exception as exc:
+                hud.fail_task(task_id=str(task_id), error=str(exc))
+                raise
+
+    async def _interact_inner(
+        self,
+        session_id: str,
+        user_message: str,
+        turn_id: Any,
+        task_id: Any,
+        on_progress: Any = None,
+    ) -> str:
+        system_logs: list[SystemLogEntry] = []
+        tool_executions: list[ToolExecutionRecord] = []
 
         def log_event(
             comp: str, msg: str, details: dict[str, Any] | None = None, level: str = "INFO"
@@ -110,6 +159,18 @@ class JarvisOrchestrator:
                 on_progress(comp, msg)
 
         log_event("gateway", f"Received user prompt: '{user_message}'")
+
+        try:
+            await self.event_bus.publish(
+                EventMessage(
+                    event_type="task.created",
+                    correlation_id=str(session_id),
+                    payload={"task_id": str(task_id), "user_message": user_message},
+                    source="jarvis:orchestrator",
+                )
+            )
+        except Exception as bus_err:
+            logger.debug("orchestrator_event_emit_failed", error=str(bus_err))
 
         # 0. Retrieve conversation history for context
         history_records: list[dict[str, Any]] = []
@@ -134,6 +195,10 @@ class JarvisOrchestrator:
                 "reasoning": decision.reasoning,
             },
         )
+        get_hud_coordinator().set_user_intent(
+            intent=decision.intent,
+            specialist=decision.specialist_role.value if decision.specialist_role else None,
+        )
 
         # 2. Handle Conversational Turn (greetings, identity, capabilities, chitchat)
         if decision.category == RoutingCategory.CONVERSATIONAL:
@@ -157,6 +222,20 @@ class JarvisOrchestrator:
                 system_logs=system_logs,
             )
             self.session_manager.add_turn(session_id, turn)
+            try:
+                await self.event_bus.publish(
+                    EventMessage(
+                        event_type="task.completed",
+                        correlation_id=str(session_id),
+                        payload={
+                            "task_id": str(task_id),
+                            "response_preview": assistant_response[:100],
+                        },
+                        source="jarvis:orchestrator",
+                    )
+                )
+            except Exception as bus_err:
+                logger.debug("orchestrator_event_emit_failed", error=str(bus_err))
             return assistant_response
 
         # 3. Specialist Route: Dispatch to the selected specialist
@@ -376,8 +455,25 @@ class JarvisOrchestrator:
                 )
             )
 
-            # 10. Synthesize Result (LLM-driven)
-            assistant_response = await specialist.synthesize(proposal, tool_output, user_message)
+            # 10. Synthesize Result (LLM-driven, with dynamic artifact offloading)
+            synthesis_payload = tool_output
+            if self.offloader.should_offload(tool_output):
+                art_ref, rep_text = self.offloader.offload(
+                    task_id=str(task_id),
+                    content=tool_output,
+                    source_tool=manifest.capability_id,
+                    trust_level=TrustLevel.EXTERNAL_UNTRUSTED,
+                )
+                log_event(
+                    "context",
+                    f"Offloaded oversized observation to Data Plane: {art_ref.uri} (~{art_ref.token_estimate} tokens)",
+                    details={"artifact_id": art_ref.artifact_id, "byte_size": art_ref.byte_size},
+                )
+                synthesis_payload = rep_text
+
+            assistant_response = await specialist.synthesize(
+                proposal, synthesis_payload, user_message
+            )
             self.lifecycle.record_invocation_success(spec_id)
             log_event("specialist", "Synthesized final observation response")
 
@@ -416,4 +512,18 @@ class JarvisOrchestrator:
             system_logs=system_logs,
         )
         self.session_manager.add_turn(session_id, turn)
+        try:
+            await self.event_bus.publish(
+                EventMessage(
+                    event_type="task.completed",
+                    correlation_id=str(session_id),
+                    payload={"task_id": str(task_id), "response_preview": assistant_response[:100]},
+                    source="jarvis:orchestrator",
+                )
+            )
+        except Exception as bus_err:
+            logger.debug("orchestrator_event_emit_failed", error=str(bus_err))
         return assistant_response
+
+    # Ergonomic alias for request processing
+    process_request = interact

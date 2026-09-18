@@ -151,6 +151,8 @@ async def run_python_test(
             "duration_seconds": res.duration_seconds,
             "timed_out": res.timed_out,
             "truncated": truncated,
+            "sandbox_status": "NOT_ISOLATED",
+            "isolation_tier": "TIER_0_LOCAL",
         }
 
     except SandboxTimeoutError:
@@ -169,6 +171,8 @@ async def run_python_test(
             "duration_seconds": bounded_timeout,
             "timed_out": True,
             "truncated": False,
+            "sandbox_status": "NOT_ISOLATED",
+            "isolation_tier": "TIER_0_LOCAL",
         }
 
     except SandboxExecutionError as exc:
@@ -183,4 +187,6 @@ async def run_python_test(
             "duration_seconds": 0.0,
             "timed_out": False,
             "truncated": False,
+            "sandbox_status": "NOT_ISOLATED",
+            "isolation_tier": "TIER_0_LOCAL",
         }

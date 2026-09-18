@@ -61,8 +61,8 @@ Categories:
    - The request requires an actionable task or query handled by one of our 5 canonical domain specialists:
      * "coding": Filesystem operations (reading, writing, inspecting, listing files), code analysis, debugging, terminal commands, test running.
      * "analysis": Mathematical calculations, formula evaluations (e.g. sqrt, arithmetic), numeric statistics, quantitative data analysis.
-     * "computer": Point-in-time system clock, current time, date, operating system status, process state, confirmation dialogs.
-     * "personal": Reminders, saving notes, recalling personal notes, user preferences with strict privacy.
+     * "computer": Point-in-time system clock, current time, date, operating system status, desktop application lifecycle (open/launch/close/list apps), screen capture, and GUI input automation.
+     * "personal": Saving user preferences, remembering statements ("remember that..."), setting reminders ("remind me to..."), saving or recalling personal notes/facts. Any request to remember, record, or recall user preferences or personal facts MUST ALWAYS be classified as "specialist" with specialist_role="personal", NEVER as "conversational".
      * "research": Web searches, fetching URLs, external documentation, citations.
    - CRITICAL: If the user asks to perform a domain action (e.g. "can you inspect a file?", "read a file for me", "calculate something", "search something") but omits parameters (such as the target file path, expression, or search topic), you MUST STILL classify it as "specialist" with the appropriate specialist_role so the specialist can proactively ask the user for the missing parameters!
 
@@ -98,83 +98,82 @@ class SpecialistRouter:
         """Analyze user message with LLM intelligence (gemini-3.1-flash-lite / fallback)."""
         messages: list[ChatMessage] = []
 
-        # Add recent conversation turns for context if available
         if history:
-            for turn in history[-4:]:
-                u_msg = turn.get("user_message")
-                a_msg = turn.get("assistant_response")
-                if u_msg:
-                    messages.append(ChatMessage(role="user", content=u_msg))
-                if a_msg:
-                    messages.append(ChatMessage(role="assistant", content=a_msg))
+            recent = history[-4:]
+            for turn in recent:
+                u_text = str(turn.get("user_message", "")).strip()
+                a_text = str(turn.get("assistant_response", "")).strip()
+                if u_text:
+                    messages.append(ChatMessage(role="user", content=u_text))
+                if a_text:
+                    messages.append(ChatMessage(role="assistant", content=a_text))
 
-        messages.append(ChatMessage(role="user", content=user_message))
-
-        # Model from MODEL_ROSTER.md Pool B: gemini-3.1-flash-lite
-        req = GenerationRequest(
-            model_id="gemini-3.1-flash-lite",
-            system_instruction=ROUTER_SYSTEM_PROMPT,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=400,
+        messages.append(
+            ChatMessage(role="user", content=f"Classify this user message:\n{user_message}")
         )
 
-        try:
-            resp = await self.gateway.generate(req)
-            data = parse_llm_json(resp.content)
-            category_raw = str(data.get("category", "conversational")).lower()
-            category = (
-                RoutingCategory.SPECIALIST
-                if category_raw == "specialist"
-                else RoutingCategory.CONVERSATIONAL
-            )
+        if self.gateway:
+            try:
+                req = GenerationRequest(
+                    model_id="gemini-3.5-flash-lite",
+                    system_instruction=ROUTER_SYSTEM_PROMPT,
+                    messages=messages,
+                    temperature=0.0,
+                    max_tokens=300,
+                )
+                res = await self.gateway.generate(req)
+                parsed = parse_llm_json(res.content)
+                cat_str = str(parsed.get("category", "conversational")).lower()
+                category = (
+                    RoutingCategory.SPECIALIST
+                    if "spec" in cat_str
+                    else RoutingCategory.CONVERSATIONAL
+                )
 
-            role_raw = data.get("specialist_role")
-            specialist_role: SpecialistRole | None = None
-            if role_raw and category == RoutingCategory.SPECIALIST:
-                try:
-                    specialist_role = SpecialistRole(str(role_raw).lower())
-                except ValueError:
-                    specialist_role = SpecialistRole.CODING
+                role_val = parsed.get("specialist_role")
+                role_enum: SpecialistRole | None = None
+                if role_val:
+                    try:
+                        role_enum = SpecialistRole(str(role_val).lower())
+                    except ValueError:
+                        role_enum = None
 
-            decision = RoutingDecision(
-                category=category,
-                specialist_role=specialist_role,
-                intent=str(data.get("intent", "User request")),
-                direct_response=data.get("direct_response"),
-                reasoning=data.get("reasoning"),
-            )
-            logger.info(
-                "router_classified_intent",
-                category=decision.category.value,
-                specialist=decision.specialist_role.value if decision.specialist_role else None,
-                intent=decision.intent,
-            )
-            return decision
+                return RoutingDecision(
+                    category=category,
+                    specialist_role=role_enum,
+                    intent=str(parsed.get("intent", "Routed intent")),
+                    direct_response=parsed.get("direct_response"),
+                    reasoning=parsed.get("reasoning"),
+                )
+            except Exception as exc:
+                logger.warning("router_llm_classification_failed", error=str(exc))
 
-        except Exception as exc:
-            logger.warning("router_llm_fallback_engaged", error=str(exc))
-            return self._heuristic_route(user_message)
+        return self._heuristic_route(user_message)
 
     def _heuristic_route(self, user_message: str) -> RoutingDecision:
-        """Resilient fallback when LLM gateway is offline or unavailable."""
-        msg = user_message.lower().strip()
+        """Rule-based fallback routing for deterministic test suites and offline modes."""
+        msg = user_message.strip().lower()
 
-        # Conversational greetings & identity
-        if msg in ("hey", "hi", "hello", "howdy", "greetings") or any(
-            msg.startswith(p) for p in ("hey ", "hi ", "hello ")
-        ):
+        # Conversational greetings
+        if any(w in msg for w in ("hello", "hi ", "hey", "good morning", "good evening", "howdy")):
             return RoutingDecision(
                 category=RoutingCategory.CONVERSATIONAL,
                 intent="Greeting",
-                direct_response="Hello! I am JARVIS, your Personal AI Operating System. How can I assist you today?",
+                direct_response="Greetings. I am JARVIS, your Personal AI Operating System. How may I assist you today?",
             )
 
-        if any(w in msg for w in ("how are you", "how are u")):
+        if any(w in msg for w in ("how are you", "how's it going", "how are u")):
             return RoutingDecision(
                 category=RoutingCategory.CONVERSATIONAL,
-                intent="Personal check-in",
-                direct_response="I'm operating at peak capability and all core subsystems are online. How can I assist you today?",
+                intent="Pleasantry",
+                direct_response="I am functioning within optimal operational parameters. All systems are online. How can I help you?",
+            )
+
+        if any(w in msg for w in ("thank you", "thanks", "appreciate it")):
+            return RoutingDecision(
+                category=RoutingCategory.CONVERSATIONAL,
+                intent="Gratitude",
+                direct_response="You are most welcome. Standing by for your next command.",
             )
 
         if any(
@@ -187,7 +186,7 @@ class SpecialistRouter:
                     "I am JARVIS, your Personal AI Operating System. I can assist you across multiple domains:\n\n"
                     "• **Coding & Files**: Inspect, create, refactor code, list directories, and execute tests.\n"
                     "• **Analysis & Math**: Compute mathematical expressions and evaluate data.\n"
-                    "• **Computer & OS**: Retrieve system clock, time, and environment status.\n"
+                    "• **Computer & OS**: Manage desktop applications (launch/close/list), inspect screen, and monitor environment.\n"
                     "• **Personal Notes**: Securely organize notes and reminders.\n"
                     "• **Research**: Fetch web resources and summarize information.\n\n"
                     "What would you like to work on?"
@@ -206,12 +205,38 @@ class SpecialistRouter:
             )
 
         if any(
-            w in msg for w in ("what time", "current time", "clock", "what date", "today's date")
+            w in msg
+            for w in (
+                "what time",
+                "current time",
+                "clock",
+                "what date",
+                "today's date",
+                "screenshot",
+                "capture screen",
+                "screen capture",
+                "see my screen",
+                "active window",
+                "running apps",
+                "list apps",
+                "system stats",
+                "system status",
+                "cpu",
+                "ram",
+            )
+        ) or (
+            any(
+                msg.startswith(p)
+                for p in ("open ", "launch ", "close ", "quit ", "start ", "kill ")
+            )
+            and not any(
+                f in msg for f in ("file", "code", "directory", "dir", "script", "repo", "test")
+            )
         ):
             return RoutingDecision(
                 category=RoutingCategory.SPECIALIST,
                 specialist_role=SpecialistRole.COMPUTER,
-                intent="Time query",
+                intent="Computer & OS action",
             )
 
         if any(

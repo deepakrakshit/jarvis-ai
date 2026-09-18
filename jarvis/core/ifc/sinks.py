@@ -39,6 +39,12 @@ class SinkType(StrEnum):
     USER_DISPLAY = "USER_DISPLAY"
     """Content rendered to user UI, chat console, or Edge-TTS audio."""
 
+    PROCESS_SPAWN = "PROCESS_SPAWN"
+    """Spawning or terminating native OS application processes."""
+
+    INPUT_INJECTION = "INPUT_INJECTION"
+    """Injecting synthetic mouse movements, clicks, or keyboard strokes."""
+
 
 class SinkPolicy(BaseModel):
     """Constraints governing data flowing into a specific SinkType."""
@@ -82,6 +88,16 @@ DEFAULT_SINK_POLICIES: dict[SinkType, SinkPolicy] = {
         sink_type=SinkType.USER_DISPLAY,
         max_confidentiality=ConfidentialityLabel.CONFIDENTIAL,  # Raw secrets not spoken or displayed
         min_integrity=IntegrityLabel.UNTRUSTED,
+    ),
+    SinkType.PROCESS_SPAWN: SinkPolicy(
+        sink_type=SinkType.PROCESS_SPAWN,
+        max_confidentiality=ConfidentialityLabel.INTERNAL,
+        min_integrity=IntegrityLabel.USER_CONTROLLED,
+    ),
+    SinkType.INPUT_INJECTION: SinkPolicy(
+        sink_type=SinkType.INPUT_INJECTION,
+        max_confidentiality=ConfidentialityLabel.INTERNAL,
+        min_integrity=IntegrityLabel.USER_CONTROLLED,
     ),
 }
 

@@ -157,3 +157,78 @@ def test_revalidate_target_witness_mismatch_rejected() -> None:
         pipeline.revalidate_and_commit(
             auth, actual_arguments=args, current_witness_hash="etag_v2_modified"
         )
+
+
+def test_find_active_authorization() -> None:
+    """Verify finding active authorizations by tool_id and canonical arguments hash."""
+    pipeline = HITLPipeline()
+    args = {"file_path": "test.py", "mode": "script"}
+    args_hash = compute_canonical_arguments_hash(args)
+
+    # 1. Initially none found
+    assert pipeline.find_active_authorization("native:code:run_test", args_hash) is None
+
+    # 2. Create and approve request
+    req = pipeline.create_approval_request(
+        task_id=uuid4(),
+        tool_id="native:code:run_test",
+        arguments=args,
+        target_resource="test.py",
+        risk_score=0.7,
+    )
+    auth = pipeline.resolve_approval(req.request_id, approved=True)
+    assert auth is not None
+
+    # 3. Lookup finds valid active authorization
+    found = pipeline.find_active_authorization("native:code:run_test", args_hash)
+    assert found is not None
+    assert found.proposal_id == auth.proposal_id
+
+    # 4. Lookup with different tool_id returns None
+    assert pipeline.find_active_authorization("native:shell:execute", args_hash) is None
+
+    # 5. Lookup with different arguments hash returns None
+    other_hash = compute_canonical_arguments_hash({"file_path": "other.py"})
+    assert pipeline.find_active_authorization("native:code:run_test", other_hash) is None
+
+    # 6. Once consumed, lookup returns None
+    auth.mark_used()
+    assert pipeline.find_active_authorization("native:code:run_test", args_hash) is None
+
+
+def test_find_latest_pending_request_and_resolve_latest() -> None:
+    """Verify discovering and resolving the most recent pending approval request."""
+    pipeline = HITLPipeline()
+    args_1 = {"cmd": "first"}
+    args_2 = {"cmd": "second"}
+
+    req_1 = pipeline.create_approval_request(
+        task_id=uuid4(),
+        tool_id="native:shell:execute",
+        arguments=args_1,
+        target_resource="first",
+        risk_score=0.8,
+    )
+    req_2 = pipeline.create_approval_request(
+        task_id=uuid4(),
+        tool_id="native:shell:execute",
+        arguments=args_2,
+        target_resource="second",
+        risk_score=0.8,
+    )
+
+    # Latest pending is req_2
+    latest = pipeline.find_latest_pending_request()
+    assert latest is not None
+    assert latest.request_id == req_2.request_id
+
+    # Resolve latest
+    auth = pipeline.resolve_latest_pending(approved=True, user_id="operator")
+    assert auth is not None
+    assert auth.proposal_id == req_2.request_id
+    assert req_2.status == ApprovalStatus.APPROVED
+
+    # Now latest pending is req_1
+    latest_remaining = pipeline.find_latest_pending_request()
+    assert latest_remaining is not None
+    assert latest_remaining.request_id == req_1.request_id

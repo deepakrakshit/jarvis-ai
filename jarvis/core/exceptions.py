@@ -107,9 +107,75 @@ class SandboxTimeoutError(SandboxExecutionError):
     """Raised when execution exceeds the allocated wall-time timeout."""
 
 
+class SandboxBackendUnavailableError(SandboxExecutionError):
+    """Raised when a required sandbox isolation tier is unavailable (fail-closed invariant)."""
+
+
+class SandboxSecurityViolationError(SecurityViolationError):
+    """Raised when a sandbox operation violates security or containment boundaries."""
+
+
 class IdempotencyConflictError(JarvisError):
     """Raised when an operation conflicts with an existing idempotency lease or key."""
 
 
 class VerificationFailureError(JarvisError):
     """Raised when external state verification fails to corroborate an effect."""
+
+
+class ReceiptVerificationError(JarvisError):
+    """Raised when an effect receipt fails validation or cannot be resolved."""
+
+
+class ReceiptTamperedError(ReceiptVerificationError):
+    """Raised when cryptographic verification detects tampering in an effect receipt."""
+
+
+# --- Memory Plane Errors ---
+
+
+class JarvisMemoryError(JarvisError):
+    """Base exception for all governed memory plane operations."""
+
+
+class MemoryConcurrencyConflictError(JarvisMemoryError):
+    """Raised when optimistic concurrency control detects a version or revision conflict."""
+
+
+class MemoryEpistemicViolationError(JarvisMemoryError):
+    """Raised when an unverified entity attempts an unauthorized epistemic promotion."""
+
+
+class MemoryNotFoundError(JarvisMemoryError):
+    """Raised when a requested memory record or key does not exist."""
+
+
+class MemoryPermissionError(JarvisMemoryError):
+    """Raised when user or tenant ACL restricts access to a memory record."""
+
+
+# --- Event Plane & Distributed Lease Errors ---
+
+
+class EventPlaneError(JarvisError):
+    """Base exception for all event plane and queue operations."""
+
+
+class CausalCycleError(EventPlaneError):
+    """Raised when an event's causation graph forms a cycle."""
+
+
+class CausalDepthExceededError(EventPlaneError):
+    """Raised when an event's causal depth budget is exceeded."""
+
+
+class LeaseFencingError(EventPlaneError):
+    """Raised when a worker action is rejected due to a stale or invalid fencing token."""
+
+
+class PoisonMessageError(EventPlaneError):
+    """Raised when a message cannot be processed and must be quarantined to DLQ."""
+
+
+class DLQMessageNotFoundError(EventPlaneError):
+    """Raised when a requested DLQ message is not found."""

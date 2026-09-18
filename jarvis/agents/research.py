@@ -293,6 +293,12 @@ class ResearchSpecialist(BaseSpecialist):
             except Exception as exc:
                 logger.warning("research_specialist_synth_fallback", error=str(exc))
 
+        if isinstance(tool_result, str):
+            return tool_result
+
+        if not isinstance(tool_result, dict):
+            return str(tool_result)
+
         if proposal.tool_id == "native:web:search":
             results = tool_result.get("results", [])
             query = tool_result.get("query", proposal.arguments.get("query", ""))

@@ -78,7 +78,16 @@ class PersonalSpecialist(BaseSpecialist):
                 name="personal",
                 role=SpecialistRole.PERSONAL,
                 role_description="User memory, personal notes, reminders, and preference management.",
-                allowed_tool_scopes=["calendar.read", "notes.write", "memory.read", "memory.write"],
+                allowed_tool_scopes=[
+                    "calendar.read",
+                    "notes.write",
+                    "memory.read",
+                    "memory.write",
+                    "memory:read",
+                    "memory:write",
+                    "native:memory:query",
+                    "native:memory:write",
+                ],
                 memory_mode="SHARED",
             ),
             model_gateway=model_gateway,
@@ -265,7 +274,9 @@ class PersonalSpecialist(BaseSpecialist):
         lower = query.lower()
         filtered = self._notes
 
-        if "reminder" in lower:
+        if "all" in lower or ("note" in lower and "reminder" in lower):
+            filtered = self._notes
+        elif "reminder" in lower:
             filtered = [n for n in self._notes if n.category == NoteCategory.REMINDER]
         elif "preference" in lower:
             filtered = [n for n in self._notes if n.category == NoteCategory.PREFERENCE]

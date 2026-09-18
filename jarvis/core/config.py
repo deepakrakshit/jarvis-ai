@@ -64,7 +64,30 @@ class Settings(BaseSettings):
     REALTIME_VOICE_MODEL_ID: str = "gemini-3.8-live"
     REALTIME_VOICE_THINKING_MODEL_ID: str = "gemini-3.8-live-extended-thinking"
     COMPRESSION_MODEL_ID: str = "gemini-3.8-flash-lite-context-compress"
-    VOICE_DEFAULT_NAME: str = "Puck"
+    VOICE_DEFAULT_NAME: str = Field(
+        default="Algenib",
+        description="Default voice identity for Gemini Live Realtime API (e.g. Algenib, Puck, Charon, Aoede, Fenrir, Kore).",
+    )
+    VOICE_INPUT_DEVICE: str | int | None = Field(
+        default=None,
+        description="Hardware audio input device index or name substring for recording.",
+    )
+    VOICE_OUTPUT_DEVICE: str | int | None = Field(
+        default=None,
+        description="Hardware audio output device index or name substring for playback.",
+    )
+    VOICE_MIC_NOISE_GATE_RMS: float = Field(
+        default=0.0,
+        description="Minimum RMS energy threshold to filter silence without dropping speech phonemes.",
+    )
+    VOICE_MIC_GAIN: float = Field(
+        default=2.5,
+        description="Software amplification multiplier applied to microphone input audio.",
+    )
+    VOICE_MIC_AUTO_VOLUME: bool = Field(
+        default=True,
+        description="Automatically verify and optimize system master microphone recording volume on Windows.",
+    )
 
     @field_validator("AUTONOMY_LEVEL")
     @classmethod

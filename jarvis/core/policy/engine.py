@@ -30,6 +30,13 @@ logger = get_logger(__name__)
 class PolicyEngine:
     """Centralized authorization gatekeeper for the JARVIS Personal AI Operating System."""
 
+    ruleset: PolicyRuleSet
+    hitl_pipeline: HITLPipeline
+    sink_enforcer: SinkEnforcer
+    workspace_root: Path | None
+    default_autonomy: AutonomyLevel
+    environment: str
+
     def __init__(
         self,
         ruleset: PolicyRuleSet | None = None,
@@ -226,7 +233,15 @@ class PolicyEngine:
                     risk_score=risk_score,
                     obligations=["hitl"],
                 )
-            if not is_in_workspace and manifest.risk_class != RiskClass.READ_ONLY:
+            is_fs_mutation = (
+                any(s.startswith("filesystem:") for s in manifest.required_scopes)
+                or ":fs:" in manifest.capability_id
+            )
+            if (
+                is_fs_mutation
+                and not is_in_workspace
+                and manifest.risk_class != RiskClass.READ_ONLY
+            ):
                 return PolicyDecision(
                     decision=PolicyDecisionType.REQUIRE_HITL,
                     reason="Target resource is outside approved workspace boundary.",

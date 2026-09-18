@@ -16,6 +16,7 @@ def test_default_settings(test_settings: Settings) -> None:
     assert test_settings.GRAPH_STEP_BUDGET == 50
     assert test_settings.PRIMARY_MODEL_ID == "gemini-2.5-flash"
     assert test_settings.FAST_MODEL_ID == "qwen/qwen3.8-27b"
+    assert test_settings.VOICE_DEFAULT_NAME == "Algenib"
 
 
 def test_autonomy_level_bounds() -> None:

@@ -69,3 +69,9 @@ async def test_mock_adapter_event_streaming() -> None:
     assert LiveEventType.AUDIO_CHUNK in types
     assert LiveEventType.TURN_COMPLETE in types
     assert LiveEventType.STATUS_CHANGE in types
+
+
+def test_live_session_config_voice_defaults() -> None:
+    """Verify default voice identity in LiveSessionConfig defaults to Algenib."""
+    config = LiveSessionConfig()
+    assert config.voice_name == "Algenib"

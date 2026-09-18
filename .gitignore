@@ -49,6 +49,7 @@ data/
 workspace/artifacts/
 
 # Private Runtime Sessions & Logs
+.jarvis/
 sessions.json
 conversations.json
 *.jsonl
@@ -71,3 +72,6 @@ scratch/
 *_telemetry.json
 *_results.json
 *_audit*.json
+
+# secret
+secret/

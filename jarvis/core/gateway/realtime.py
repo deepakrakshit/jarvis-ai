@@ -12,7 +12,9 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from jarvis.core.serialization import to_json_safe
 
 
 class LiveEventType(StrEnum):
@@ -23,6 +25,8 @@ class LiveEventType(StrEnum):
     TRANSCRIPTION = "TRANSCRIPTION"
     TOOL_CALL = "TOOL_CALL"
     TOOL_CALL_CANCEL = "TOOL_CALL_CANCEL"
+    TOOL_RESPONSE = "TOOL_RESPONSE"
+    TOOL_CALL_RESULT = "TOOL_CALL_RESULT"
     TURN_COMPLETE = "TURN_COMPLETE"
     GENERATION_COMPLETE = "GENERATION_COMPLETE"
     INTERRUPTED = "INTERRUPTED"
@@ -60,6 +64,13 @@ class LiveToolCall(BaseModel):
     is_non_blocking: bool = True
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    @field_validator("arguments", mode="before")
+    @classmethod
+    def _sanitize_arguments(cls, v: Any) -> dict[str, Any]:
+        if not isinstance(v, dict):
+            return {}
+        return to_json_safe(v)  # type: ignore[no-any-return]
+
 
 class LiveToolResponse(BaseModel):
     """Authoritative response returned to the voice model following governance verification."""
@@ -69,6 +80,13 @@ class LiveToolResponse(BaseModel):
     response: dict[str, Any]
     scheduling: str = "WHEN_IDLE"  # INTERRUPT, WHEN_IDLE, or SILENT
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_validator("response", mode="before")
+    @classmethod
+    def _sanitize_response(cls, v: Any) -> dict[str, Any]:
+        if not isinstance(v, dict):
+            v = {"output": v}
+        return to_json_safe(v)  # type: ignore[no-any-return]
 
 
 class LiveGoAway(BaseModel):
@@ -102,13 +120,22 @@ class LiveEvent(BaseModel):
     payload: Any = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _sanitize_payload(cls, v: Any) -> Any:
+        if isinstance(v, BaseModel):
+            return v
+        if isinstance(v, (dict, list, tuple, set)):
+            return to_json_safe(v)
+        return v
+
 
 class LiveSessionConfig(BaseModel):
     """Configuration schema for initiating or resuming a realtime voice session."""
 
     model_id: str = "gemini-3.8-live"
     system_instruction: str | None = None
-    voice_name: str = "Puck"
+    voice_name: str = "Algenib"
     tools: list[dict[str, Any]] | None = None
     resumption_handle: str | None = None
     enable_compression: bool = False
@@ -132,6 +159,10 @@ class RealtimeModelAdapter(ABC):
     async def send_text(self, text: str, end_of_turn: bool = True) -> None:
         """Send conversational text input into active realtime session."""
         pass
+
+    async def send_image(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> None:
+        """Send raw image or screenshot frame into active realtime session."""
+        return None
 
     @abstractmethod
     async def send_audio(self, pcm_data: bytes, end_of_turn: bool = False) -> None:

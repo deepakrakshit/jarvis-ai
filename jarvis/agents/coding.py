@@ -34,12 +34,16 @@ Available Tools:
   Arguments: {"file_path": string}
 - "native:shell:execute": Runs a shell command inside the process sandbox.
   Arguments: {"command": string}
+- "sandbox:code:execute": Runs a test, script, or command inside an isolated container sandbox (TIER_1_CONTAINER).
+  Arguments: {"command": list[string], "files": dict (optional)}
+- "native:code:run_test": Runs a workspace-local Python test or script directly on the host (TIER_0_LOCAL, unisolated, requires approval).
+  Arguments: {"file_path": string, "mode": "script" | "pytest"}
 
 Analyze the user message and conversation context.
 You MUST output ONLY a valid JSON object matching this schema:
 {
   "action": "tool_call" | "clarify" | "direct_answer",
-  "tool_id": "native:fs:list_dir" | "native:fs:read_file" | "native:fs:write_file" | "native:fs:delete_file" | "native:shell:execute" | null,
+  "tool_id": "native:fs:list_dir" | "native:fs:read_file" | "native:fs:write_file" | "native:fs:delete_file" | "native:shell:execute" | "sandbox:code:execute" | "native:code:run_test" | null,
   "arguments": dict,
   "intent": string,
   "clarification_question": string | null,
@@ -49,8 +53,9 @@ You MUST output ONLY a valid JSON object matching this schema:
 
 Rules:
 1. If the user wants to list files/directories, read a file, write a file, delete a file, or run a command, and specifies the required file/directory or command, set action='tool_call' and provide tool_id and exact arguments.
-2. If the user asks to analyze, inspect, review, or view a file, but DOES NOT specify which file (or asks to create a file without path/content), set action='clarify' and ask a helpful question requesting the file name or path.
-3. If it is a conceptual coding question or general code advice that does not need a tool, set action='direct_answer' and provide direct_response.
+2. Prefer "sandbox:code:execute" for executing tests or scripts in an isolated container whenever sandboxed or isolated execution is requested or appropriate.
+3. If the user asks to analyze, inspect, review, or view a file, but DOES NOT specify which file (or asks to create a file without path/content), set action='clarify' and ask a helpful question requesting the file name or path.
+4. If it is a conceptual coding question or general code advice that does not need a tool, set action='direct_answer' and provide direct_response.
 """
 
 
@@ -69,12 +74,16 @@ class CodingSpecialist(BaseSpecialist):
                     "native:fs:delete_file",
                     "native:fs:list_dir",
                     "native:shell:execute",
+                    "native:code:run_test",
+                    "sandbox:code:execute",
                     "fs.read",
                     "fs.write",
                     "fs.delete",
                     "git.read",
                     "git.write",
                     "code.ast",
+                    "code.execute",
+                    "sandbox:execute",
                 ],
                 memory_mode="PER_SPECIALIST",
             ),
@@ -270,21 +279,42 @@ class CodingSpecialist(BaseSpecialist):
                     target_resource=file_path,
                 )
 
-        # 6. Shell execution
+        # 6. Sandbox / Container execution
+        if any(
+            w in lower
+            for w in ("in sandbox", "isolated execution", "sandbox execution", "run in container")
+        ):
+            cmd = (
+                ["pytest"] if "pytest" in lower else ["python", "-c", "print('sandbox execution')"]
+            )
+            cmd_match = re.search(r"(?:run|execute)\s+['\"](.*?)['\"]", msg, re.I)
+            if cmd_match:
+                import shlex
+
+                cmd = shlex.split(cmd_match.group(1))
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent="Execute in isolated container sandbox",
+                tool_id="sandbox:code:execute",
+                arguments={"command": cmd},
+                target_resource="sandbox",
+            )
+
+        # 7. Shell execution
         if any(w in lower for w in ("run test", "run command", "execute command", "run pytest")):
-            cmd = "pytest" if "pytest" in lower else msg
+            shell_cmd = "pytest" if "pytest" in lower else msg
             return SpecialistProposal(
                 specialist_role=self.role,
                 intent="Execute shell command",
                 tool_id="native:shell:execute",
-                arguments={"command": cmd},
+                arguments={"command": shell_cmd},
                 target_resource="sandbox",
             )
 
         return SpecialistProposal(
             specialist_role=self.role,
             intent="General coding query",
-            direct_response="I am the Coding Specialist. I can read, write, or list files, inspect AST, and run test suites. How can I assist with your code?",
+            direct_response="I am the Coding Specialist. I can read, write, or list files, inspect AST, and run test suites in an isolated container sandbox or host runner. How can I assist with your code?",
         )
 
     async def synthesize(
@@ -324,6 +354,19 @@ class CodingSpecialist(BaseSpecialist):
                 cmd = str(proposal.arguments.get("command") or "")
                 code = tool_result.get("exit_code", 0)
                 self.scratchpad.add_note(f"Executed command '{cmd}' (Exit: {code})")
+            elif proposal.tool_id == "sandbox:code:execute":
+                code = tool_result.get("exit_code", 0)
+                tier = tool_result.get("isolation_tier", "TIER_1_CONTAINER")
+                sbx_id = tool_result.get("sandbox_id", "unknown")
+                self.scratchpad.add_note(
+                    f"Sandboxed execution in {tier} [{sbx_id}] finished with exit code {code}."
+                )
+            elif proposal.tool_id == "native:code:run_test":
+                code = tool_result.get("exit_code", 0)
+                fp = str(tool_result.get("file_path") or "")
+                self.scratchpad.add_note(
+                    f"Host test execution on '{fp}' (unisolated TIER_0_LOCAL) finished with exit code {code}."
+                )
 
         if self.gateway:
             try:
@@ -348,21 +391,30 @@ class CodingSpecialist(BaseSpecialist):
                 logger.warning("coding_specialist_synth_fallback", error=str(exc))
 
         # Heuristic fallback formatting
+        if isinstance(tool_result, str):
+            path = str(proposal.arguments.get("file_path", proposal.arguments.get("dir_path", "")))
+            if path and path not in tool_result:
+                return f"Read **{path}**:\n\n{tool_result}"
+            return tool_result
+
+        if not isinstance(tool_result, dict):
+            return str(tool_result)
+
         if proposal.tool_id == "native:fs:read_file":
             content = tool_result.get("content", "")
-            path = tool_result.get("file_path", "")
+            path = tool_result.get("file_path", proposal.arguments.get("file_path", "file"))
             lines = content.splitlines()
             preview = "\n".join(lines[:30])
-            summary = f"Read **{path}** ({len(lines)} lines, {tool_result.get('size_bytes', 0)} bytes):\n\n```\n{preview}\n```"
+            summary = f"Read **{path}** ({len(lines)} lines, {tool_result.get('size_bytes', len(content))} bytes):\n\n```\n{preview}\n```"
             if len(lines) > 30:
                 summary += f"\n*(Truncated {len(lines) - 30} remaining lines)*"
             return summary
 
         if proposal.tool_id == "native:fs:write_file":
-            return f"Successfully wrote **{tool_result.get('bytes_written', 0)} bytes** to `{tool_result.get('file_path')}`."
+            return f"Successfully wrote **{tool_result.get('bytes_written', 0)} bytes** to `{tool_result.get('file_path', proposal.arguments.get('file_path', ''))}`."
 
         if proposal.tool_id == "native:fs:delete_file":
-            return f"Successfully deleted `{tool_result.get('file_path')}`."
+            return f"Successfully deleted `{tool_result.get('file_path', proposal.arguments.get('file_path', ''))}`."
 
         if proposal.tool_id == "native:fs:list_dir":
             entries = tool_result.get("entries", [])
@@ -370,8 +422,9 @@ class CodingSpecialist(BaseSpecialist):
             for e in entries:
                 kind = "[DIR]" if e.get("is_dir") else f"[{e.get('size_bytes')} B]"
                 items.append(f"- `{e.get('name')}` {kind}")
+            dir_p = tool_result.get("dir_path", proposal.arguments.get("dir_path", "."))
             return (
-                f"Contents of **{tool_result.get('dir_path')}** ({tool_result.get('count', 0)} items):\n"
+                f"Contents of **{dir_p}** ({tool_result.get('count', len(entries))} items):\n"
                 + "\n".join(items)
             )
 

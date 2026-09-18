@@ -4,6 +4,7 @@ Directs tasks to appropriate specialist models according to MODEL_ROSTER.md.
 Enforces two-phase quota reservation leases, failover ladders, and telemetry metrics.
 """
 
+import time
 from collections.abc import AsyncIterator
 
 from jarvis.core.exceptions import ModelProviderError, QuotaExceededError
@@ -19,6 +20,7 @@ from jarvis.core.gateway.interfaces import (
 )
 from jarvis.core.gateway.quota import ModelQuotaManager, QuotaDomain, QuotaMeterType
 from jarvis.core.logging import get_logger
+from jarvis.core.telemetry import SpanKind, TelemetryLayer, get_metrics, get_tracer
 
 logger = get_logger(__name__)
 
@@ -157,9 +159,31 @@ class ModelGateway:
             # 2. Dispatch to adapter
             adapter = self._get_adapter_for_model(model)
             model_req = request.model_copy(update={"model_id": model})
+            provider = (
+                "groq"
+                if (isinstance(adapter, GroqAdapter) or "qwen" in model or "openai" in model)
+                else "google"
+            )
 
+            start_t = time.perf_counter()
             try:
-                response = await adapter.generate(model_req)
+                async with get_tracer().span(
+                    name=f"model:{model}",
+                    layer=TelemetryLayer.DATA_PLANE,
+                    kind=SpanKind.CLIENT,
+                    attributes={"provider": provider, "model": model},
+                ):
+                    response = await adapter.generate(model_req)
+
+                dur_ms = (time.perf_counter() - start_t) * 1000.0
+                get_metrics().record_model_call(
+                    provider=provider,
+                    model=model,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                    duration_ms=dur_ms,
+                )
+
                 # 3. Reconcile lease
                 actual_tokens = response.prompt_tokens + response.completion_tokens
                 await manager.reconcile_lease(lease.lease_id, actual_tokens)

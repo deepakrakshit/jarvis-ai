@@ -11,6 +11,7 @@ Guarantees:
 
 import asyncio
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -20,6 +21,8 @@ from jarvis.core.gateway.realtime import (
     LiveEvent,
     LiveEventType,
     LiveSessionConfig,
+    LiveToolCall,
+    LiveToolResponse,
     LiveTranscription,
     RealtimeModelAdapter,
 )
@@ -78,6 +81,13 @@ class LiveVoiceAgent:
         # Subscribe to task milestone notifications
         self.task_manager.subscribe(self._on_background_task_event)
 
+    @property
+    def voice_name(self) -> str:
+        """Return active session voice identity name."""
+        if self.session_manager.current_session:
+            return self.session_manager.current_session.voice_name
+        return get_settings().VOICE_DEFAULT_NAME
+
     async def start(
         self,
         voice_name: str | None = None,
@@ -87,6 +97,10 @@ class LiveVoiceAgent:
     ) -> None:
         """Initialize the voice session and start the asynchronous event listening loop."""
         tools_def = self.tool_bridge.get_tool_definitions()
+        # Wire realtime visual perception sink to adapter
+        if hasattr(self.adapter, "send_image"):
+            self.tool_bridge.set_image_sink(self.adapter.send_image)
+
         active_voice = voice_name or get_settings().VOICE_DEFAULT_NAME
 
         config = LiveSessionConfig(
@@ -120,7 +134,20 @@ class LiveVoiceAgent:
                 "Second, invoke jarvis_write_file to create the implementation and test script in the workspace. "
                 "Third, ALWAYS invoke jarvis_run_python_test to execute workspace Python scripts or pytest suites. NEVER use jarvis_shell for running Python tests or scripts. "
                 "Fourth, if jarvis_run_python_test fails (exit_code != 0), inspect the traceback in stderr/stdout, diagnose the failure, revise the code using jarvis_write_file, and re-run jarvis_run_python_test until verified. Do not claim success until execution actually passes. "
-                "Fifth, if any tool is blocked by policy or requires approval, NEVER repeatedly retry the identical blocked tool call. Immediately switch to an authorized alternative tool or inform the user."
+                "Fifth, if any tool is blocked by policy or requires approval, NEVER repeatedly retry the identical blocked tool call. Immediately switch to an authorized alternative tool or inform the user. "
+                "13. Read-Only System Queries & Environment Information: When the user asks for system facts, Python version, OS platform, environment info, or directory state, NEVER write, create, or modify files or scripts (such as creating temporary test scripts or version-check scripts). Queries about Python version, environment, or system status must NEVER invoke jarvis_write_file. Use direct voice response, read-only inspection, or safe system queries. "
+                "14. Operating System & Desktop Application Control: You have direct native authority over host desktop applications, windows, and display surface. "
+                "When the user asks to open, launch, or start an application (e.g. 'open chrome', 'launch notepad', 'open calc', 'open browser'), you MUST immediately invoke jarvis_launch_app(app_name=...). "
+                "When the user asks to close, quit, or terminate an application (e.g. 'close chrome', 'exit notepad'), you MUST invoke jarvis_close_app(app_name=...). "
+                "When the user asks what applications or processes are running or open, invoke jarvis_list_apps. "
+                "When the user asks to take a screenshot or inspect the display, invoke jarvis_screenshot. "
+                "When the user asks what window is currently focused or active, invoke jarvis_get_window. "
+                "When the user asks to bring an application to the foreground, invoke jarvis_focus_window(window_title=...). "
+                "When the user asks to open a website, browse to a URL, or open something in a browser (e.g. 'open youtube in it', 'go to youtube.com'), invoke jarvis_navigate_browser(url=...). "
+                "When typing into a specific application, you MUST ensure that application is focused first with jarvis_focus_window. If focusing is denied or fails, do NOT blindly type into the desktop. "
+                "When the user asks to click, double-click, scroll, or type into an application or window, invoke jarvis_click, jarvis_scroll, or jarvis_type. "
+                "When the user asks to inspect UI elements, buttons, or controls, invoke jarvis_inspect_ui. "
+                "NEVER tell the user that you cannot open applications or control programs on their device. You have full native desktop authority."
             ),
             tools=tools_def,
             thinking_budget=thinking_budget,
@@ -150,7 +177,12 @@ class LiveVoiceAgent:
                 if event.event_type == LiveEventType.TOOL_CALL:
                     self._active_tool_call = True
                     try:
-                        tool_call = event.payload
+                        raw_tc = event.payload
+                        if isinstance(raw_tc, dict):
+                            tool_call = LiveToolCall.model_validate(raw_tc)
+                        else:
+                            tool_call = raw_tc
+
                         self.telemetry.log_tool_call(
                             tool_call.name, tool_call.call_id, tool_call.is_non_blocking
                         )
@@ -176,7 +208,56 @@ class LiveVoiceAgent:
                         self.telemetry.log_tool_response(
                             response.name, response.call_id, response.response.get("status", "ok")
                         )
+
+                        # Forward tool response event to UI queue so terminal renders completion or denial
+                        await self._outbound_events.put(
+                            LiveEvent(
+                                event_type=LiveEventType.TOOL_RESPONSE,
+                                payload=response,
+                            )
+                        )
                         await self.adapter.send_tool_response(response)
+                        img_bytes = getattr(self.tool_bridge, "last_captured_image_bytes", None)
+                        if img_bytes is not None and hasattr(self.adapter, "send_image"):
+                            with suppress(Exception):
+                                await self.adapter.send_image(img_bytes)
+                            self.tool_bridge.last_captured_image_bytes = None
+                    except Exception as tool_exc:
+                        raw_tc = event.payload
+                        call_name = (
+                            getattr(raw_tc, "name", None)
+                            or (raw_tc.get("name") if isinstance(raw_tc, dict) else None)
+                            or "unknown"
+                        )
+                        call_id = (
+                            getattr(raw_tc, "call_id", None)
+                            or (raw_tc.get("call_id") if isinstance(raw_tc, dict) else None)
+                            or "unknown"
+                        )
+                        logger.error(
+                            "tool_execution_failed_in_receive_loop",
+                            error=str(tool_exc),
+                            tool_name=call_name,
+                        )
+                        fallback_resp = LiveToolResponse(
+                            call_id=call_id,
+                            name=call_name,
+                            response={
+                                "status": "error",
+                                "error": f"Tool execution failed: {tool_exc}",
+                                "reason_code": "EXECUTION_ERROR",
+                            },
+                            scheduling="WHEN_IDLE",
+                        )
+                        with suppress(Exception):
+                            await self._outbound_events.put(
+                                LiveEvent(
+                                    event_type=LiveEventType.TOOL_RESPONSE,
+                                    payload=fallback_resp,
+                                )
+                            )
+                        with suppress(Exception):
+                            await self.adapter.send_tool_response(fallback_resp)
                     finally:
                         self._active_tool_call = False
                     continue
@@ -198,6 +279,17 @@ class LiveVoiceAgent:
                     trans: LiveTranscription = event.payload
                     if trans.is_user and trans.text:
                         self.current_user_intent = trans.text
+                        if self._is_approval_text(trans.text):
+                            resolved_auth = self.tool_bridge.resolve_pending_approval(approved=True)
+                            if resolved_auth:
+                                logger.info(
+                                    "hitl_approval_resolved_via_user_speech",
+                                    proposal_id=str(resolved_auth.proposal_id),
+                                    tool_id=resolved_auth.tool_id,
+                                )
+                        elif self._is_rejection_text(trans.text):
+                            self.tool_bridge.resolve_pending_approval(approved=False)
+                            logger.info("hitl_approval_rejected_via_user_speech")
 
                 elif event.event_type == LiveEventType.AUDIO_CHUNK:
                     chunk: LiveAudioChunk = event.payload
@@ -224,8 +316,68 @@ class LiveVoiceAgent:
     async def send_user_text(self, text: str) -> None:
         """Send conversational text input into the voice session."""
         self.current_user_intent = text
+        if self._is_approval_text(text):
+            resolved_auth = self.tool_bridge.resolve_pending_approval(approved=True)
+            if resolved_auth:
+                logger.info(
+                    "hitl_approval_resolved_via_user_text",
+                    proposal_id=str(resolved_auth.proposal_id),
+                    tool_id=resolved_auth.tool_id,
+                )
+        elif self._is_rejection_text(text):
+            self.tool_bridge.resolve_pending_approval(approved=False)
+            logger.info("hitl_approval_rejected_via_user_text")
+
         self.telemetry.log_turn_started(is_user=True)
         await self.adapter.send_text(text, end_of_turn=True)
+
+    @staticmethod
+    def _is_approval_text(text: str) -> bool:
+        """Detect explicit user intent to grant human-in-the-loop approval."""
+        if not text:
+            return False
+        clean = text.strip().lower()
+        if clean in (
+            "/approve",
+            "approve",
+            "approved",
+            "yes",
+            "confirm",
+            "proceed",
+            "authorize",
+            "authorized",
+            "run it",
+            "execute",
+        ):
+            return True
+        import re
+
+        tokens = set(re.findall(r"\b\w+\b", clean))
+        approval_tokens = {"approved", "approve", "authorized", "authorize", "proceed", "confirm"}
+        return bool(tokens & approval_tokens)
+
+    @staticmethod
+    def _is_rejection_text(text: str) -> bool:
+        """Detect explicit user intent to reject human-in-the-loop approval."""
+        if not text:
+            return False
+        clean = text.strip().lower()
+        if clean in (
+            "/reject",
+            "/deny",
+            "reject",
+            "rejected",
+            "deny",
+            "denied",
+            "no",
+            "disapprove",
+        ):
+            return True
+        import re
+
+        tokens = set(re.findall(r"\b\w+\b", clean))
+        rejection_tokens = {"reject", "rejected", "deny", "denied", "disapprove"}
+        return bool(tokens & rejection_tokens)
 
     async def interrupt(self) -> None:
         """Trigger immediate barge-in / speech cutoff."""

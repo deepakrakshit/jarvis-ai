@@ -15,6 +15,7 @@ Coordinates the write/effect execution path:
 import hashlib
 import inspect
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 from uuid import UUID
@@ -36,8 +37,13 @@ from jarvis.core.broker.types import (
     RetryClassification,
 )
 from jarvis.core.capabilities.manifest import CapabilityManifest, RiskClass, SideEffectClass
+from jarvis.core.exceptions import VerificationFailureError
 from jarvis.core.logging import get_logger
 from jarvis.core.policy.decision import EffectAuthorization
+from jarvis.core.telemetry import SpanKind, TelemetryLayer, get_metrics, get_tracer
+from jarvis.core.verification.receipt import EffectReceipt, ReceiptMinter, ReceiptStore
+from jarvis.core.verification.registry import VerifierRegistry
+from jarvis.core.verification.types import VerificationRequest
 
 logger = get_logger(__name__)
 
@@ -51,11 +57,25 @@ class ActionBroker:
         lease_manager: LeaseManager | None = None,
         circuit_breaker_registry: CircuitBreakerRegistry | None = None,
         compensation_registry: CompensationRegistry | None = None,
+        verifier_registry: VerifierRegistry | None = None,
+        receipt_minter: ReceiptMinter | None = None,
+        receipt_store: ReceiptStore | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         self.ledger = ledger or IdempotencyLedger()
         self.lease_manager = lease_manager or LeaseManager()
         self.circuit_breakers = circuit_breaker_registry or CircuitBreakerRegistry()
         self.compensation_registry = compensation_registry or CompensationRegistry()
+        self.verifier_registry = verifier_registry or VerifierRegistry()
+        self.receipt_minter = receipt_minter or ReceiptMinter()
+        self.receipt_store = receipt_store
+        self.event_bus = event_bus
+        self._last_receipt: EffectReceipt | None = None
+
+    @property
+    def last_receipt(self) -> EffectReceipt | None:
+        """Retrieve the most recently minted EffectReceipt."""
+        return self._last_receipt
 
     @staticmethod
     def compute_canonical_hash(arguments: dict[str, Any]) -> str:
@@ -223,25 +243,98 @@ class ActionBroker:
         dispatched_to_provider = False
 
         # 6. Dispatch Execution
+        action_tracer = get_tracer()
+        metrics = get_metrics()
+        start_tool_time = time.perf_counter()
         try:
             record.transition_to(EffectState.EXECUTING)
             dispatched_to_provider = True
 
-            # Execute tool logic
-            if inspect.iscoroutinefunction(executor_fn):
-                result = await executor_fn(arguments)
-            else:
-                result = executor_fn(arguments)
-                if inspect.iscoroutine(result):
-                    result = await result
+            async with action_tracer.span(
+                name=f"tool:{tool_id}",
+                layer=TelemetryLayer.DATA_PLANE,
+                kind=SpanKind.INTERNAL,
+                attributes={
+                    "tool_id": tool_id,
+                    "logical_effect_id": logical_effect_id,
+                    "task_id": str(task_id),
+                    "target_resource": target_resource or "default",
+                },
+            ):
+                # Execute tool logic
+                if inspect.iscoroutinefunction(executor_fn):
+                    result = await executor_fn(arguments)
+                else:
+                    result = executor_fn(arguments)
+                    if inspect.iscoroutine(result):
+                        result = await result
 
-            # 7. Success Path -> Transition to VERIFIED
+            tool_dur_ms = (time.perf_counter() - start_tool_time) * 1000.0
+            metrics.record_tool_execution(tool_id=tool_id, duration_ms=tool_dur_ms, success=True)
+
+            # 7. Verification & Success Path
+            if manifest and manifest.verification_requirement:
+                v_request = VerificationRequest(
+                    task_id=task_id,
+                    logical_effect_id=logical_effect_id,
+                    capability_id=tool_id,
+                    arguments=arguments,
+                    result=result,
+                    target_resource=target_resource,
+                )
+                v_start = time.perf_counter()
+                v_result = await self.verifier_registry.verify(v_request, manifest=manifest)
+                v_dur_ms = (time.perf_counter() - v_start) * 1000.0
+                metrics.record_verification(verified=v_result.verified, duration_ms=v_dur_ms)
+
+                receipt = self.receipt_minter.mint(
+                    task_id=task_id,
+                    logical_effect_id=logical_effect_id,
+                    capability_id=tool_id,
+                    args_hash=canonical_args_hash,
+                    verification_result=v_result,
+                )
+                self._last_receipt = receipt
+                if self.receipt_store:
+                    self.receipt_store.record(receipt)
+
+                if not v_result.verified:
+                    logger.error(
+                        "action_broker_verification_refuted",
+                        logical_effect_id=logical_effect_id,
+                        tool_id=tool_id,
+                        discrepancies=v_result.discrepancies,
+                    )
+                    raise VerificationFailureError(
+                        f"External verification refuted effect '{logical_effect_id}' ({tool_id}): "
+                        + "; ".join(v_result.discrepancies)
+                    )
+
             self.ledger.record_attempt_success(
                 logical_effect_id=logical_effect_id,
                 attempt_id=attempt.attempt_id,
                 result=result,
             )
             breaker.record_success()
+
+            if self.event_bus:
+                try:
+                    from jarvis.core.events.schemas import EventMessage
+
+                    ev = EventMessage(
+                        event_type="action.executed",
+                        payload={
+                            "logical_effect_id": logical_effect_id,
+                            "task_id": str(task_id),
+                            "tool_id": tool_id,
+                            "state": record.state.value,
+                        },
+                        correlation_id=str(task_id),
+                        source="jarvis:broker",
+                    )
+                    await self.event_bus.publish(ev)
+                except Exception as ev_err:
+                    logger.debug("action_broker_event_emit_failed", error=str(ev_err))
 
             # If Saga plan is provided and tool has compensator, register compensating step
             if compensation_plan is not None:
@@ -259,6 +352,10 @@ class ActionBroker:
             return result
 
         except Exception as exc:
+            tool_dur_ms = (time.perf_counter() - start_tool_time) * 1000.0
+            metrics.record_tool_execution(
+                tool_id=tool_id, duration_ms=tool_dur_ms, success=False, error=str(exc)
+            )
             logger.error(
                 "action_broker_execution_failure",
                 logical_effect_id=logical_effect_id,
@@ -343,3 +440,6 @@ class ActionBroker:
             return EffectState.OUTCOME_UNKNOWN
 
         return record.state
+
+    # Ergonomic alias for step-level execution
+    execute_step = execute_action

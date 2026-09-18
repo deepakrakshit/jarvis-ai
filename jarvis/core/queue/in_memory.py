@@ -7,27 +7,18 @@ import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
-from pydantic import BaseModel, Field
-
+from jarvis.core.events.schemas import EventMessage
 from jarvis.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-
-class EventMessage(BaseModel):
-    """Structured event message with causation headers for distributed tracing."""
-
-    event_id: str = Field(default_factory=lambda: str(uuid4()))
-    event_type: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-    correlation_id: str = Field(default_factory=lambda: str(uuid4()))
-    causation_id: str | None = None
-    depth: int = Field(default=0, ge=0)
-    priority: int = Field(default=1, ge=0, le=2)  # 0: Voice/HUD, 1: Normal, 2: Background
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    retry_count: int = Field(default=0, ge=0)
+__all__ = [
+    "EventMessage",
+    "InMemoryEventQueue",
+    "QueueConsumer",
+    "QueueProducer",
+]
 
 
 class QueueProducer(ABC):

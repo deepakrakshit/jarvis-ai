@@ -29,6 +29,7 @@ from jarvis.core.gateway.realtime import (
     RealtimeModelAdapter,
 )
 from jarvis.core.logging import get_logger
+from jarvis.core.serialization import to_json_safe
 
 logger = get_logger(__name__)
 
@@ -63,7 +64,7 @@ class GoogleRealtimeAdapter(RealtimeModelAdapter):
         speech_config = genai_types.SpeechConfig(
             voice_config=genai_types.VoiceConfig(
                 prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(
-                    voice_name=config.voice_name or "Puck"
+                    voice_name=config.voice_name or "Algenib"
                 )
             )
         )
@@ -198,12 +199,34 @@ class GoogleRealtimeAdapter(RealtimeModelAdapter):
             )
             await self._session.send(input=realtime_input, end_of_turn=end_of_turn)
 
+    async def send_image(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> None:
+        """Send raw image or screenshot frame into active realtime session."""
+        if not self._session:
+            raise ModelProviderError("Cannot send image: Live session is not connected.")
+
+        if hasattr(self._session, "send_realtime_input"):
+            image_blob = genai_types.Blob(
+                data=image_bytes,
+                mime_type=mime_type,
+            )
+            await self._session.send_realtime_input(media=image_blob)
+        else:
+            realtime_input = genai_types.LiveClientRealtimeInput(
+                media_chunks=[
+                    genai_types.Blob(
+                        data=image_bytes,
+                        mime_type=mime_type,
+                    )
+                ]
+            )
+            await self._session.send(input=realtime_input)
+
     async def send_tool_response(self, response: LiveToolResponse) -> None:
         """Send verified function response back to the voice model."""
         if not self._session:
             raise ModelProviderError("Cannot send tool response: Live session is not connected.")
 
-        payload = response.response
+        payload = to_json_safe(response.response)
         if not isinstance(payload, dict) or ("output" not in payload and "error" not in payload):
             payload = {"output": payload}
 

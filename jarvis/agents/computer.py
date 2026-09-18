@@ -21,19 +21,35 @@ from jarvis.core.logging import get_logger
 logger = get_logger(__name__)
 
 COMPUTER_SYSTEM_PROMPT = """You are the JARVIS Computer Specialist.
-Your domain covers system diagnostics, current clock time, date verification, OS environment status, CPU/RAM stats, and safety gates for system actions.
+Your domain covers system diagnostics, current clock time, date verification, OS environment status, CPU/RAM stats, desktop application lifecycle (launching, closing, and listing apps), screen perception (screenshots), and GUI input automation (mouse clicks, typing, hotkeys).
 
 Available Tools:
 - "native:clock:get_time": Retrieves point-in-time ISO timestamp, UTC time, local time, and day of week.
   Arguments: {}
 - "native:system:get_stats": Retrieves host operating system, CPU usage %, memory usage, disk usage, and uptime.
   Arguments: {}
+- "native:app:launch": Launches a desktop application or program asynchronously.
+  Arguments: {"app_name": string (e.g. "notepad", "calc", "chrome"), "args": list[str] (optional)}
+- "native:app:close": Closes or terminates running application processes by name or PID.
+  Arguments: {"app_name": string (e.g. "notepad", "calc"), "force": bool (default false)}
+- "native:app:list": Lists active running applications and processes on the system.
+  Arguments: {"filter_name": string (optional), "limit": int (default 50)}
+- "native:screen:capture": Captures the current desktop display frame for visual grounding.
+  Arguments: {"output_format": "base64" | "bytes" (default "base64"), "max_dimension": int (default 1280)}
+- "native:screen:click": Injects a mouse click at specific coordinates.
+  Arguments: {"x": float | int, "y": float | int, "button": "left" | "right" | "middle" (default "left"), "clicks": int (default 1), "normalized": bool (default false)}
+- "native:screen:type": Injects text or keystrokes into the active focused window.
+  Arguments: {"text": string, "press_enter": bool (default false)}
+- "native:screen:hotkey": Triggers a keyboard hotkey combination.
+  Arguments: {"keys": list[str] (e.g. ["ctrl", "s"], ["alt", "tab"])}
+- "native:screen:get_window": Inspects the active foreground desktop window.
+  Arguments: {}
 
 Analyze the user's message.
 You MUST output ONLY a valid JSON object matching this schema:
 {
   "action": "tool_call" | "clarify" | "direct_answer",
-  "tool_id": "native:clock:get_time" | "native:system:get_stats" | null,
+  "tool_id": "native:clock:get_time" | "native:system:get_stats" | "native:app:launch" | "native:app:close" | "native:app:list" | "native:screen:capture" | "native:screen:click" | "native:screen:type" | "native:screen:hotkey" | "native:screen:get_window" | null,
   "arguments": dict,
   "intent": string,
   "clarification_question": string | null,
@@ -44,23 +60,38 @@ You MUST output ONLY a valid JSON object matching this schema:
 Rules:
 1. If the user asks for the current time, date, timestamp, clock, or what day it is, set action='tool_call', tool_id='native:clock:get_time', arguments={}, target_resource='system_clock'.
 2. If the user asks for system stats, performance, CPU, memory, RAM, disk, host hardware, or system health metrics, set action='tool_call', tool_id='native:system:get_stats', arguments={}, target_resource='host_system'.
-3. If the user asks to reboot, shutdown, kill processes, or execute dangerous OS operations, set action='clarify' and ask for explicit user confirmation before proceeding.
-4. If it is a query about system architecture or environment, set action='direct_answer' and explain the current status.
+3. If the user asks to open, launch, or start an application/program (e.g. "open notepad", "launch calculator", "start chrome"), set action='tool_call', tool_id='native:app:launch', arguments={"app_name": "<name>"}, target_resource='host_system'.
+4. If the user asks to close, exit, terminate, quit, or kill an application/program (e.g. "close notepad", "quit spotify", "kill process 1234"), set action='tool_call', tool_id='native:app:close', arguments={"app_name": "<name>"}, target_resource='host_system'.
+5. If the user asks to list running applications, active tasks, or check what apps are open, set action='tool_call', tool_id='native:app:list', arguments={}, target_resource='host_system'.
+6. If the user asks to take a screenshot, capture the screen, or see what is on display, set action='tool_call', tool_id='native:screen:capture', arguments={}, target_resource='desktop_screen'.
+7. If the user asks to click at coordinates, set action='tool_call', tool_id='native:screen:click', arguments={"x": <x>, "y": <y>}, target_resource='desktop_screen'.
+8. If the user asks to type text or press keys, set action='tool_call', tool_id='native:screen:type' or 'native:screen:hotkey', arguments=..., target_resource='desktop_screen'.
+9. If the user asks what window is active or focused, set action='tool_call', tool_id='native:screen:get_window', arguments={}, target_resource='desktop_screen'.
+10. If the user asks to reboot, shutdown, or execute dangerous destructive OS operations, set action='clarify' and ask for explicit user confirmation before proceeding.
+11. If it is a query about system architecture or environment, set action='direct_answer' and explain the current status.
 """
 
 
 class ComputerSpecialist(BaseSpecialist):
-    """Specialist for OS control, system inspection, and runtime environment queries."""
+    """Specialist for OS control, desktop GUI automation, and runtime environment management."""
 
     def __init__(self, model_gateway: ModelGateway | None = None) -> None:
         super().__init__(
             manifest=SpecialistManifest(
                 name="computer",
                 role=SpecialistRole.COMPUTER,
-                role_description="OS automation, clock queries, and system status observation.",
+                role_description="OS automation, application lifecycle, GUI screen perception, and desktop control.",
                 allowed_tool_scopes=[
                     "native:clock:get_time",
                     "native:system:get_stats",
+                    "native:app:launch",
+                    "native:app:close",
+                    "native:app:list",
+                    "native:screen:capture",
+                    "native:screen:click",
+                    "native:screen:type",
+                    "native:screen:hotkey",
+                    "native:screen:get_window",
                     "native:shell:execute",
                     "os.window",
                 ],
@@ -117,7 +148,12 @@ class ComputerSpecialist(BaseSpecialist):
                 if action == "tool_call" and data.get("tool_id"):
                     tool_id = str(data["tool_id"])
                     args = data.get("arguments") or {}
-                    target = "system_clock" if "clock" in tool_id else "host_system"
+                    if "clock" in tool_id:
+                        target = "system_clock"
+                    elif "screen" in tool_id or "window" in tool_id:
+                        target = "desktop_screen"
+                    else:
+                        target = "host_system"
                     return SpecialistProposal(
                         specialist_role=self.role,
                         intent=str(data.get("intent", f"Execute {tool_id}")),
@@ -178,6 +214,103 @@ class ComputerSpecialist(BaseSpecialist):
                 target_resource="host_system",
             )
 
+        # Check for screen capture / screenshot
+        if any(
+            w in lower
+            for w in (
+                "screenshot",
+                "capture screen",
+                "take screenshot",
+                "screen capture",
+                "see my screen",
+                "what's on my screen",
+            )
+        ):
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent="Capture desktop screen frame",
+                tool_id="native:screen:capture",
+                arguments={"output_format": "base64"},
+                target_resource="desktop_screen",
+            )
+
+        # Check for active window inspection
+        if any(
+            w in lower
+            for w in ("active window", "current window", "focused window", "front window")
+        ):
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent="Inspect active foreground window",
+                tool_id="native:screen:get_window",
+                arguments={},
+                target_resource="desktop_screen",
+            )
+
+        # Check for listing running apps
+        if any(
+            w in lower
+            for w in (
+                "list apps",
+                "running apps",
+                "running processes",
+                "active apps",
+                "what apps are running",
+                "what apps are open",
+                "show processes",
+            )
+        ):
+            return SpecialistProposal(
+                specialist_role=self.role,
+                intent="List active running applications",
+                tool_id="native:app:list",
+                arguments={},
+                target_resource="host_system",
+            )
+
+        # Check for closing an app
+        for prefix in (
+            "close app ",
+            "close ",
+            "quit app ",
+            "quit ",
+            "terminate ",
+            "kill app ",
+            "kill process ",
+            "stop app ",
+        ):
+            if lower.startswith(prefix):
+                target = msg[len(prefix) :].strip().rstrip(".!?")
+                if target:
+                    return SpecialistProposal(
+                        specialist_role=self.role,
+                        intent=f"Close application '{target}'",
+                        tool_id="native:app:close",
+                        arguments={"app_name": target},
+                        target_resource="host_system",
+                    )
+
+        # Check for opening an app
+        for prefix in (
+            "open app ",
+            "open ",
+            "launch app ",
+            "launch ",
+            "start app ",
+            "start ",
+            "run app ",
+        ):
+            if lower.startswith(prefix):
+                target = msg[len(prefix) :].strip().rstrip(".!?")
+                if target and not target.startswith(("http://", "https://")):
+                    return SpecialistProposal(
+                        specialist_role=self.role,
+                        intent=f"Launch application '{target}'",
+                        tool_id="native:app:launch",
+                        arguments={"app_name": target},
+                        target_resource="host_system",
+                    )
+
         # Check for reboot / shutdown
         if any(w in lower for w in ("restart", "reboot", "shutdown", "power off")):
             return SpecialistProposal(
@@ -190,7 +323,7 @@ class ComputerSpecialist(BaseSpecialist):
         return SpecialistProposal(
             specialist_role=self.role,
             intent="General computer query",
-            direct_response="I am the Computer Specialist. I can check current time, inspect CPU/RAM/disk metrics, and safely observe system status.",
+            direct_response="I am the Computer Specialist. I can check current time, inspect CPU/RAM/disk metrics, manage desktop applications, and perceive the screen.",
         )
 
     async def synthesize(
@@ -199,7 +332,7 @@ class ComputerSpecialist(BaseSpecialist):
         tool_result: Any,
         user_message: str,
     ) -> str:
-        """Synthesize clock or system observation into human-readable response."""
+        """Synthesize clock, application lifecycle, or screen observation into human-readable response."""
         if isinstance(tool_result, dict):
             if proposal.tool_id == "native:clock:get_time":
                 self.scratchpad.add_note(f"Checked clock: {tool_result.get('local_iso')}")
@@ -207,6 +340,12 @@ class ComputerSpecialist(BaseSpecialist):
                 self.scratchpad.add_note(
                     f"Host status: CPU {tool_result.get('cpu_percent')}% | RAM {tool_result.get('memory_percent')}%"
                 )
+            elif proposal.tool_id == "native:app:launch":
+                self.scratchpad.add_note(
+                    f"Launched app: {tool_result.get('app_name')} (PID {tool_result.get('pid')})"
+                )
+            elif proposal.tool_id == "native:app:close":
+                self.scratchpad.add_note(f"Closed app: {tool_result.get('app_name')}")
 
         if self.gateway:
             try:
@@ -217,7 +356,7 @@ class ComputerSpecialist(BaseSpecialist):
                 )
                 req = GenerationRequest(
                     model_id="gemini-3.5-flash-lite",
-                    system_instruction="You are the JARVIS Computer Specialist. Present system clock and hardware results crisply.",
+                    system_instruction="You are the JARVIS Computer Specialist. Present system, application, and screen results crisply.",
                     messages=[ChatMessage(role="user", content=prompt)],
                     temperature=0.1,
                     max_tokens=1000,
@@ -227,6 +366,12 @@ class ComputerSpecialist(BaseSpecialist):
                     return res.content.strip()
             except Exception as exc:
                 logger.warning("computer_specialist_synth_fallback", error=str(exc))
+
+        if isinstance(tool_result, str):
+            return tool_result
+
+        if not isinstance(tool_result, dict):
+            return str(tool_result)
 
         if proposal.tool_id == "native:clock:get_time":
             local = tool_result.get("local_iso", "")
@@ -255,6 +400,56 @@ class ComputerSpecialist(BaseSpecialist):
                 f"- **Uptime**: ~{uptime_hrs} hours ({uptime}s)"
             )
 
+        if proposal.tool_id == "native:app:launch":
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Application Launched**: {msg}"
+
+        if proposal.tool_id == "native:app:close":
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Application Closed**: {msg}"
+
+        if proposal.tool_id == "native:app:list" and isinstance(tool_result, dict):
+            count = tool_result.get("count", 0)
+            procs = tool_result.get("processes", [])[:15]
+            lines = [f"**Active Applications ({count} detected)**:\n"]
+            for proc in procs:
+                lines.append(
+                    f"- **{proc.get('name')}** (PID: {proc.get('pid')}, Memory: {proc.get('memory_percent')}%)"
+                )
+            return "\n".join(lines)
+
+        if proposal.tool_id == "native:screen:capture":
+            if isinstance(tool_result, dict) and tool_result.get("status") == "success":
+                w = tool_result.get("width")
+                h = tool_result.get("height")
+                b = tool_result.get("byte_size")
+                return f"**Desktop Screen Captured**: {w}x{h} pixels ({b} bytes, JPEG format)."
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Screen Capture**: {msg}"
+
+        if proposal.tool_id == "native:screen:click":
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Mouse Click Executed**: {msg}"
+
+        if proposal.tool_id == "native:screen:type":
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Keyboard Input Executed**: {msg}"
+
+        if proposal.tool_id == "native:screen:hotkey":
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Hotkey Triggered**: {msg}"
+
+        if proposal.tool_id == "native:screen:get_window":
+            if isinstance(tool_result, dict) and tool_result.get("status") == "success":
+                t = tool_result.get("title")
+                w = tool_result.get("width")
+                h = tool_result.get("height")
+                left_pos = tool_result.get("left")
+                top_pos = tool_result.get("top")
+                return f"**Active Window**: '{t}' ({w}x{h} at position ({left_pos}, {top_pos}))"
+            msg = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
+            return f"**Window Inspection**: {msg}"
+
         return str(tool_result)
 
     async def health_probe(self) -> HealthProbeResult:
@@ -262,5 +457,18 @@ class ComputerSpecialist(BaseSpecialist):
         return HealthProbeResult(
             component_id="specialist:computer",
             healthy=True,
-            details={"capabilities": ["native:clock:get_time", "native:system:get_stats"]},
+            details={
+                "capabilities": [
+                    "native:clock:get_time",
+                    "native:system:get_stats",
+                    "native:app:launch",
+                    "native:app:close",
+                    "native:app:list",
+                    "native:screen:capture",
+                    "native:screen:click",
+                    "native:screen:type",
+                    "native:screen:hotkey",
+                    "native:screen:get_window",
+                ]
+            },
         )

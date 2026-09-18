@@ -174,6 +174,88 @@ class HITLPipeline:
         )
         return auth
 
+    def find_active_authorization(
+        self,
+        tool_id: str,
+        canonical_arguments_hash: str,
+        target_resource: str | None = None,
+        at_time: datetime | None = None,
+    ) -> EffectAuthorization | None:
+        """Find an unexpired, unconsumed EffectAuthorization matching tool and argument hash."""
+        now = at_time or datetime.now(UTC)
+        candidates: list[EffectAuthorization] = []
+        for auth in self._authorizations.values():
+            if auth.tool_id != tool_id:
+                continue
+            if auth.canonical_arguments_hash != canonical_arguments_hash:
+                continue
+            if target_resource is not None and auth.target_resource != target_resource:
+                continue
+            if auth.is_valid(now):
+                candidates.append(auth)
+
+        if not candidates:
+            return None
+        candidates.reverse()
+        candidates.sort(key=lambda a: a.approval_timestamp, reverse=True)
+        return candidates[0]
+
+    def find_latest_pending_request(
+        self,
+        tool_id: str | None = None,
+        canonical_arguments_hash: str | None = None,
+        target_resource: str | None = None,
+        at_time: datetime | None = None,
+    ) -> ApprovalRequest | None:
+        """Find the most recent valid pending ApprovalRequest."""
+        now = at_time or datetime.now(UTC)
+        candidates: list[ApprovalRequest] = []
+        for req in self._pending_requests.values():
+            if req.status != ApprovalStatus.PENDING:
+                continue
+            if req.is_expired(now):
+                continue
+            if tool_id is not None and req.tool_id != tool_id:
+                continue
+            if (
+                canonical_arguments_hash is not None
+                and req.canonical_arguments_hash != canonical_arguments_hash
+            ):
+                continue
+            if target_resource is not None and req.target_resource != target_resource:
+                continue
+            candidates.append(req)
+
+        if not candidates:
+            return None
+        candidates.reverse()
+        candidates.sort(key=lambda r: r.created_at, reverse=True)
+        return candidates[0]
+
+    def resolve_latest_pending(
+        self,
+        approved: bool,
+        user_id: str = "human_operator",
+        session_id: UUID | None = None,
+        tool_id: str | None = None,
+        canonical_arguments_hash: str | None = None,
+        agent_id: str = "core_agent",
+    ) -> EffectAuthorization | None:
+        """Resolve the most recent valid pending ApprovalRequest."""
+        req = self.find_latest_pending_request(
+            tool_id=tool_id,
+            canonical_arguments_hash=canonical_arguments_hash,
+        )
+        if not req:
+            return None
+        return self.resolve_approval(
+            request_id=req.request_id,
+            approved=approved,
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+        )
+
     def revalidate_and_commit(
         self,
         authorization: EffectAuthorization,
