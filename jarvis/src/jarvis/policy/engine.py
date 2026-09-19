@@ -6,7 +6,7 @@ resource targets, risk tiers, and operator approvals.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Set
 
 from jarvis.config import settings
 from jarvis.contracts.action import ActionRequest, RiskTier
@@ -32,10 +32,12 @@ class PolicyEngine:
         workspace_dir: Optional[Path] = None,
         approvals: Optional[ApprovalManager] = None,
         database: Optional[DatabaseEngine] = None,
+        allowed_capabilities: Optional[Set[str]] = None,
     ) -> None:
         self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
         self.approvals = approvals or approval_manager
         self.db = database or db
+        self.allowed_capabilities = allowed_capabilities
 
     def evaluate(self, request: ActionRequest) -> PolicyDecision:
         """Evaluate an ActionRequest and return an authoritative PolicyDecision."""
@@ -47,6 +49,18 @@ class PolicyEngine:
                 action_id=request.action_id,
                 verdict=PolicyVerdict.DENY,
                 reason=f"Unknown or unauthorized capability: '{capability}'",
+                capability=capability,
+                risk_tier=RiskTier.CRITICAL.value,
+            )
+            self._log_decision(request, decision)
+            return decision
+
+        # Scoped capability boundary (e.g. sub-agent least privilege firewall)
+        if self.allowed_capabilities is not None and capability not in self.allowed_capabilities:
+            decision = PolicyDecision(
+                action_id=request.action_id,
+                verdict=PolicyVerdict.DENY,
+                reason=f"Capability '{capability}' exceeds scoped execution permissions",
                 capability=capability,
                 risk_tier=RiskTier.CRITICAL.value,
             )
