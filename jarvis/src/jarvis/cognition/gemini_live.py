@@ -17,6 +17,7 @@ from google.genai import types
 
 from jarvis.actions.broker import ActionBroker, action_broker
 from jarvis.cognition.model_router import TaskClass, model_router
+from jarvis.cognition.web_search import search_web
 from jarvis.config import settings
 from jarvis.contracts.action import ActionRequest, ExecutionTarget
 from jarvis.contracts.memory import MemoryRecord, MemoryType
@@ -191,6 +192,20 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             "required": ["query"],
         },
     },
+    {
+        "name": "web_search",
+        "description": "Search the live web for current real-time information, news, weather, documentation, or facts.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "The search query keywords to search on the live web.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
 ]
 
 TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
@@ -231,11 +246,16 @@ class GeminiLiveBridge:
         self._active_session: Any = None
         self._receive_task: Optional[asyncio.Task[None]] = None
         self._stop_event = asyncio.Event()
+        self.in_flight_tool_call: bool = False
 
         # Callbacks for received events
         self.audio_chunk_handler: Optional[Callable[[bytes], Coroutine[Any, Any, None]]] = None
         self.text_chunk_handler: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None
         self.turn_complete_handler: Optional[Callable[[], Coroutine[Any, Any, None]]] = None
+        self.input_transcription_handler: Optional[
+            Callable[[str, bool], Coroutine[Any, Any, None]]
+        ] = None
+        self.interrupted_handler: Optional[Callable[[], Coroutine[Any, Any, None]]] = None
         self.tool_call_handler: Optional[
             Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
         ] = None
@@ -261,7 +281,9 @@ class GeminiLiveBridge:
         system_instruction = (
             "You are JARVIS (version 3.0.0), the personal AI operating system and master orchestrator. "
             "You are polite, razor-sharp, concise, and proactive. "
-            "You control the host system and all specialist worker models. "
+            "You control the host system, the live web, and all specialist worker models. "
+            "When the operator requests real-time information, latest news, weather, facts, or web searches, "
+            "use your web_search tool to retrieve up-to-date information before answering. "
             "When the operator requests host actions (such as opening apps like Chrome, Notepad, Calculator, Explorer, or running commands), "
             "immediately execute using shell_execute (e.g. 'start chrome') or native tools without asking for approvals or tickets. "
             "When the operator requests deep coding or heavy reasoning, assign the task to specialist models "
@@ -272,6 +294,7 @@ class GeminiLiveBridge:
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
             output_audio_transcription=types.AudioTranscriptionConfig(),
+            input_audio_transcription=types.AudioTranscriptionConfig(),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice_name)
@@ -298,6 +321,10 @@ class GeminiLiveBridge:
         windows_node.register_capabilities()
         browser_node.register_capabilities()
 
+        # In interactive live sessions, bypass approval ticket pauses so host operations execute directly
+        if hasattr(self.broker, "policy"):
+            self.broker.policy.require_approvals = False
+
         self._client = genai.Client(api_key=self.api_key)
         config = self._build_config()
 
@@ -318,6 +345,9 @@ class GeminiLiveBridge:
                 await self._receive_task
             except asyncio.CancelledError:
                 pass
+
+        if hasattr(self.broker, "policy"):
+            self.broker.policy.require_approvals = settings.REQUIRE_APPROVALS
 
         if self._session_ctx:
             try:
@@ -346,15 +376,23 @@ class GeminiLiveBridge:
 
     async def send_audio_chunk(self, pcm_bytes: bytes) -> None:
         """Send a chunk of PCM audio input to the active Live session."""
-        if self.state != LiveSessionState.ACTIVE or not self._active_session:
-            raise RuntimeError(f"Cannot send audio: session is in {self.state.value} state")
+        if (
+            self._stop_event.is_set()
+            or self.state != LiveSessionState.ACTIVE
+            or not self._active_session
+        ):
+            return
 
-        await self._active_session.send_realtime_input(
-            audio=types.Blob(
-                data=pcm_bytes,
-                mime_type="audio/pcm;rate=16000",
+        try:
+            await self._active_session.send_realtime_input(
+                audio=types.Blob(
+                    data=pcm_bytes,
+                    mime_type="audio/pcm;rate=16000",
+                )
             )
-        )
+        except Exception as err:
+            if not self._stop_event.is_set():
+                logger.debug(f"Audio chunk dispatch error: {err}")
 
     async def send_image(
         self,
@@ -424,26 +462,53 @@ class GeminiLiveBridge:
 
                         # 2. Intercept and dispatch tool calls
                         if getattr(response, "tool_call", None) and response.tool_call:
+                            self.in_flight_tool_call = True
                             await self._handle_tool_call(response.tool_call)
 
-                        # 3. Process server output content (audio/text)
+                        # 3. Process server output content (audio/text/transcription/interruption)
                         if getattr(response, "server_content", None) and response.server_content:
                             sc = response.server_content
+
+                            # Handle server-detected interruption (barge-in)
+                            if getattr(sc, "interrupted", False):
+                                logger.info("Live session: operator barge-in detected by server")
+                                self.in_flight_tool_call = False
+                                while not self.audio_output_queue.empty():
+                                    try:
+                                        self.audio_output_queue.get_nowait()
+                                    except Exception:
+                                        break
+                                if self.interrupted_handler:
+                                    await self.interrupted_handler()
+
+                            # Handle operator input audio transcription
+                            if (
+                                getattr(sc, "input_transcription", None)
+                                and sc.input_transcription.text
+                            ):
+                                in_text = sc.input_transcription.text
+                                in_finished = getattr(sc.input_transcription, "finished", False)
+                                if self.input_transcription_handler:
+                                    await self.input_transcription_handler(in_text, in_finished)
+
                             if sc.model_turn:
                                 for part in sc.model_turn.parts:
                                     if part.inline_data and part.inline_data.data:
+                                        self.in_flight_tool_call = False
                                         await self.audio_output_queue.put(part.inline_data.data)
                                         if self.audio_chunk_handler:
                                             await self.audio_chunk_handler(part.inline_data.data)
                                     if part.text:
+                                        self.in_flight_tool_call = False
                                         if self.text_chunk_handler:
                                             await self.text_chunk_handler(part.text)
 
                             if sc.output_transcription and sc.output_transcription.text:
+                                self.in_flight_tool_call = False
                                 if self.text_chunk_handler:
                                     await self.text_chunk_handler(sc.output_transcription.text)
 
-                            if sc.turn_complete:
+                            if sc.turn_complete and not self.in_flight_tool_call:
                                 if self.turn_complete_handler:
                                     await self.turn_complete_handler()
                                 break
@@ -583,7 +648,26 @@ class GeminiLiveBridge:
                 )
                 continue
 
-            # 4. Host and Browser Action Execution through ActionBroker
+            # 4. Web search for real-time web lookups
+            if func_name == "web_search":
+                query = str(args.get("query", "")).strip()
+                logger.info(f"Live web_search requested for query: '{query}'")
+                search_results = await search_web(query=query)
+                function_responses.append(
+                    types.FunctionResponse(
+                        id=call_id,
+                        name=func_name,
+                        response={
+                            "status": "success",
+                            "query": query,
+                            "count": len(search_results),
+                            "results": search_results,
+                        },
+                    )
+                )
+                continue
+
+            # 5. Host and Browser Action Execution through ActionBroker
             capability = TOOL_TO_CAPABILITY_MAP.get(func_name)
             if not capability:
                 error_msg = f"Unknown tool function: {func_name}"

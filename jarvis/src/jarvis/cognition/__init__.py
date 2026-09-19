@@ -7,6 +7,7 @@ from jarvis.cognition.gemini_live import GeminiLiveBridge, LiveSessionState
 from jarvis.cognition.model_router import ModelRouter, TaskClass, model_router
 from jarvis.cognition.providers import BaseModelProvider, GoogleGenAIProvider, GroqProvider
 from jarvis.cognition.quota_manager import ModelHealth, QuotaManager, quota_manager
+from jarvis.cognition.web_search import WebSearchClient, search_web
 
 __all__ = [
     "GeminiLiveBridge",
@@ -20,4 +21,6 @@ __all__ = [
     "BaseModelProvider",
     "GoogleGenAIProvider",
     "GroqProvider",
+    "WebSearchClient",
+    "search_web",
 ]

@@ -15,11 +15,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+
 from jarvis.acp import (
     AcpSessionSpec,
     JarvisAgentBroker,
 )
-from jarvis.cognition.gemini_live import GeminiLiveBridge
+from jarvis.cognition.gemini_live import GeminiLiveBridge, LiveSessionState
 from jarvis.config import settings
 from jarvis.contracts.task import TaskState, TaskType
 from jarvis.core.control_plane import ControlPlane, control_plane
@@ -30,7 +34,14 @@ from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger, set_console_logging
-from jarvis.voice import PcmStreamPlayer, voice_synthesizer
+from jarvis.voice import (
+    MicrophoneCapture,
+    PcmStreamPlayer,
+    get_default_input_device,
+    voice_synthesizer,
+)
+
+console = Console(force_terminal=True, highlight=False)
 
 
 def ensure_nodes_registered() -> None:
@@ -260,9 +271,21 @@ async def handle_chat(
 
             set_console_logging(False)
             bridge = GeminiLiveBridge(session_id=session_id)
-            pcm_player = PcmStreamPlayer(samplerate=24000)
+            mic = MicrophoneCapture(
+                samplerate=settings.AUDIO_INPUT_SAMPLE_RATE,
+                channels=settings.AUDIO_INPUT_CHANNELS,
+                chunk_ms=settings.AUDIO_INPUT_CHUNK_MS,
+                device_index=settings.AUDIO_INPUT_DEVICE_INDEX,
+                speech_threshold=settings.AUDIO_VAD_ENERGY_THRESHOLD,
+            )
+            pcm_player = PcmStreamPlayer(
+                samplerate=settings.AUDIO_OUTPUT_SAMPLE_RATE,
+                on_playback_state_change=lambda is_playing: mic.set_duplex_suppression(
+                    is_playing and settings.AUDIO_DUPLEX_SUPPRESSION
+                ),
+            )
             audio_chunk_count = 0
-            text_chunk_count = 0
+            turn_text_chunks: List[str] = []
             turn_finished = asyncio.Event()
 
             async def on_audio(chunk: bytes) -> None:
@@ -271,90 +294,195 @@ async def handle_chat(
                 pcm_player.play_chunk(chunk)
 
             async def on_tool_call(name: str, args: Dict[str, Any]) -> None:
-                if name == "shell_execute":
+                if name == "web_search":
+                    query = args.get("query", "")
+                    console.print(f"\n[bold cyan]>> [Searching web: '{query}']...[/bold cyan]")
+                elif name == "shell_execute":
                     cmd = args.get("command", "")
-                    sys.stdout.write(f"\n⚡ [Running: {cmd}]\n")
+                    console.print(f"\n[bold cyan]>> [Running: {cmd}][/bold cyan]")
                 elif name == "delegate_task":
                     target = args.get("target_model", "Specialist Model")
-                    sys.stdout.write(f"\n⚡ [Delegating to {target}...]\n")
+                    console.print(f"\n[bold cyan]>> [Delegating to {target}...][/bold cyan]")
                 elif name == "browser_navigate":
                     url = args.get("url", "")
-                    sys.stdout.write(f"\n⚡ [Navigating Browser: {url}]\n")
+                    console.print(f"\n[bold cyan]>> [Navigating Browser: {url}][/bold cyan]")
                 elif name == "system_info":
-                    sys.stdout.write("\n⚡ [Checking system hardware and OS status...]\n")
+                    console.print(
+                        "\n[bold cyan]>> [Checking system hardware and OS status...][/bold cyan]"
+                    )
                 elif name == "system_screenshot":
-                    sys.stdout.write("\n⚡ [Capturing primary desktop screenshot...]\n")
+                    console.print(
+                        "\n[bold cyan]>> [Capturing primary desktop screenshot...][/bold cyan]"
+                    )
                 elif name == "system_volume_set":
                     level = args.get("level", "")
-                    sys.stdout.write(f"\n⚡ [Setting volume to {level}%]\n")
+                    console.print(f"\n[bold cyan]>> [Setting volume to {level}%][/bold cyan]")
                 else:
-                    sys.stdout.write(f"\n⚡ [Executing: {name}]\n")
-                sys.stdout.flush()
+                    console.print(f"\n[bold cyan]>> [Executing: {name}][/bold cyan]")
 
             async def on_text(chunk: str) -> None:
-                nonlocal text_chunk_count
-                if text_chunk_count == 0:
-                    sys.stdout.write("\nJARVIS > ")
-                text_chunk_count += 1
-                sys.stdout.write(chunk)
-                sys.stdout.flush()
+                turn_text_chunks.append(chunk)
 
             async def on_turn_complete() -> None:
-                if text_chunk_count > 0:
-                    sys.stdout.write("\n\n")
-                    sys.stdout.flush()
+                full_text = "".join(turn_text_chunks).strip()
+                if full_text:
+                    console.print(
+                        Panel(
+                            full_text,
+                            title="[bold cyan]JARVIS[/bold cyan]",
+                            border_style="bright_blue",
+                            box=box.ROUNDED,
+                            padding=(0, 2),
+                        )
+                    )
+                    console.print("")
+                elif audio_chunk_count > 0:
+                    console.print(
+                        Panel(
+                            f"[italic cyan]Spoken voice response completed ({audio_chunk_count} audio chunks)[/italic cyan]",
+                            title="[bold cyan]JARVIS[/bold cyan]",
+                            border_style="bright_blue",
+                            box=box.ROUNDED,
+                            padding=(0, 2),
+                        )
+                    )
+                    console.print("")
+                turn_text_chunks.clear()
                 turn_finished.set()
+
+            async def on_interrupted() -> None:
+                pcm_player.interrupt()
+                console.print(
+                    "\n[bold yellow]>> [Operator Interrupted - Listening...][/bold yellow]\n"
+                )
+
+            async def on_input_transcription(text: str, finished: bool) -> None:
+                if text:
+                    console.print(
+                        f"\r[bold green]Operator (Voice) > [/bold green][green]{text}[/green]"
+                    )
 
             bridge.audio_chunk_handler = on_audio
             bridge.text_chunk_handler = on_text
             bridge.turn_complete_handler = on_turn_complete
             bridge.tool_call_handler = on_tool_call
+            bridge.interrupted_handler = on_interrupted
+            bridge.input_transcription_handler = on_input_transcription
 
-            print("================================================================")
-            print("             JARVIS OPERATING SYSTEM (GEMINI LIVE)")
-            print("================================================================")
-            print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name} | Approvals: OFF")
-            print(" Native Tools: Windows Node (Native) + Browser Node (Autonomous)")
-            print(" Multi-Modal: Voice (Speakers) + Text Stream + Vision (/image <path>)")
-            print(" Specialist Delegation: GPT-OSS 120B & Qwen 3.8 27B")
-            print(" Type 'exit' or 'quit' to terminate.")
-            print("================================================================\n")
+            # Microphone capture streaming task
+            mic_task: Optional[asyncio.Task[None]] = None
+            stop_mic_event = asyncio.Event()
+
+            async def mic_streaming_loop() -> None:
+                while not stop_mic_event.is_set():
+                    try:
+                        chunk = await mic.read_chunk()
+                        if chunk and bridge.state == LiveSessionState.ACTIVE:
+                            await bridge.send_audio_chunk(chunk)
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as err:
+                        logger.debug(f"Microphone streaming loop error: {err}")
+                        await asyncio.sleep(0.05)
+
+            default_mic = get_default_input_device()
+            mic_label = (
+                f"[green]{default_mic.get('name', 'Default Microphone')}[/green] [dim]({settings.AUDIO_INPUT_SAMPLE_RATE}Hz mono)[/dim]"
+                if default_mic
+                else "[yellow]No microphone detected[/yellow]"
+            )
+
+            live_header = (
+                f"[bold white]Session:[/bold white] [cyan]{bridge.session_id}[/cyan] | "
+                f"[bold white]Voice:[/bold white] [cyan]{bridge.voice_name}[/cyan] | "
+                f"[bold white]Approvals:[/bold white] [green]BYPASSED (LIVE)[/green]\n"
+                f"[bold white]Core Model:[/bold white] [cyan]Gemini 3.8 Live Multimodal (Audio/Text/Vision)[/cyan]\n"
+                f"[bold white]Microphone:[/bold white] {mic_label}\n"
+                f"[bold white]Capabilities:[/bold white] [cyan]Live Web Search + Windows Native + Browser Automation[/cyan]\n"
+                f"[bold white]Delegation:[/bold white] [cyan]GPT-OSS 120B & Qwen 3.8 27B Specialist Models[/cyan]\n"
+                f"[bold white]Input Modes:[/bold white] [cyan]Speak into Mic (Realtime VAD) OR Type in Console[/cyan]\n"
+                f"[bold white]Commands:[/bold white] [dim]Type 'exit' to quit | /image <path> for vision inputs[/dim]"
+            )
+            console.print(
+                Panel(
+                    live_header,
+                    title="[bold cyan]JARVIS OPERATING SYSTEM (GEMINI LIVE)[/bold cyan]",
+                    border_style="bright_blue",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
+            )
+            console.print("")
 
             await bridge.connect()
+
+            mic_active = False
+            try:
+                mic.start()
+                mic_task = asyncio.create_task(mic_streaming_loop())
+                mic_active = True
+            except Exception as mic_err:
+                console.print(
+                    f"[bold yellow]Notice: Microphone unavailable: {mic_err}[/bold yellow]\n"
+                )
+
             try:
                 if message:
-                    print(f"Operator > {message}")
+                    console.print(f"[bold green]Operator > [/bold green][green]{message}[/green]\n")
                     turn_finished.clear()
                     audio_chunk_count = 0
-                    text_chunk_count = 0
+                    turn_text_chunks.clear()
                     await bridge.send_text(message)
                     try:
-                        await asyncio.wait_for(turn_finished.wait(), timeout=20.0)
+                        await asyncio.wait_for(
+                            turn_finished.wait(), timeout=settings.DEFAULT_TIMEOUT_SECONDS
+                        )
                     except asyncio.TimeoutError:
                         pass
-                    if text_chunk_count == 0 and audio_chunk_count > 0:
-                        print(f"JARVIS > ({audio_chunk_count} voice chunks)\n")
                     return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
 
                 while True:
                     try:
-                        user_input = await asyncio.to_thread(input, "Operator > ")
-                        user_input = user_input.strip()
+                        sys.stdout.write("\033[1;32mOperator > \033[32m")
+                        sys.stdout.flush()
+                        user_input = await asyncio.to_thread(input)
                     except (EOFError, KeyboardInterrupt):
-                        print("\nJARVIS > Concluding live streaming session.")
+                        console.print(
+                            Panel(
+                                "Concluding live streaming session. Standing by, Operator.",
+                                title="[bold cyan]JARVIS[/bold cyan]",
+                                border_style="bright_blue",
+                                box=box.ROUNDED,
+                                padding=(0, 2),
+                            )
+                        )
                         break
+                    finally:
+                        sys.stdout.write("\033[0m")
+                        sys.stdout.flush()
 
+                    user_input = user_input.strip()
                     if not user_input:
                         continue
                     if user_input.lower() in ("exit", "quit", "q"):
-                        print("\nJARVIS > Terminating live stream. Standing by.\n")
+                        console.print(
+                            Panel(
+                                "Terminating live stream. Standing by, Operator.",
+                                title="[bold cyan]JARVIS[/bold cyan]",
+                                border_style="bright_blue",
+                                box=box.ROUNDED,
+                                padding=(0, 2),
+                            )
+                        )
                         break
 
                     # Multimodal Image Input support: /image <path> [prompt]
                     if user_input.startswith("/image ") or user_input.startswith("/img "):
                         parts = user_input.split(maxsplit=2)
                         if len(parts) < 2:
-                            print("Usage: /image <file_path> [optional prompt]\n")
+                            console.print(
+                                "[yellow]Usage: /image <file_path> [optional prompt][/yellow]\n"
+                            )
                             continue
                         img_path_str = parts[1]
                         prompt_str = (
@@ -364,37 +492,54 @@ async def handle_chat(
                         )
                         img_path = Path(img_path_str)
                         if not img_path.exists():
-                            print(f"Error: Image file '{img_path_str}' not found.\n")
+                            console.print(
+                                f"[bold red]Error: Image file '{img_path_str}' not found.[/bold red]\n"
+                            )
                             continue
                         mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
                         img_bytes = img_path.read_bytes()
-                        print(f"\n[Uploading {img_path.name} ({len(img_bytes)} bytes)...]")
+                        console.print(
+                            f"\n[bold cyan][Uploading {img_path.name} ({len(img_bytes)} bytes)...][/bold cyan]\n"
+                        )
                         turn_finished.clear()
                         audio_chunk_count = 0
-                        text_chunk_count = 0
+                        turn_text_chunks.clear()
                         await bridge.send_image(
                             image_bytes=img_bytes, mime_type=mime, prompt=prompt_str
                         )
                         try:
-                            await asyncio.wait_for(turn_finished.wait(), timeout=30.0)
+                            await asyncio.wait_for(
+                                turn_finished.wait(), timeout=settings.DEFAULT_TIMEOUT_SECONDS
+                            )
                         except asyncio.TimeoutError:
                             pass
                         continue
 
                     turn_finished.clear()
                     audio_chunk_count = 0
-                    text_chunk_count = 0
+                    turn_text_chunks.clear()
                     await bridge.send_text(user_input)
                     try:
-                        await asyncio.wait_for(turn_finished.wait(), timeout=25.0)
+                        await asyncio.wait_for(
+                            turn_finished.wait(), timeout=settings.DEFAULT_TIMEOUT_SECONDS
+                        )
                     except asyncio.TimeoutError:
                         pass
 
             finally:
+                stop_mic_event.set()
+                if mic_task and not mic_task.done():
+                    mic_task.cancel()
+                    try:
+                        await mic_task
+                    except asyncio.CancelledError:
+                        pass
+                if mic_active:
+                    mic.stop()
                 pcm_player.stop()
                 await bridge.disconnect()
                 set_console_logging(True)
-                print("JARVIS Live session closed cleanly.")
+                console.print("[dim]JARVIS Live session closed cleanly.[/dim]\n")
             return None
 
         # Standard Interactive Dialogue via Control Plane
@@ -403,11 +548,21 @@ async def handle_chat(
 
         if message:
             logger.info(f"Submitting chat message: '{message}'")
+            console.print(f"[bold green]Operator > [/bold green][green]{message}[/green]\n")
             final_task = await plane.submit_intent(raw_intent=message, session_id=sess_id)
             response_text = (
                 final_task.result_summary or final_task.error_message or "Task processed."
             )
-            print(f"\nJARVIS > {response_text}\n")
+            console.print(
+                Panel(
+                    response_text,
+                    title="[bold cyan]JARVIS[/bold cyan]",
+                    border_style="bright_blue",
+                    box=box.ROUNDED,
+                    padding=(0, 2),
+                )
+            )
+            console.print("")
             voice_synthesizer.speak(response_text)
             return {
                 "session_id": sess_id,
@@ -420,40 +575,89 @@ async def handle_chat(
         greeting = "JARVIS operational. Standing by for your command, Operator."
         voice_synthesizer.speak(greeting)
 
-        print("================================================================")
-        print("                 JARVIS OPERATING SYSTEM ONLINE")
-        print(f" Session ID: {sess_id}")
-        if with_daemon:
-            print(" Background Services: Gateway (ws://127.0.0.1:18789) + Heartbeat ACTIVE")
-        print(" Voice Synthesis: ACTIVE | Native Nodes: WINDOWS + BROWSER")
-        print(" Type any instruction, query, or system task ('exit' to terminate).")
-        print("================================================================\n")
+        chat_banner = (
+            f"[bold white]Session ID:[/bold white] [cyan]{sess_id}[/cyan]\n"
+            f"[bold white]Voice Synthesis:[/bold white] [green]ACTIVE[/green] | "
+            f"[bold white]Native Nodes:[/bold white] [cyan]WINDOWS + BROWSER[/cyan]\n"
+            f"[bold white]Control Plane:[/bold white] [cyan]Autonomous Intent Formulation & Action Broker[/cyan]\n"
+            f"[bold white]Commands:[/bold white] [dim]Type any instruction, query, or 'exit' to quit[/dim]"
+        )
+        console.print(
+            Panel(
+                chat_banner,
+                title="[bold cyan]JARVIS OPERATING SYSTEM ONLINE[/bold cyan]",
+                border_style="bright_blue",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+        console.print("")
 
         while True:
             try:
-                user_input = await asyncio.to_thread(input, "Operator > ")
-                user_input = user_input.strip()
+                sys.stdout.write("\033[1;32mOperator > \033[32m")
+                sys.stdout.flush()
+                user_input = await asyncio.to_thread(input)
             except (EOFError, KeyboardInterrupt):
-                print("\nJARVIS > Concluding interactive session.")
+                console.print(
+                    Panel(
+                        "Concluding interactive session. Standing by, Operator.",
+                        title="[bold cyan]JARVIS[/bold cyan]",
+                        border_style="bright_blue",
+                        box=box.ROUNDED,
+                        padding=(0, 2),
+                    )
+                )
                 break
+            finally:
+                sys.stdout.write("\033[0m")
+                sys.stdout.flush()
 
+            user_input = user_input.strip()
             if not user_input:
                 continue
             if user_input.lower() in ("exit", "quit", "q"):
-                farewell = "Interactive session concluded. Standing by."
-                print(f"JARVIS > {farewell}")
+                farewell = "Interactive session concluded. Standing by, Operator."
+                console.print(
+                    Panel(
+                        farewell,
+                        title="[bold cyan]JARVIS[/bold cyan]",
+                        border_style="bright_blue",
+                        box=box.ROUNDED,
+                        padding=(0, 2),
+                    )
+                )
+                console.print("")
                 voice_synthesizer.speak(farewell)
                 break
 
-            print("JARVIS is processing...")
+            console.print("[dim cyan]JARVIS is processing...[/dim cyan]")
             final_task = await plane.submit_intent(raw_intent=user_input, session_id=sess_id)
             if final_task.state == TaskState.COMPLETED:
                 answer = final_task.result_summary or "Task completed successfully."
-                print(f"\nJARVIS > {answer}\n")
+                console.print(
+                    Panel(
+                        answer,
+                        title="[bold cyan]JARVIS[/bold cyan]",
+                        border_style="bright_blue",
+                        box=box.ROUNDED,
+                        padding=(0, 2),
+                    )
+                )
+                console.print("")
                 voice_synthesizer.speak(answer)
             else:
                 err = final_task.error_message or "Action could not be completed."
-                print(f"\nJARVIS [Error] > {err}\n")
+                console.print(
+                    Panel(
+                        f"[bold red]Error:[/bold red] {err}",
+                        title="[bold red]JARVIS Notice[/bold red]",
+                        border_style="red",
+                        box=box.ROUNDED,
+                        padding=(0, 2),
+                    )
+                )
+                console.print("")
                 voice_synthesizer.speak(f"Notice: {err}")
 
         return None

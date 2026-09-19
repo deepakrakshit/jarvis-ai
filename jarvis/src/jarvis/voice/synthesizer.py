@@ -5,7 +5,7 @@ via sounddevice for real-time auditory interaction with the operator.
 """
 
 import re
-from typing import Any
+from typing import Any, Callable, Optional
 
 from jarvis.telemetry import logger
 
@@ -68,9 +68,29 @@ class VoiceSynthesizer:
 class PcmStreamPlayer:
     """Streams raw PCM audio chunks (e.g. 24kHz 16-bit mono from Gemini Live) to audio hardware."""
 
-    def __init__(self, samplerate: int = 24000) -> None:
+    def __init__(
+        self,
+        samplerate: int = 24000,
+        on_playback_state_change: Optional[Callable[[bool], None]] = None,
+    ) -> None:
         self.samplerate = samplerate
+        self.on_playback_state_change = on_playback_state_change
         self._stream: Any = None
+        self._is_playing: bool = False
+
+    @property
+    def is_playing(self) -> bool:
+        """Return True if speaker audio playback is currently active."""
+        return self._is_playing
+
+    def _set_playing(self, state: bool) -> None:
+        if self._is_playing != state:
+            self._is_playing = state
+            if self.on_playback_state_change is not None:
+                try:
+                    self.on_playback_state_change(state)
+                except Exception:
+                    pass
 
     def play_chunk(self, chunk: bytes) -> None:
         """Write PCM audio bytes to the active audio output stream."""
@@ -88,12 +108,25 @@ class PcmStreamPlayer:
                 )
                 self._stream.start()
 
+            self._set_playing(True)
             self._stream.write(chunk)
         except Exception as err:
             logger.debug(f"PCM stream playback error: {err}")
 
+    def interrupt(self) -> None:
+        """Immediately abort active playback upon operator interruption (barge-in)."""
+        self._set_playing(False)
+        if self._stream is not None:
+            try:
+                self._stream.abort()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+
     def stop(self) -> None:
-        """Close the active audio output stream."""
+        """Close the active audio output stream cleanly."""
+        self._set_playing(False)
         if self._stream is not None:
             try:
                 self._stream.stop()

@@ -1,7 +1,7 @@
 """Tests for Gemini 3.8 Live Conversational Bridge."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -229,3 +229,37 @@ async def test_multimodal_send_image_and_video() -> None:
     mock_session.reset_mock()
     await bridge.send_video_frame(b"fake_frame_bytes", mime_type="image/jpeg")
     assert mock_session.send_realtime_input.called
+
+
+@pytest.mark.asyncio
+async def test_live_web_search_tool_execution() -> None:
+    """Verify web_search tool executes and sends structured responses back to Gemini Live."""
+    bridge = GeminiLiveBridge()
+    mock_session = AsyncMock()
+    bridge._active_session = mock_session
+
+    fake_tool_call = MagicMock()
+    fake_func_call = MagicMock()
+    fake_func_call.id = "call_search_999"
+    fake_func_call.name = "web_search"
+    fake_func_call.args = {"query": "deepmind antigravity"}
+    fake_tool_call.function_calls = [fake_func_call]
+
+    with patch("jarvis.cognition.gemini_live.search_web", new_callable=AsyncMock) as mock_search:
+        mock_search.return_value = [
+            {
+                "title": "Antigravity AI",
+                "snippet": "Autonomous coding agent",
+                "url": "https://deepmind.google",
+            }
+        ]
+        await bridge._handle_tool_call(fake_tool_call)
+
+        mock_search.assert_called_once_with(query="deepmind antigravity")
+        mock_session.send_tool_response.assert_called_once()
+        sent_responses = mock_session.send_tool_response.call_args[1]["function_responses"]
+        assert len(sent_responses) == 1
+        assert sent_responses[0].name == "web_search"
+        assert sent_responses[0].response["status"] == "success"
+        assert sent_responses[0].response["query"] == "deepmind antigravity"
+        assert len(sent_responses[0].response["results"]) == 1

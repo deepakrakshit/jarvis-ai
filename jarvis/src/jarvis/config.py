@@ -37,6 +37,15 @@ class JarvisSettings(BaseSettings):
     ENVIRONMENT: str = Field(default="production")
     VOICE_DEFAULT_NAME: str = Field(default="Algenib")
 
+    # Dynamic Audio Pipeline Configuration (Microphone & Speaker)
+    AUDIO_INPUT_DEVICE_INDEX: Optional[int] = Field(default=None)
+    AUDIO_INPUT_SAMPLE_RATE: int = Field(default=16000)
+    AUDIO_INPUT_CHANNELS: int = Field(default=1)
+    AUDIO_INPUT_CHUNK_MS: int = Field(default=100)
+    AUDIO_OUTPUT_SAMPLE_RATE: int = Field(default=24000)
+    AUDIO_VAD_ENERGY_THRESHOLD: float = Field(default=15.0)
+    AUDIO_DUPLEX_SUPPRESSION: bool = Field(default=True)
+
     # API Credentials (loaded securely via environment / .env, never hardcoded)
     GEMINI_API_KEY: Optional[str] = Field(default=None)
     GROQ_API_KEY: Optional[str] = Field(default=None)
@@ -64,8 +73,13 @@ class JarvisSettings(BaseSettings):
     MAX_SUBAGENT_DEPTH: int = Field(default=3)
     DEFAULT_MAX_RETRIES: int = Field(default=3)
 
-    # Security & Policy Controls (approvals bypassed when False)
-    REQUIRE_APPROVALS: bool = Field(default=False)
+    # Security & Policy Controls (defaults to True for system safety, bypassed dynamically during interactive live voice sessions)
+    REQUIRE_APPROVALS: bool = Field(default=True)
+
+    # Real-Time Web Search Settings
+    WEB_SEARCH_ENDPOINT: str = Field(default="https://html.duckduckgo.com/html/")
+    WEB_SEARCH_TIMEOUT_SECONDS: float = Field(default=10.0)
+    WEB_SEARCH_MAX_RESULTS: int = Field(default=5)
 
     # Approved Runtime Models (Strict 6-Model Allowlist)
     ALLOWED_MODEL_FAMILIES: List[str] = Field(
