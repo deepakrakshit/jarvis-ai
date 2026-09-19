@@ -288,41 +288,51 @@ class GeminiLiveBridge:
         )
 
     async def _receive_loop(self) -> None:
-        """Continuous background event loop receiving live server events."""
+        """Continuous background event loop receiving live server events across multi-turn sessions."""
         try:
-            async for response in self._active_session.receive():
-                if self._stop_event.is_set():
+            while not self._stop_event.is_set():
+                try:
+                    async for response in self._active_session.receive():
+                        if self._stop_event.is_set():
+                            break
+
+                        # 1. Update session resumption handle if provided
+                        if getattr(response, "session_resumption_update", None):
+                            update = response.session_resumption_update
+                            if hasattr(update, "new_session_handle"):
+                                self.resumption_handle = update.new_session_handle
+                                logger.info(
+                                    f"Updated live session resumption handle: {self.resumption_handle}"
+                                )
+
+                        # 2. Intercept and dispatch tool calls
+                        if getattr(response, "tool_call", None) and response.tool_call:
+                            await self._handle_tool_call(response.tool_call)
+
+                        # 3. Process server output content (audio/text)
+                        if getattr(response, "server_content", None) and response.server_content:
+                            sc = response.server_content
+                            if sc.model_turn:
+                                for part in sc.model_turn.parts:
+                                    if part.inline_data and part.inline_data.data:
+                                        await self.audio_output_queue.put(part.inline_data.data)
+                                        if self.audio_chunk_handler:
+                                            await self.audio_chunk_handler(part.inline_data.data)
+                                    if part.text:
+                                        if self.text_chunk_handler:
+                                            await self.text_chunk_handler(part.text)
+
+                            if sc.turn_complete:
+                                if self.turn_complete_handler:
+                                    await self.turn_complete_handler()
+                                break
+                except asyncio.CancelledError:
                     break
-
-                # 1. Update session resumption handle if provided
-                if getattr(response, "session_resumption_update", None):
-                    update = response.session_resumption_update
-                    if hasattr(update, "new_session_handle"):
-                        self.resumption_handle = update.new_session_handle
-                        logger.info(
-                            f"Updated live session resumption handle: {self.resumption_handle}"
-                        )
-
-                # 2. Intercept and dispatch tool calls
-                if getattr(response, "tool_call", None) and response.tool_call:
-                    await self._handle_tool_call(response.tool_call)
-
-                # 3. Process server output content (audio/text)
-                if getattr(response, "server_content", None) and response.server_content:
-                    sc = response.server_content
-                    if sc.model_turn:
-                        for part in sc.model_turn.parts:
-                            if part.inline_data and part.inline_data.data:
-                                await self.audio_output_queue.put(part.inline_data.data)
-                                if self.audio_chunk_handler:
-                                    await self.audio_chunk_handler(part.inline_data.data)
-                            if part.text:
-                                if self.text_chunk_handler:
-                                    await self.text_chunk_handler(part.text)
-
-                    if sc.turn_complete:
-                        if self.turn_complete_handler:
-                            await self.turn_complete_handler()
+                except Exception as loop_err:
+                    if self._stop_event.is_set():
+                        break
+                    logger.debug(f"Live turn stream cycle: {loop_err}")
+                    await asyncio.sleep(0.1)
 
         except asyncio.CancelledError:
             pass

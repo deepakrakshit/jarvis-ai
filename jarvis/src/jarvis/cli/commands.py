@@ -260,17 +260,25 @@ async def handle_chat(
             bridge = GeminiLiveBridge(session_id=session_id)
             pcm_player = PcmStreamPlayer(samplerate=24000)
             audio_chunk_count = 0
+            turn_finished = asyncio.Event()
 
             async def on_audio(chunk: bytes) -> None:
                 nonlocal audio_chunk_count
                 audio_chunk_count += 1
                 pcm_player.play_chunk(chunk)
 
+            async def on_turn_complete() -> None:
+                turn_finished.set()
+
             bridge.audio_chunk_handler = on_audio
+            bridge.turn_complete_handler = on_turn_complete
 
             print("================================================================")
             print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live Voice)")
             print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name}")
+            if with_daemon:
+                print(" Background Services: Gateway (ws://127.0.0.1:18789) + Heartbeat ACTIVE")
+            print(" Native Execution Nodes: WINDOWS + BROWSER (In-flight Tool Calling)")
             print(" Type 'exit' or 'quit' to terminate the live session.")
             print("================================================================\n")
 
@@ -278,12 +286,14 @@ async def handle_chat(
             try:
                 if message:
                     print(f"Operator > {message}")
+                    turn_finished.clear()
+                    audio_chunk_count = 0
                     await bridge.send_text(message)
-                    for _ in range(16):
-                        await asyncio.sleep(0.5)
-                        if audio_chunk_count > 0:
-                            break
-                    print(f"JARVIS [Live Audio] > Received {audio_chunk_count} voice chunks.")
+                    try:
+                        await asyncio.wait_for(turn_finished.wait(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        pass
+                    print(f"JARVIS [Live Voice] > Received {audio_chunk_count} voice chunks.")
                     return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
 
                 while True:
@@ -300,14 +310,15 @@ async def handle_chat(
                         print("JARVIS > Terminating live stream. Standing by.")
                         break
 
+                    turn_finished.clear()
                     audio_chunk_count = 0
                     await bridge.send_text(user_input)
-                    for _ in range(16):
-                        await asyncio.sleep(0.5)
-                        if audio_chunk_count > 0:
-                            break
+                    try:
+                        await asyncio.wait_for(turn_finished.wait(), timeout=20.0)
+                    except asyncio.TimeoutError:
+                        pass
                     print(
-                        f"JARVIS [Live Audio] > Streaming audio synthesized ({audio_chunk_count} chunks received).\n"
+                        f"JARVIS [Live Voice] > Spoken aloud through speakers ({audio_chunk_count} audio chunks).\n"
                     )
 
             finally:
