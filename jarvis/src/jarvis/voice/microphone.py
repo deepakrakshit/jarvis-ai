@@ -163,10 +163,6 @@ class MicrophoneCapture:
         if self._is_muted:
             return
 
-        # Acoustic feedback suppression: ignore lower-energy chunks if speaker output is active
-        if self._duplex_suppressed and stats.rms < (self.speech_threshold * 1.8):
-            return
-
         chunk = bytes(indata)
 
         loop = self._loop

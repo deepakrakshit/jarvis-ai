@@ -113,6 +113,10 @@ class PcmStreamPlayer:
         except Exception as err:
             logger.debug(f"PCM stream playback error: {err}")
 
+    def mark_idle(self) -> None:
+        """Mark audio playback as completed and return to idle state."""
+        self._set_playing(False)
+
     def interrupt(self) -> None:
         """Immediately abort active playback upon operator interruption (barge-in)."""
         self._set_playing(False)

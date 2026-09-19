@@ -44,7 +44,7 @@ class JarvisSettings(BaseSettings):
     AUDIO_INPUT_CHUNK_MS: int = Field(default=100)
     AUDIO_OUTPUT_SAMPLE_RATE: int = Field(default=24000)
     AUDIO_VAD_ENERGY_THRESHOLD: float = Field(default=15.0)
-    AUDIO_DUPLEX_SUPPRESSION: bool = Field(default=True)
+    AUDIO_DUPLEX_SUPPRESSION: bool = Field(default=False)
 
     # API Credentials (loaded securely via environment / .env, never hardcoded)
     GEMINI_API_KEY: Optional[str] = Field(default=None)

@@ -324,6 +324,8 @@ async def handle_chat(
                 turn_text_chunks.append(chunk)
 
             async def on_turn_complete() -> None:
+                nonlocal audio_chunk_count
+                pcm_player.mark_idle()
                 full_text = "".join(turn_text_chunks).strip()
                 if full_text:
                     console.print(
@@ -348,7 +350,9 @@ async def handle_chat(
                     )
                     console.print("")
                 turn_text_chunks.clear()
+                audio_chunk_count = 0
                 turn_finished.set()
+                console.print("[dim cyan]>> [JARVIS is listening... speak or type][/dim cyan]\n")
 
             async def on_interrupted() -> None:
                 pcm_player.interrupt()
