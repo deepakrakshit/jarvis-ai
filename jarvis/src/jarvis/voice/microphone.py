@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from jarvis.config import settings
 from jarvis.telemetry import logger
+from jarvis.voice.state_machine import AudioSourceType, TaggedAudioFrame
 
 
 @dataclass
@@ -122,7 +123,7 @@ class MicrophoneCapture:
         self._is_recording: bool = False
         self._is_muted: bool = False
         self._duplex_suppressed: bool = False
-        self._audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
+        self._audio_queue: asyncio.Queue[TaggedAudioFrame] = asyncio.Queue(maxsize=100)
         self._audio_chunk_callback: Optional[Callable[[bytes], Any]] = None
 
         self.current_stats: AudioEnergyStats = AudioEnergyStats(peak=0, rms=0.0, is_speech=False)
@@ -160,10 +161,15 @@ class MicrophoneCapture:
         self.current_stats = stats
         self.total_frames_captured += frames
 
-        if self._is_muted:
+        if self._is_muted or self._duplex_suppressed:
             return
 
-        chunk = bytes(indata)
+        frame = TaggedAudioFrame(
+            source=AudioSourceType.USER_MIC,
+            pcm_bytes=bytes(indata),
+            sample_rate=self.samplerate,
+            channels=self.channels,
+        )
 
         loop = self._loop
         if loop is None:
@@ -175,26 +181,26 @@ class MicrophoneCapture:
         if loop and not loop.is_closed():
             # Enqueue into async queue
             try:
-                loop.call_soon_threadsafe(self._enqueue_chunk, chunk)
+                loop.call_soon_threadsafe(self._enqueue_frame, frame)
             except Exception:
                 pass
 
             # Invoke optional direct callback
             if self._audio_chunk_callback is not None:
                 try:
-                    loop.call_soon_threadsafe(self._audio_chunk_callback, chunk)
+                    loop.call_soon_threadsafe(self._audio_chunk_callback, frame.pcm_bytes)
                 except Exception:
                     pass
 
-    def _enqueue_chunk(self, chunk: bytes) -> None:
-        """Enqueue chunk into async queue, dropping oldest if buffer is full."""
+    def _enqueue_frame(self, frame: TaggedAudioFrame) -> None:
+        """Enqueue tagged audio frame into async queue, dropping oldest if buffer is full."""
         if self._audio_queue.full():
             try:
                 self._audio_queue.get_nowait()
             except Exception:
                 pass
         try:
-            self._audio_queue.put_nowait(chunk)
+            self._audio_queue.put_nowait(frame)
         except Exception:
             pass
 
@@ -252,13 +258,41 @@ class MicrophoneCapture:
             self._stream = None
         logger.info("Microphone capture stopped.")
 
-    async def read_chunk(self) -> bytes:
-        """Asynchronously read the next available audio chunk from the capture queue."""
+    async def read_frame(self) -> TaggedAudioFrame:
+        """Asynchronously read the next available tagged audio frame from the capture queue."""
         return await self._audio_queue.get()
 
-    def read_chunk_nowait(self) -> Optional[bytes]:
-        """Read the next audio chunk without waiting, or return None if queue is empty."""
+    def read_frame_nowait(self) -> Optional[TaggedAudioFrame]:
+        """Read the next tagged audio frame without waiting, or return None if queue is empty."""
         try:
             return self._audio_queue.get_nowait()
         except asyncio.QueueEmpty:
             return None
+
+    async def read_chunk(self) -> bytes:
+        """Asynchronously read raw PCM audio bytes from the capture queue for backwards compatibility."""
+        frame = await self.read_frame()
+        return frame.pcm_bytes
+
+    def read_chunk_nowait(self) -> Optional[bytes]:
+        """Read the next raw audio chunk without waiting, or return None if queue is empty."""
+        frame = self.read_frame_nowait()
+        return frame.pcm_bytes if frame is not None else None
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """Return diagnostic metrics for microphone capture."""
+        return {
+            "is_recording": self._is_recording,
+            "is_muted": self._is_muted,
+            "duplex_suppressed": self._duplex_suppressed,
+            "samplerate": self.samplerate,
+            "channels": self.channels,
+            "chunk_ms": self.chunk_ms,
+            "blocksize": self.blocksize,
+            "device_index": self.device_index,
+            "total_frames_captured": self.total_frames_captured,
+            "overflow_count": self.overflow_count,
+            "current_peak": self.current_stats.peak,
+            "current_rms": round(self.current_stats.rms, 2),
+            "speech_detected": self.current_stats.is_speech,
+        }

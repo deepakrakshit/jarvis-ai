@@ -8,7 +8,7 @@ title: "Model failover"
 sidebarTitle: "Model failover"
 ---
 
-OpenClaw handles failures in two stages:
+OpenClaw handles failures in two phases:
 
 1. **Auth-profile rotation** within the current provider.
 2. **Model fallback** to the next model in `agents.defaults.model.fallbacks`.

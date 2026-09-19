@@ -35,8 +35,11 @@ from jarvis.gateway.server import GatewayServer
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger, set_console_logging
 from jarvis.voice import (
+    AudioInputGate,
     MicrophoneCapture,
     PcmStreamPlayer,
+    VoiceState,
+    VoiceStateMachine,
     get_default_input_device,
     voice_synthesizer,
 )
@@ -271,6 +274,8 @@ async def handle_chat(
 
             set_console_logging(False)
             bridge = GeminiLiveBridge(session_id=session_id)
+            voice_state_machine = VoiceStateMachine(initial_state=VoiceState.IDLE)
+            input_gate = AudioInputGate(state_machine=voice_state_machine)
             mic = MicrophoneCapture(
                 samplerate=settings.AUDIO_INPUT_SAMPLE_RATE,
                 channels=settings.AUDIO_INPUT_CHANNELS,
@@ -291,6 +296,9 @@ async def handle_chat(
             async def on_audio(chunk: bytes) -> None:
                 nonlocal audio_chunk_count
                 audio_chunk_count += 1
+                if voice_state_machine.state != VoiceState.SPEAKING:
+                    pcm_player.start_stream()
+                    voice_state_machine.transition(VoiceState.SPEAKING, reason="Model audio stream")
                 pcm_player.play_chunk(chunk)
 
             async def on_tool_call(name: str, args: Dict[str, Any]) -> None:
@@ -325,7 +333,11 @@ async def handle_chat(
 
             async def on_turn_complete() -> None:
                 nonlocal audio_chunk_count
+                pcm_player.mark_generation_finished()
+                await pcm_player.wait_until_drained(timeout=settings.DEFAULT_TIMEOUT_SECONDS)
                 pcm_player.mark_idle()
+                voice_state_machine.transition(VoiceState.LISTENING, reason="Playback drained")
+
                 full_text = "".join(turn_text_chunks).strip()
                 if full_text:
                     console.print(
@@ -355,7 +367,9 @@ async def handle_chat(
                 console.print("[dim cyan]>> [JARVIS is listening... speak or type][/dim cyan]\n")
 
             async def on_interrupted() -> None:
+                voice_state_machine.transition(VoiceState.INTERRUPTED, reason="Operator barge-in")
                 pcm_player.interrupt()
+                voice_state_machine.transition(VoiceState.LISTENING, reason="Interruption reset")
                 console.print(
                     "\n[bold yellow]>> [Operator Interrupted - Listening...][/bold yellow]\n"
                 )
@@ -380,14 +394,15 @@ async def handle_chat(
             async def mic_streaming_loop() -> None:
                 while not stop_mic_event.is_set():
                     try:
-                        chunk = await mic.read_chunk()
-                        if chunk and bridge.state == LiveSessionState.ACTIVE:
-                            await bridge.send_audio_chunk(chunk)
+                        frame = await mic.read_frame()
+                        if input_gate.should_transmit(frame):
+                            if bridge.state == LiveSessionState.ACTIVE:
+                                await bridge.send_audio_chunk(frame.pcm_bytes)
                     except asyncio.CancelledError:
                         break
                     except Exception as err:
                         logger.debug(f"Microphone streaming loop error: {err}")
-                        await asyncio.sleep(0.05)
+                        await asyncio.sleep(0.01)
 
             default_mic = get_default_input_device()
             mic_label = (
@@ -399,7 +414,8 @@ async def handle_chat(
             live_header = (
                 f"[bold white]Session:[/bold white] [cyan]{bridge.session_id}[/cyan] | "
                 f"[bold white]Voice:[/bold white] [cyan]{bridge.voice_name}[/cyan] | "
-                f"[bold white]Approvals:[/bold white] [green]BYPASSED (LIVE)[/green]\n"
+                f"[bold white]Voice Mode:[/bold white] [green]HALF-DUPLEX / ECHO-SAFE[/green]\n"
+                f"[bold white]Approvals:[/bold white] [green]BYPASSED (LIVE)[/green] | "
                 f"[bold white]Core Model:[/bold white] [cyan]Gemini 3.8 Live Multimodal (Audio/Text/Vision)[/cyan]\n"
                 f"[bold white]Microphone:[/bold white] {mic_label}\n"
                 f"[bold white]Capabilities:[/bold white] [cyan]Live Web Search + Windows Native + Browser Automation[/cyan]\n"
@@ -419,6 +435,7 @@ async def handle_chat(
             console.print("")
 
             await bridge.connect()
+            voice_state_machine.transition(VoiceState.LISTENING, reason="Session connected")
 
             mic_active = False
             try:
@@ -436,6 +453,9 @@ async def handle_chat(
                     turn_finished.clear()
                     audio_chunk_count = 0
                     turn_text_chunks.clear()
+                    voice_state_machine.transition(
+                        VoiceState.THINKING, reason="Operator direct message"
+                    )
                     await bridge.send_text(message)
                     try:
                         await asyncio.wait_for(
@@ -508,6 +528,9 @@ async def handle_chat(
                         turn_finished.clear()
                         audio_chunk_count = 0
                         turn_text_chunks.clear()
+                        voice_state_machine.transition(
+                            VoiceState.THINKING, reason="Operator image input"
+                        )
                         await bridge.send_image(
                             image_bytes=img_bytes, mime_type=mime, prompt=prompt_str
                         )
@@ -522,6 +545,9 @@ async def handle_chat(
                     turn_finished.clear()
                     audio_chunk_count = 0
                     turn_text_chunks.clear()
+                    voice_state_machine.transition(
+                        VoiceState.THINKING, reason="Operator text input"
+                    )
                     await bridge.send_text(user_input)
                     try:
                         await asyncio.wait_for(
@@ -541,6 +567,8 @@ async def handle_chat(
                 if mic_active:
                     mic.stop()
                 pcm_player.stop()
+                voice_state_machine.transition(VoiceState.STOPPING, reason="Live session shutdown")
+                voice_state_machine.transition(VoiceState.IDLE, reason="Live session stopped")
                 await bridge.disconnect()
                 set_console_logging(True)
                 console.print("[dim]JARVIS Live session closed cleanly.[/dim]\n")

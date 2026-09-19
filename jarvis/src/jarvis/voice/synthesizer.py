@@ -4,10 +4,13 @@ Provides local speech synthesis via Windows SAPI and live PCM streaming playback
 via sounddevice for real-time auditory interaction with the operator.
 """
 
+import asyncio
 import re
-from typing import Any, Callable, Optional
+import time
+from typing import Any, Callable, Dict, Optional
 
 from jarvis.telemetry import logger
+from jarvis.voice.output_tracker import PlaybackActivityTracker
 
 
 def clean_speech_text(text: str) -> str:
@@ -71,9 +74,11 @@ class PcmStreamPlayer:
     def __init__(
         self,
         samplerate: int = 24000,
+        tracker: Optional[PlaybackActivityTracker] = None,
         on_playback_state_change: Optional[Callable[[bool], None]] = None,
     ) -> None:
         self.samplerate = samplerate
+        self.tracker = tracker or PlaybackActivityTracker()
         self.on_playback_state_change = on_playback_state_change
         self._stream: Any = None
         self._is_playing: bool = False
@@ -92,6 +97,10 @@ class PcmStreamPlayer:
                 except Exception:
                     pass
 
+    def start_stream(self) -> None:
+        """Reset output activity tracker for a new response turn."""
+        self.tracker.mark_stream_opened()
+
     def play_chunk(self, chunk: bytes) -> None:
         """Write PCM audio bytes to the active audio output stream."""
         if not chunk:
@@ -108,10 +117,27 @@ class PcmStreamPlayer:
                 )
                 self._stream.start()
 
+            self.tracker.mark_chunk(chunk, sample_rate=self.samplerate)
             self._set_playing(True)
             self._stream.write(chunk)
         except Exception as err:
             logger.debug(f"PCM stream playback error: {err}")
+
+    def mark_generation_finished(self) -> None:
+        """Mark that model generation has finished delivering audio chunks over transport."""
+        self.tracker.mark_generation_finished()
+
+    async def wait_until_drained(self, poll_interval: float = 0.04, timeout: float = 25.0) -> bool:
+        """Asynchronously wait until all buffered audio has played and acoustic reverb has decayed."""
+        start_time = time.time()
+        while not self.tracker.is_playback_drained():
+            if time.time() - start_time > timeout:
+                logger.warning("Playback drain timeout exceeded; forcing drain.")
+                break
+            await asyncio.sleep(poll_interval)
+
+        self._set_playing(False)
+        return True
 
     def mark_idle(self) -> None:
         """Mark audio playback as completed and return to idle state."""
@@ -119,6 +145,7 @@ class PcmStreamPlayer:
 
     def interrupt(self) -> None:
         """Immediately abort active playback upon operator interruption (barge-in)."""
+        self.tracker.reset()
         self._set_playing(False)
         if self._stream is not None:
             try:
@@ -130,6 +157,7 @@ class PcmStreamPlayer:
 
     def stop(self) -> None:
         """Close the active audio output stream cleanly."""
+        self.tracker.reset()
         self._set_playing(False)
         if self._stream is not None:
             try:
@@ -138,6 +166,16 @@ class PcmStreamPlayer:
             except Exception:
                 pass
             self._stream = None
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """Return comprehensive player and buffer drain observability metrics."""
+        data = {
+            "playback_state": "PLAYING" if self._is_playing else "IDLE",
+            "stream_active": self._stream is not None,
+            "samplerate": self.samplerate,
+        }
+        data.update(self.tracker.get_diagnostics())
+        return data
 
 
 # Global singleton synthesizer

@@ -1,5 +1,6 @@
 """Voice and Audio Capture/Synthesis Subsystems for JARVIS."""
 
+from .input_gate import AudioInputGate
 from .microphone import (
     AudioEnergyStats,
     MicrophoneCapture,
@@ -7,9 +8,17 @@ from .microphone import (
     list_input_devices,
     read_pcm16_audio_stats,
 )
+from .output_tracker import PlaybackActivityTracker
+from .state_machine import AudioSourceType, TaggedAudioFrame, VoiceState, VoiceStateMachine
 from .synthesizer import PcmStreamPlayer, VoiceSynthesizer, voice_synthesizer
 
 __all__ = [
+    "VoiceState",
+    "VoiceStateMachine",
+    "AudioSourceType",
+    "TaggedAudioFrame",
+    "AudioInputGate",
+    "PlaybackActivityTracker",
     "VoiceSynthesizer",
     "PcmStreamPlayer",
     "voice_synthesizer",
