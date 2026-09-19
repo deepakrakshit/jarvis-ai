@@ -66,6 +66,9 @@ class ProtocolMethod(str, Enum):
     MEMORY_STORE = "memory.store"
     MODEL_LIST = "model.list"
     NODE_LIST = "node.list"
+    ARTIFACT_LIST = "artifacts.list"
+    ARTIFACT_GET = "artifacts.get"
+    ARTIFACT_DOWNLOAD = "artifacts.download"
 
 
 class ProtocolEvent(str, Enum):

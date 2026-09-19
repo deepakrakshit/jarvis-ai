@@ -767,6 +767,145 @@ class DatabaseEngine:
                 )
             return results
 
+    # -------------------------------------------------------------------------
+    # Artifact Repository
+    # -------------------------------------------------------------------------
+
+    def save_artifact(
+        self,
+        artifact_id: str,
+        artifact_type: str,
+        title: str,
+        mime_type: str,
+        size_bytes: int,
+        checksum: str,
+        storage_path: str,
+        session_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        sensitivity: str = "internal",
+        retention: str = "durable",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persist or update an artifact record."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO artifacts (
+                    artifact_id, session_id, task_id, agent_id, artifact_type,
+                    title, mime_type, size_bytes, checksum, storage_path,
+                    sensitivity, retention, created_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+                ON CONFLICT(artifact_id) DO UPDATE SET
+                    session_id = excluded.session_id,
+                    task_id = excluded.task_id,
+                    agent_id = excluded.agent_id,
+                    artifact_type = excluded.artifact_type,
+                    title = excluded.title,
+                    mime_type = excluded.mime_type,
+                    size_bytes = excluded.size_bytes,
+                    checksum = excluded.checksum,
+                    storage_path = excluded.storage_path,
+                    sensitivity = excluded.sensitivity,
+                    retention = excluded.retention,
+                    metadata_json = excluded.metadata_json;
+                """,
+                (
+                    artifact_id,
+                    session_id,
+                    task_id,
+                    agent_id,
+                    artifact_type,
+                    title,
+                    mime_type,
+                    size_bytes,
+                    checksum,
+                    storage_path,
+                    sensitivity,
+                    retention,
+                    json.dumps(metadata or {}),
+                ),
+            )
+
+    def get_artifact(self, artifact_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an artifact record by its ID."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT * FROM artifacts WHERE artifact_id = ?;",
+                (artifact_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "artifact_id": row["artifact_id"],
+                "session_id": row["session_id"],
+                "task_id": row["task_id"],
+                "agent_id": row["agent_id"],
+                "artifact_type": row["artifact_type"],
+                "title": row["title"],
+                "mime_type": row["mime_type"],
+                "size_bytes": row["size_bytes"],
+                "checksum": row["checksum"],
+                "storage_path": row["storage_path"],
+                "sensitivity": row["sensitivity"],
+                "retention": row["retention"],
+                "created_at": row["created_at"],
+                "metadata": json.loads(row["metadata_json"] or "{}"),
+            }
+
+    def list_artifacts(
+        self,
+        session_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        artifact_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """List artifacts matching filter parameters."""
+        with self.transaction() as cursor:
+            sql = "SELECT * FROM artifacts WHERE 1=1"
+            params: List[Any] = []
+            if session_id:
+                sql += " AND session_id = ?"
+                params.append(session_id)
+            if task_id:
+                sql += " AND task_id = ?"
+                params.append(task_id)
+            if artifact_type:
+                sql += " AND artifact_type = ?"
+                params.append(artifact_type)
+            sql += " ORDER BY created_at DESC LIMIT ?;"
+            params.append(limit)
+
+            cursor.execute(sql, params)
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append(
+                    {
+                        "artifact_id": row["artifact_id"],
+                        "session_id": row["session_id"],
+                        "task_id": row["task_id"],
+                        "agent_id": row["agent_id"],
+                        "artifact_type": row["artifact_type"],
+                        "title": row["title"],
+                        "mime_type": row["mime_type"],
+                        "size_bytes": row["size_bytes"],
+                        "checksum": row["checksum"],
+                        "storage_path": row["storage_path"],
+                        "sensitivity": row["sensitivity"],
+                        "retention": row["retention"],
+                        "created_at": row["created_at"],
+                        "metadata": json.loads(row["metadata_json"] or "{}"),
+                    }
+                )
+            return results
+
+    def delete_artifact(self, artifact_id: str) -> bool:
+        """Delete an artifact record by ID."""
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM artifacts WHERE artifact_id = ?;", (artifact_id,))
+            return cursor.rowcount > 0
+
 
 # Default singleton instance
 db = DatabaseEngine()

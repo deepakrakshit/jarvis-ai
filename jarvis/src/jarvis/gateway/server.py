@@ -8,6 +8,7 @@ Implements Section 9 of ARCHITECTURE.md:
 - Bridges action approvals, memory search, model statuses, and node queries.
 """
 
+import base64
 import json
 from typing import Optional
 from uuid import uuid4
@@ -24,6 +25,7 @@ from websockets.asyncio.server import (
 )
 
 from jarvis.actions.broker import ActionBroker, action_broker
+from jarvis.artifacts.store import ArtifactStore, artifact_store
 from jarvis.cognition.model_router import ModelRouter, model_router
 from jarvis.config import settings
 from jarvis.contracts.memory import MemoryRecord, MemoryType, ProvenanceSource, TrustLevel
@@ -59,6 +61,7 @@ class GatewayServer:
         router: Optional[ModelRouter] = None,
         broker: Optional[ActionBroker] = None,
         policy: Optional[PolicyEngine] = None,
+        artifacts: Optional[ArtifactStore] = None,
     ) -> None:
         self.host = host or settings.GATEWAY_HOST
         self.port = port or settings.GATEWAY_PORT
@@ -68,6 +71,9 @@ class GatewayServer:
         self.router = router or model_router
         self.broker = broker or action_broker
         self.policy = policy or policy_engine
+        self.artifacts = artifacts or (
+            ArtifactStore(database=self.db) if database else artifact_store
+        )
 
         self.connections = ConnectionManager()
         self._server: Optional[WebSocketServer] = None
@@ -289,6 +295,66 @@ class GatewayServer:
                 await self.connections.send_response(
                     conn_id, create_success_response(req.id, payload)
                 )
+
+            elif method == ProtocolMethod.ARTIFACT_LIST.value:
+                session_key = params.get("sessionKey") or params.get("session_id")
+                task_id = params.get("taskId") or params.get("task_id")
+                art_type = params.get("type")
+                limit = int(params.get("limit", 50))
+                summaries = self.artifacts.list_artifacts(
+                    session_id=session_key,
+                    task_id=task_id,
+                    artifact_type=art_type,
+                    limit=limit,
+                )
+                await self.connections.send_response(
+                    conn_id,
+                    create_success_response(
+                        req.id, {"artifacts": [s.model_dump() for s in summaries]}
+                    ),
+                )
+
+            elif method == ProtocolMethod.ARTIFACT_GET.value:
+                art_id = params.get("artifactId") or params.get("artifact_id", "")
+                art = self.artifacts.get_artifact(art_id)
+                if not art:
+                    await self.connections.send_response(
+                        conn_id, create_error_response(req.id, f"Artifact {art_id} not found")
+                    )
+                else:
+                    await self.connections.send_response(
+                        conn_id,
+                        create_success_response(
+                            req.id, {"artifact": art.to_summary().model_dump()}
+                        ),
+                    )
+
+            elif method == ProtocolMethod.ARTIFACT_DOWNLOAD.value:
+                art_id = params.get("artifactId") or params.get("artifact_id", "")
+                art = self.artifacts.get_artifact(art_id)
+                if not art:
+                    await self.connections.send_response(
+                        conn_id, create_error_response(req.id, f"Artifact {art_id} not found")
+                    )
+                else:
+                    try:
+                        raw_bytes = self.artifacts.read_bytes(art_id)
+                        encoded = base64.b64encode(raw_bytes).decode("ascii")
+                        download_payload = {
+                            "artifact": art.to_summary().model_dump(),
+                            "encoding": "base64",
+                            "data": encoded,
+                        }
+                        await self.connections.send_response(
+                            conn_id, create_success_response(req.id, download_payload)
+                        )
+                    except Exception as download_err:
+                        await self.connections.send_response(
+                            conn_id,
+                            create_error_response(
+                                req.id, f"Failed to read artifact: {download_err}"
+                            ),
+                        )
 
             else:
                 await self.connections.send_response(

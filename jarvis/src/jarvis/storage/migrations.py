@@ -270,4 +270,28 @@ MIGRATIONS: List[str] = [
 
     CREATE INDEX IF NOT EXISTS idx_acp_events_session ON acp_events(session_id);
     """,
+    # Artifacts Storage (v5)
+    """
+    -- Artifacts Table
+    CREATE TABLE IF NOT EXISTS artifacts (
+        artifact_id TEXT PRIMARY KEY,
+        session_id TEXT,
+        task_id TEXT,
+        agent_id TEXT,
+        artifact_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER DEFAULT 0,
+        checksum TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        sensitivity TEXT DEFAULT 'internal',
+        retention TEXT DEFAULT 'durable',
+        created_at TEXT NOT NULL,
+        metadata_json TEXT DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
+    CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type);
+    """,
 ]
