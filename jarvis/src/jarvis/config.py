@@ -1,0 +1,86 @@
+"""Dynamic Configuration & Environment Discovery for JARVIS.
+
+Core Invariant: Never hardcode configurations, credentials, endpoints,
+filesystem paths, timeouts, or policy values. Everything is discoverable,
+parameterized, and loaded via dynamic configuration schemas.
+"""
+
+from pathlib import Path
+from typing import List, Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def get_default_workspace_dir() -> Path:
+    """Dynamically resolve workspace root."""
+    current = Path(__file__).resolve()
+    # Traverse upwards until we locate ARCHITECTURE.md or workspace marker
+    for parent in current.parents:
+        if (parent / "ARCHITECTURE.md").exists():
+            return parent
+    return Path.cwd()
+
+
+class JarvisSettings(BaseSettings):
+    """Authoritative settings for the JARVIS Personal AI Operating System."""
+
+    model_config = SettingsConfigDict(
+        env_file=str(get_default_workspace_dir() / "jarvis" / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Identity & Voice
+    APP_NAME: str = Field(default="JARVIS")
+    APP_VERSION: str = Field(default="3.0.0")
+    VOICE_DEFAULT_NAME: str = Field(default="Algenib")
+
+    # API Credentials (loaded securely via environment / .env, never hardcoded)
+    GEMINI_API_KEY: Optional[str] = Field(default=None)
+    GROQ_API_KEY: Optional[str] = Field(default=None)
+
+    # Dynamic Paths
+    WORKSPACE_DIR: Path = Field(default_factory=get_default_workspace_dir)
+    DATA_DIR: Path = Field(default_factory=lambda: get_default_workspace_dir() / "jarvis" / "data")
+    DATABASE_PATH: Path = Field(
+        default_factory=lambda: get_default_workspace_dir() / "jarvis" / "data" / "jarvis.db"
+    )
+    LOG_DIR: Path = Field(
+        default_factory=lambda: get_default_workspace_dir() / "jarvis" / "data" / "logs"
+    )
+    ARTIFACTS_DIR: Path = Field(
+        default_factory=lambda: get_default_workspace_dir() / "jarvis" / "data" / "artifacts"
+    )
+
+    # Runtime Network / Gateway
+    GATEWAY_HOST: str = Field(default="127.0.0.1")
+    GATEWAY_PORT: int = Field(default=8765)
+    HTTP_PORT: int = Field(default=8000)
+
+    # Timeouts & Budgets
+    DEFAULT_TIMEOUT_SECONDS: float = Field(default=60.0)
+    MAX_SUBAGENT_DEPTH: int = Field(default=3)
+    DEFAULT_MAX_RETRIES: int = Field(default=3)
+
+    # Approved Runtime Models (Strict 6-Model Allowlist)
+    ALLOWED_MODEL_FAMILIES: List[str] = Field(
+        default_factory=lambda: [
+            "Gemini 3.8 Live",
+            "GPT-OSS 120B",
+            "Qwen 3.8 27B",
+            "Gemini 3.1 Flash-Lite",
+            "Gemini 3.5 Flash-Lite",
+            "Gemma 4 31B",
+        ]
+    )
+
+    def ensure_directories(self) -> None:
+        """Ensure runtime directories exist safely."""
+        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        self.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        self.ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# Global singleton instance resolved dynamically at runtime
+settings = JarvisSettings()

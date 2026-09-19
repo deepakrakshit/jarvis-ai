@@ -13,6 +13,11 @@ conversations.json
 *.jsonl
 coverage.xml
 .coverage
+*.db
+*.sqlite
+*.sqlite3
+data/
+jarvis/data/
 
 # Python
 __pycache__/
@@ -28,13 +33,9 @@ dist/
 build/
 *.egg-info/
 
-# Node & OpenClaw Build Output
+# External Substrate & Build Output
+OpenClaw/
 node_modules/
-OpenClaw/node_modules/
-OpenClaw/dist/
-OpenClaw/.openclaw-lifecycle-pending
-OpenClaw/**/dist/
-OpenClaw/**/node_modules/
 .pnpm-store/
 
 # OS & IDE
