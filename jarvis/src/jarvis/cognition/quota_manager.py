@@ -7,6 +7,7 @@ strict 6-model runtime allowlist.
 """
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -61,6 +62,10 @@ class QuotaManager:
             self._health[family] = ModelHealth.HEALTHY
             self._consecutive_errors[family] = 0
 
+    def reset(self) -> None:
+        """Reset all quotas and health metrics to default initial states."""
+        self._initialize_defaults()
+
     def get_quota(self, model_family: ModelFamily) -> ModelQuota:
         """Retrieve the current quota state for a model family."""
         return self._quotas[model_family]
@@ -92,8 +97,17 @@ class QuotaManager:
 
             # Check rate limits & quota availability
             if quota.remaining_requests <= 0:
-                logger.warning(f"Quota exhausted: {model_family.value} has 0 remaining requests")
-                return False
+                now_ts = time.time()
+                if quota.reset_epoch_seconds > 0 and now_ts >= quota.reset_epoch_seconds:
+                    quota.remaining_requests = quota.max_rpm
+                    quota.remaining_tokens = quota.max_tpm
+                    quota.reset_epoch_seconds = 0.0
+                    self._health[model_family] = ModelHealth.HEALTHY
+                else:
+                    logger.warning(
+                        f"Quota exhausted: {model_family.value} has 0 remaining requests"
+                    )
+                    return False
 
             if quota.remaining_tokens < estimated_tokens:
                 logger.warning(
@@ -212,6 +226,8 @@ class QuotaManager:
                 # Rapid backoff on rate limit
                 self._health[model_family] = ModelHealth.DEGRADED
                 self._quotas[model_family].remaining_requests = 0
+                if self._quotas[model_family].reset_epoch_seconds <= 0:
+                    self._quotas[model_family].reset_epoch_seconds = time.time() + 5.0
                 logger.warning(
                     f"Rate limit detected for {model_family.value}: entered temporary backoff"
                 )

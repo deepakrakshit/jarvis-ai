@@ -10,6 +10,7 @@ Implements CLI commands for:
 """
 
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -260,6 +261,7 @@ async def handle_chat(
             bridge = GeminiLiveBridge(session_id=session_id)
             pcm_player = PcmStreamPlayer(samplerate=24000)
             audio_chunk_count = 0
+            text_chunk_count = 0
             turn_finished = asyncio.Event()
 
             async def on_audio(chunk: bytes) -> None:
@@ -267,18 +269,33 @@ async def handle_chat(
                 audio_chunk_count += 1
                 pcm_player.play_chunk(chunk)
 
+            async def on_text(chunk: str) -> None:
+                nonlocal text_chunk_count
+                if text_chunk_count == 0:
+                    sys.stdout.write("JARVIS [Live Voice] > ")
+                text_chunk_count += 1
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+
             async def on_turn_complete() -> None:
+                if text_chunk_count > 0:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
                 turn_finished.set()
 
             bridge.audio_chunk_handler = on_audio
+            bridge.text_chunk_handler = on_text
             bridge.turn_complete_handler = on_turn_complete
 
             print("================================================================")
-            print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live Voice)")
+            print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live)")
             print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name}")
             if with_daemon:
                 print(" Background Services: Gateway (ws://127.0.0.1:18789) + Heartbeat ACTIVE")
             print(" Native Execution Nodes: WINDOWS + BROWSER (In-flight Tool Calling)")
+            print(" Multimodal Inputs: Text, Audio, Images (/image <path>), Video")
+            print(" Multimodal Outputs: Simultaneous Voice (Speakers) + Streamed Text")
+            print(" Specialist Delegation: GPT-OSS 120B & Qwen 3.8 27B")
             print(" Type 'exit' or 'quit' to terminate the live session.")
             print("================================================================\n")
 
@@ -288,12 +305,14 @@ async def handle_chat(
                     print(f"Operator > {message}")
                     turn_finished.clear()
                     audio_chunk_count = 0
+                    text_chunk_count = 0
                     await bridge.send_text(message)
                     try:
-                        await asyncio.wait_for(turn_finished.wait(), timeout=15.0)
+                        await asyncio.wait_for(turn_finished.wait(), timeout=20.0)
                     except asyncio.TimeoutError:
                         pass
-                    print(f"JARVIS [Live Voice] > Received {audio_chunk_count} voice chunks.")
+                    if text_chunk_count == 0 and audio_chunk_count > 0:
+                        print(f"JARVIS [Live Voice] > ({audio_chunk_count} voice chunks)")
                     return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
 
                 while True:
@@ -310,16 +329,47 @@ async def handle_chat(
                         print("JARVIS > Terminating live stream. Standing by.")
                         break
 
+                    # Multimodal Image Input support: /image <path> [prompt]
+                    if user_input.startswith("/image ") or user_input.startswith("/img "):
+                        parts = user_input.split(maxsplit=2)
+                        if len(parts) < 2:
+                            print("Usage: /image <file_path> [optional prompt]")
+                            continue
+                        img_path_str = parts[1]
+                        prompt_str = (
+                            parts[2]
+                            if len(parts) > 2
+                            else "Analyze this image and describe what you see."
+                        )
+                        img_path = Path(img_path_str)
+                        if not img_path.exists():
+                            print(f"Error: Image file '{img_path_str}' not found.")
+                            continue
+                        mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
+                        img_bytes = img_path.read_bytes()
+                        print(f"[Uploading {img_path.name} ({len(img_bytes)} bytes)...]")
+                        turn_finished.clear()
+                        audio_chunk_count = 0
+                        text_chunk_count = 0
+                        await bridge.send_image(
+                            image_bytes=img_bytes, mime_type=mime, prompt=prompt_str
+                        )
+                        try:
+                            await asyncio.wait_for(turn_finished.wait(), timeout=30.0)
+                        except asyncio.TimeoutError:
+                            pass
+                        print()
+                        continue
+
                     turn_finished.clear()
                     audio_chunk_count = 0
+                    text_chunk_count = 0
                     await bridge.send_text(user_input)
                     try:
-                        await asyncio.wait_for(turn_finished.wait(), timeout=20.0)
+                        await asyncio.wait_for(turn_finished.wait(), timeout=25.0)
                     except asyncio.TimeoutError:
                         pass
-                    print(
-                        f"JARVIS [Live Voice] > Spoken aloud through speakers ({audio_chunk_count} audio chunks).\n"
-                    )
+                    print()
 
             finally:
                 pcm_player.stop()

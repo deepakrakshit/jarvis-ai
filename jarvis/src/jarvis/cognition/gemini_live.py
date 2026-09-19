@@ -16,9 +16,14 @@ from google import genai
 from google.genai import types
 
 from jarvis.actions.broker import ActionBroker, action_broker
+from jarvis.cognition.model_router import TaskClass, model_router
 from jarvis.config import settings
 from jarvis.contracts.action import ActionRequest, ExecutionTarget
+from jarvis.contracts.memory import MemoryRecord, MemoryType
+from jarvis.contracts.model import ModelFamily, ModelInvocationRequest
+from jarvis.memory.manager import memory_manager
 from jarvis.policy.firewall import (
+    CAPABILITY_BROWSER_NAVIGATE,
     CAPABILITY_COMPUTER_SCREENSHOT,
     CAPABILITY_FILESYSTEM_LIST,
     CAPABILITY_FILESYSTEM_READ,
@@ -135,6 +140,57 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "name": "delegate_task",
+        "description": "Assign a complex reasoning, deep coding, research, or analytical task to a specialist worker model (such as GPT-OSS 120B or Qwen 3.8 27B) and return the completed result.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "instruction": {
+                    "type": "STRING",
+                    "description": "The detailed instructions and requirements for the specialist model.",
+                },
+                "target_model": {
+                    "type": "STRING",
+                    "description": "Target specialist model: 'GPT-OSS 120B', 'Qwen 3.8 27B', or 'Gemini 3.5 Flash-Lite'.",
+                },
+                "task_type": {
+                    "type": "STRING",
+                    "description": "Category of work: 'CODING', 'DEEP_REASONING', or 'RESEARCH'.",
+                },
+            },
+            "required": ["instruction"],
+        },
+    },
+    {
+        "name": "browser_navigate",
+        "description": "Navigate to a URL using the autonomous browser to inspect contents and capture screenshots.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {"url": {"type": "STRING", "description": "The URL to navigate to."}},
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "memory_store",
+        "description": "Persist a user preference, personal fact, or project rule in JARVIS long-term memory.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "content": {"type": "STRING", "description": "The memory content or fact to store."}
+            },
+            "required": ["content"],
+        },
+    },
+    {
+        "name": "memory_search",
+        "description": "Search JARVIS long-term memory for relevant stored facts or preferences.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {"query": {"type": "STRING", "description": "Search query keywords."}},
+            "required": ["query"],
+        },
+    },
 ]
 
 TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
@@ -147,6 +203,7 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "filesystem_write": CAPABILITY_FILESYSTEM_WRITE,
     "filesystem_list": CAPABILITY_FILESYSTEM_LIST,
     "process_list": CAPABILITY_PROCESS_ENUMERATE,
+    "browser_navigate": CAPABILITY_BROWSER_NAVIGATE,
 }
 
 
@@ -199,14 +256,18 @@ class GeminiLiveBridge:
     def _build_config(self) -> types.LiveConnectConfig:
         """Construct the authoritative LiveConnectConfig."""
         system_instruction = (
-            "You are JARVIS, an advanced personal AI operating system created for the operator. "
-            "You are polite, concise, razor-sharp, and proactive. "
-            "You execute tasks on the host system using available tools. "
-            "Never refer to third-party project origins. Respond directly and efficiently."
+            "You are JARVIS (version 3.0.0), the personal AI operating system and master orchestrator. "
+            "You are polite, razor-sharp, concise, and proactive. "
+            "You control the host system and all specialist worker models. "
+            "When the operator requests host actions, use your tools (system_info, shell_execute, system_volume_set, etc.). "
+            "When the operator requests deep coding or heavy reasoning, assign the task to specialist models "
+            "using your delegate_task tool (target models: GPT-OSS 120B, Qwen 3.8 27B). "
+            "Address the user as Operator. Respond directly and efficiently."
         )
 
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
+            output_audio_transcription=types.AudioTranscriptionConfig(),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=self.voice_name)
@@ -226,6 +287,12 @@ class GeminiLiveBridge:
         logger.info(
             f"Connecting GeminiLiveBridge [{self.session_id}] to {self.model_name} with voice '{self.voice_name}'"
         )
+
+        from jarvis.execution.browser.host import browser_node
+        from jarvis.execution.windows.host import windows_node
+
+        windows_node.register_capabilities()
+        browser_node.register_capabilities()
 
         self._client = genai.Client(api_key=self.api_key)
         config = self._build_config()
@@ -279,12 +346,58 @@ class GeminiLiveBridge:
             raise RuntimeError(f"Cannot send audio: session is in {self.state.value} state")
 
         await self._active_session.send_realtime_input(
-            media_chunks=[
-                types.Blob(
-                    data=pcm_bytes,
-                    mime_type="audio/pcm;rate=16000",
+            audio=types.Blob(
+                data=pcm_bytes,
+                mime_type="audio/pcm;rate=16000",
+            )
+        )
+
+    async def send_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        prompt: Optional[str] = None,
+    ) -> None:
+        """Send an image to the active Live session with an optional user prompt."""
+        if self.state != LiveSessionState.ACTIVE or not self._active_session:
+            raise RuntimeError(f"Cannot send image: session is in {self.state.value} state")
+
+        logger.info(f"Sending image ({len(image_bytes)} bytes, {mime_type}) to Gemini Live...")
+        if prompt:
+            await self._active_session.send_client_content(
+                turns=[
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                            types.Part.from_text(text=prompt),
+                        ],
+                    )
+                ],
+                turn_complete=True,
+            )
+        else:
+            await self._active_session.send_realtime_input(
+                media=types.Blob(
+                    data=image_bytes,
+                    mime_type=mime_type,
                 )
-            ]
+            )
+
+    async def send_video_frame(
+        self,
+        frame_bytes: bytes,
+        mime_type: str = "image/jpeg",
+    ) -> None:
+        """Stream a real-time video frame to the active Live session."""
+        if self.state != LiveSessionState.ACTIVE or not self._active_session:
+            raise RuntimeError(f"Cannot send video frame: session is in {self.state.value} state")
+
+        await self._active_session.send_realtime_input(
+            video=types.Blob(
+                data=frame_bytes,
+                mime_type=mime_type,
+            )
         )
 
     async def _receive_loop(self) -> None:
@@ -322,6 +435,10 @@ class GeminiLiveBridge:
                                         if self.text_chunk_handler:
                                             await self.text_chunk_handler(part.text)
 
+                            if sc.output_transcription and sc.output_transcription.text:
+                                if self.text_chunk_handler:
+                                    await self.text_chunk_handler(sc.output_transcription.text)
+
                             if sc.turn_complete:
                                 if self.turn_complete_handler:
                                     await self.turn_complete_handler()
@@ -341,7 +458,7 @@ class GeminiLiveBridge:
             self.state = LiveSessionState.FAILED
 
     async def _handle_tool_call(self, tool_call: Any) -> None:
-        """Execute tool call through authoritative ActionBroker and return response."""
+        """Execute tool call through ActionBroker, ModelRouter, or MemoryPlane and return response."""
         function_responses: List[types.FunctionResponse] = []
 
         for call in tool_call.function_calls:
@@ -350,6 +467,113 @@ class GeminiLiveBridge:
             args = dict(call.args) if call.args else {}
             logger.info(f"Live tool call received: {func_name} [{call_id}] args={args}")
 
+            # 1. Delegation to specialist models (GPT-OSS 120B, Qwen 3.8 27B, etc.)
+            if func_name == "delegate_task":
+                instruction = str(args.get("instruction", ""))
+                target_str = str(args.get("target_model", "")).lower()
+                task_type_str = str(args.get("task_type", "CODING")).upper()
+
+                if "reason" in task_type_str:
+                    task_class = TaskClass.DEEP_REASONING
+                elif "research" in task_type_str:
+                    task_class = TaskClass.EXTRACTION_SUMMARIZATION
+                else:
+                    task_class = TaskClass.CODING
+
+                if "qwen" in target_str or "27b" in target_str:
+                    target_family = ModelFamily.QWEN_3_8_27B
+                elif "3.5" in target_str or "flash-lite" in target_str:
+                    target_family = ModelFamily.GEMINI_3_5_FLASH_LITE
+                elif "gemma" in target_str or "31b" in target_str:
+                    target_family = ModelFamily.GEMMA_4_31B
+                else:
+                    target_family = ModelFamily.GPT_OSS_120B
+
+                logger.info(
+                    f"Delegating task to specialist model {target_family.value} [{task_class.value}]: {instruction[:60]}..."
+                )
+                model_req = ModelInvocationRequest(
+                    model_family=target_family,
+                    prompt=instruction,
+                    system_instruction=(
+                        "You are an expert specialist model running under JARVIS master orchestration. "
+                        "Complete the requested task with maximum depth, accuracy, and technical excellence."
+                    ),
+                    max_output_tokens=2048,
+                )
+                model_res = await model_router.invoke(request=model_req, task_class=task_class)
+
+                delegation_payload: Dict[str, Any]
+                if model_res.error:
+                    delegation_payload = {
+                        "status": "error",
+                        "delegated_model": model_res.model_family.value,
+                        "error": model_res.error,
+                    }
+                else:
+                    delegation_payload = {
+                        "status": "success",
+                        "delegated_model": model_res.model_family.value,
+                        "result": model_res.text_content,
+                        "tokens_used": model_res.total_tokens,
+                    }
+
+                function_responses.append(
+                    types.FunctionResponse(
+                        id=call_id,
+                        name=func_name,
+                        response=delegation_payload,
+                    )
+                )
+                continue
+
+            # 2. Memory plane store
+            if func_name == "memory_store":
+                content = str(args.get("content", ""))
+                key = str(args.get("key", f"pref-{uuid4().hex[:6]}"))
+                record = MemoryRecord(
+                    key=key,
+                    content=content,
+                    memory_type=MemoryType.USER_PREFERENCE,
+                    session_id=self.session_id,
+                )
+                stored = memory_manager.store(record)
+                function_responses.append(
+                    types.FunctionResponse(
+                        id=call_id,
+                        name=func_name,
+                        response={
+                            "status": "success",
+                            "record_id": stored.record_id,
+                            "key": stored.key,
+                            "stored": True,
+                        },
+                    )
+                )
+                continue
+
+            # 3. Memory plane search
+            if func_name == "memory_search":
+                query = str(args.get("query", ""))
+                records = memory_manager.search(query=query, limit=5)
+                results_data = [
+                    {"key": r.key, "content": r.content, "score": round(r.importance_score, 3)}
+                    for r in records
+                ]
+                function_responses.append(
+                    types.FunctionResponse(
+                        id=call_id,
+                        name=func_name,
+                        response={
+                            "status": "success",
+                            "count": len(results_data),
+                            "results": results_data,
+                        },
+                    )
+                )
+                continue
+
+            # 4. Host and Browser Action Execution through ActionBroker
             capability = TOOL_TO_CAPABILITY_MAP.get(func_name)
             if not capability:
                 error_msg = f"Unknown tool function: {func_name}"
@@ -363,25 +587,31 @@ class GeminiLiveBridge:
                 )
                 continue
 
-            # Construct ActionRequest to pass through PolicyEngine & ActionBroker
-            req = ActionRequest(
+            target = (
+                ExecutionTarget.BROWSER_NODE
+                if capability == CAPABILITY_BROWSER_NAVIGATE
+                else ExecutionTarget.WINDOWS_NODE
+            )
+
+            action_req = ActionRequest(
                 task_id=f"LIVE-{call_id}",
                 session_id=self.session_id,
                 capability=capability,
                 arguments=args,
-                target=ExecutionTarget.WINDOWS_NODE,
+                target=target,
             )
 
-            result = await self.broker.execute(req)
+            result = await self.broker.execute(action_req)
 
+            action_payload: Dict[str, Any]
             if result.error:
-                response_payload: Dict[str, Any] = {
+                action_payload = {
                     "status": "error",
                     "action_status": result.status.value,
                     "error": result.error,
                 }
             else:
-                response_payload = {
+                action_payload = {
                     "status": "success",
                     "action_status": result.status.value,
                     "output": result.output,
@@ -392,7 +622,7 @@ class GeminiLiveBridge:
                 types.FunctionResponse(
                     id=call_id,
                     name=func_name,
-                    response=response_payload,
+                    response=action_payload,
                 )
             )
 

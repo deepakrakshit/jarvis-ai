@@ -115,3 +115,117 @@ async def test_live_gemini_3_8_connection_and_audio() -> None:
     finally:
         await bridge.disconnect()
         assert bridge.state == LiveSessionState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_tool_call_delegate_task() -> None:
+    """Verify tool call delegation to specialist model (GPT-OSS 120B)."""
+    from unittest.mock import patch
+
+    from jarvis.contracts.model import ModelFamily, ModelInvocationResponse, ModelProvider
+
+    bridge = GeminiLiveBridge()
+    mock_session = AsyncMock()
+    bridge._active_session = mock_session
+
+    fake_tool_call = MagicMock()
+    fake_func_call = MagicMock()
+    fake_func_call.id = "call_del_1"
+    fake_func_call.name = "delegate_task"
+    fake_func_call.args = {
+        "instruction": "Write a binary search function in Python.",
+        "target_model": "GPT-OSS 120B",
+        "task_type": "CODING",
+    }
+    fake_tool_call.function_calls = [fake_func_call]
+
+    mock_resp = ModelInvocationResponse(
+        model_family=ModelFamily.GPT_OSS_120B,
+        provider=ModelProvider.GROQ,
+        text_content="def binary_search(arr, target): ...",
+        total_tokens=85,
+    )
+
+    with patch(
+        "jarvis.cognition.gemini_live.model_router.invoke",
+        new_callable=AsyncMock,
+        return_value=mock_resp,
+    ) as mock_invoke:
+        await bridge._handle_tool_call(fake_tool_call)
+        assert mock_invoke.called
+        call_kw = mock_invoke.call_args[1]
+        assert call_kw["request"].model_family == ModelFamily.GPT_OSS_120B
+        assert "binary search" in call_kw["request"].prompt
+
+    assert mock_session.send_tool_response.called
+    responses = mock_session.send_tool_response.call_args[1]["function_responses"]
+    assert len(responses) == 1
+    assert responses[0].id == "call_del_1"
+    assert responses[0].response["status"] == "success"
+    assert responses[0].response["delegated_model"] == "GPT-OSS 120B"
+    assert "binary_search" in responses[0].response["result"]
+
+
+@pytest.mark.asyncio
+async def test_tool_call_memory_store_and_search() -> None:
+    """Verify in-flight memory storage and search during Gemini Live sessions."""
+    bridge = GeminiLiveBridge()
+    mock_session = AsyncMock()
+    bridge._active_session = mock_session
+
+    # Store memory
+    fake_tool_call_store = MagicMock()
+    fake_func_call_store = MagicMock()
+    fake_func_call_store.id = "call_mem_1"
+    fake_func_call_store.name = "memory_store"
+    fake_func_call_store.args = {
+        "content": "Operator prefers concise terminal outputs.",
+        "key": "cli_preference",
+    }
+    fake_tool_call_store.function_calls = [fake_func_call_store]
+
+    await bridge._handle_tool_call(fake_tool_call_store)
+    assert mock_session.send_tool_response.called
+    store_resp = mock_session.send_tool_response.call_args[1]["function_responses"][0]
+    assert store_resp.response["status"] == "success"
+    assert store_resp.response["stored"] is True
+
+    # Search memory
+    fake_tool_call_search = MagicMock()
+    fake_func_call_search = MagicMock()
+    fake_func_call_search.id = "call_mem_2"
+    fake_func_call_search.name = "memory_search"
+    fake_func_call_search.args = {
+        "query": "concise terminal",
+    }
+    fake_tool_call_search.function_calls = [fake_func_call_search]
+
+    await bridge._handle_tool_call(fake_tool_call_search)
+    search_resp = mock_session.send_tool_response.call_args[1]["function_responses"][0]
+    assert search_resp.response["status"] == "success"
+    assert search_resp.response["count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_multimodal_send_image_and_video() -> None:
+    """Verify sending image and video frame inputs to the Live session."""
+    bridge = GeminiLiveBridge()
+    bridge.state = LiveSessionState.ACTIVE
+    mock_session = AsyncMock()
+    bridge._active_session = mock_session
+
+    # 1. Send image with prompt
+    await bridge.send_image(
+        b"fake_jpeg_bytes", mime_type="image/jpeg", prompt="Describe this diagram"
+    )
+    assert mock_session.send_client_content.called
+
+    # 2. Send image realtime blob
+    mock_session.reset_mock()
+    await bridge.send_image(b"fake_png_bytes", mime_type="image/png")
+    assert mock_session.send_realtime_input.called
+
+    # 3. Send video frame
+    mock_session.reset_mock()
+    await bridge.send_video_frame(b"fake_frame_bytes", mime_type="image/jpeg")
+    assert mock_session.send_realtime_input.called
