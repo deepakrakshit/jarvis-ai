@@ -8,6 +8,7 @@ and immutable audit trails.
 import asyncio
 import inspect
 import time
+from typing import Optional
 
 from jarvis.actions.registry import capability_registry
 from jarvis.contracts.action import (
@@ -16,23 +17,31 @@ from jarvis.contracts.action import (
     ActionStatus,
 )
 from jarvis.contracts.policy import PolicyVerdict
-from jarvis.policy.engine import policy_engine
-from jarvis.storage.database import db
+from jarvis.policy.engine import PolicyEngine, policy_engine
+from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger
 
 
 class ActionBroker:
     """Canonical executor that governs and dispatches real-world actions."""
 
+    def __init__(
+        self,
+        policy: Optional[PolicyEngine] = None,
+        database: Optional[DatabaseEngine] = None,
+    ) -> None:
+        self.policy = policy or policy_engine
+        self.db = database or db
+
     async def execute(self, request: ActionRequest) -> ActionResult:
         """Process an ActionRequest through the full security and execution pipeline."""
         start_time = time.perf_counter()
 
         # Step 1: Persist initial ActionRequest
-        db.save_action_request(request)
+        self.db.save_action_request(request)
 
         # Step 2: Policy Authorization
-        decision = policy_engine.evaluate(request)
+        decision = self.policy.evaluate(request)
 
         # Handle Policy Verdicts
         if decision.verdict == PolicyVerdict.DENY:
@@ -46,7 +55,7 @@ class ActionBroker:
                 duration_ms=duration_ms,
                 audit_logged=True,
             )
-            db.save_action_result(result)
+            self.db.save_action_result(result)
             return result
 
         if decision.verdict == PolicyVerdict.ASK:
@@ -62,7 +71,7 @@ class ActionBroker:
                 duration_ms=duration_ms,
                 audit_logged=True,
             )
-            db.save_action_result(result)
+            self.db.save_action_result(result)
             return result
 
         # Step 3: Resolve Execution Handler
@@ -78,7 +87,7 @@ class ActionBroker:
                 duration_ms=duration_ms,
                 audit_logged=True,
             )
-            db.save_action_result(result)
+            self.db.save_action_result(result)
             return result
 
         # Step 4: Execute within Controlled Boundary
@@ -128,8 +137,8 @@ class ActionBroker:
             )
 
         # Step 5: Persist Result & Audit
-        db.save_action_result(result)
-        db.log_audit_event(
+        self.db.save_action_result(result)
+        self.db.log_audit_event(
             event_type="ACTION_COMPLETED",
             action_id=request.action_id,
             task_id=request.task_id,

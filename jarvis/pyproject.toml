@@ -35,6 +35,7 @@ minversion = "8.0"
 addopts = "-ra -q --import-mode=importlib"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["src"]
 
 [tool.mypy]
@@ -62,6 +63,7 @@ module = [
     "pycaw.*",
     "comtypes.*",
     "pyautogui",
+    "pygetwindow",
     "screen_brightness_control",
     "google.*",
     "groq.*",

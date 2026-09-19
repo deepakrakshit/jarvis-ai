@@ -6,11 +6,12 @@ resource targets, risk tiers, and operator approvals.
 """
 
 from pathlib import Path
+from typing import Optional
 
 from jarvis.config import settings
 from jarvis.contracts.action import ActionRequest, RiskTier
 from jarvis.contracts.policy import ApprovalStatus, PolicyDecision, PolicyVerdict
-from jarvis.policy.approvals import approval_manager
+from jarvis.policy.approvals import ApprovalManager, approval_manager
 from jarvis.policy.firewall import (
     CAPABILITY_FILESYSTEM_DELETE,
     CAPABILITY_FILESYSTEM_WRITE,
@@ -19,12 +20,22 @@ from jarvis.policy.firewall import (
     CAPABILITY_SHELL_EXECUTE,
     is_dangerous_command,
 )
-from jarvis.storage.database import db
+from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger
 
 
 class PolicyEngine:
     """Authoritative evaluator for action permissions and security boundaries."""
+
+    def __init__(
+        self,
+        workspace_dir: Optional[Path] = None,
+        approvals: Optional[ApprovalManager] = None,
+        database: Optional[DatabaseEngine] = None,
+    ) -> None:
+        self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
+        self.approvals = approvals or approval_manager
+        self.db = database or db
 
     def evaluate(self, request: ActionRequest) -> PolicyDecision:
         """Evaluate an ActionRequest and return an authoritative PolicyDecision."""
@@ -60,7 +71,7 @@ class PolicyEngine:
 
         # 3. Existing Approval Verification
         if request.approval_id:
-            approval = approval_manager.get_pending(request.approval_id)
+            approval = self.approvals.get_pending(request.approval_id)
             if approval and approval.status == ApprovalStatus.APPROVED:
                 decision = PolicyDecision(
                     action_id=request.action_id,
@@ -95,7 +106,7 @@ class PolicyEngine:
                 or request.arguments.get("command")
                 or "system"
             )
-            approval_req = approval_manager.create_request(
+            approval_req = self.approvals.create_request(
                 action_id=request.action_id,
                 task_id=request.task_id,
                 session_id=request.session_id,
@@ -119,7 +130,7 @@ class PolicyEngine:
         if capability == CAPABILITY_FILESYSTEM_WRITE:
             target_path_str = str(request.arguments.get("path", ""))
             target_path = Path(target_path_str).resolve()
-            workspace = settings.WORKSPACE_DIR.resolve()
+            workspace = self.workspace_dir.resolve()
             # Allow workspace writes automatically; ask for external system paths
             try:
                 target_path.relative_to(workspace)
@@ -127,7 +138,7 @@ class PolicyEngine:
                 reason = "Workspace file write permitted."
             except ValueError:
                 # Outside workspace
-                approval_req = approval_manager.create_request(
+                approval_req = self.approvals.create_request(
                     action_id=request.action_id,
                     task_id=request.task_id,
                     session_id=request.session_id,
@@ -173,7 +184,7 @@ class PolicyEngine:
         logger.info(
             f"Policy Decision [{decision.verdict.value}]: {request.capability} - {decision.reason}"
         )
-        db.log_audit_event(
+        self.db.log_audit_event(
             event_type="POLICY_EVALUATION",
             action_id=request.action_id,
             task_id=request.task_id,
