@@ -100,6 +100,9 @@ class ActionBroker:
             else:
                 output = await asyncio.to_thread(handler, request)
 
+            if inspect.iscoroutine(output):
+                output = await output
+
             duration_ms = (time.perf_counter() - start_time) * 1000.0
             result = ActionResult(
                 action_id=request.action_id,

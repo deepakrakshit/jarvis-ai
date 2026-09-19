@@ -35,6 +35,7 @@ CAPABILITY_BROWSER_NAVIGATE = "browser.navigate"
 CAPABILITY_BROWSER_SNAPSHOT = "browser.snapshot"
 CAPABILITY_BROWSER_CLICK = "browser.click"
 CAPABILITY_BROWSER_TYPE = "browser.type"
+CAPABILITY_BROWSER_SCREENSHOT = "browser.screenshot"
 
 # Risk tier assignments for each capability
 CAPABILITY_RISK_MAP: Dict[str, RiskTier] = {
@@ -58,6 +59,7 @@ CAPABILITY_RISK_MAP: Dict[str, RiskTier] = {
     CAPABILITY_BROWSER_SNAPSHOT: RiskTier.READ_ONLY,
     CAPABILITY_BROWSER_CLICK: RiskTier.MEDIUM,
     CAPABILITY_BROWSER_TYPE: RiskTier.MEDIUM,
+    CAPABILITY_BROWSER_SCREENSHOT: RiskTier.READ_ONLY,
 }
 
 # Blacklisted dangerous shell substrings that fail-closed immediately
