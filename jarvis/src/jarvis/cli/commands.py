@@ -21,10 +21,18 @@ from jarvis.config import settings
 from jarvis.contracts.task import TaskType
 from jarvis.core.control_plane import ControlPlane, control_plane
 from jarvis.cron import HeartbeatMonitor, heartbeat_monitor
+from jarvis.execution.browser.host import browser_node
+from jarvis.execution.windows.host import windows_node
 from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger
+
+
+def ensure_nodes_registered() -> None:
+    """Ensure host and browser execution nodes are registered with the action broker."""
+    windows_node.register_capabilities()
+    browser_node.register_capabilities()
 
 
 def handle_status(database: Optional[DatabaseEngine] = None) -> Dict[str, Any]:
@@ -75,6 +83,7 @@ async def handle_run(
     cp: Optional[ControlPlane] = None,
 ) -> Dict[str, Any]:
     """Submit a task to the Control Plane and execute until completion."""
+    ensure_nodes_registered()
     plane = cp or control_plane
     logger.info(f"Submitting intent via CLI: '{intent}'")
 
@@ -186,6 +195,7 @@ async def handle_serve(
     heartbeat_interval: float = 60.0,
 ) -> None:
     """Run the unified system server daemon: Gateway + Heartbeat Monitor."""
+    ensure_nodes_registered()
     server = GatewayServer(host=host, port=port)
     await server.start()
     logger.info("JARVIS Unified Server started (Gateway + Heartbeat). Press Ctrl+C to terminate.")
