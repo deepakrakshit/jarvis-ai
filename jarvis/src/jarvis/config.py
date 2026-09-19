@@ -75,6 +75,14 @@ class JarvisSettings(BaseSettings):
         ]
     )
 
+    # Dynamic Model Mappings (configurable via environment variables)
+    MODEL_MAP_GEMINI_LIVE: str = Field(default="gemini-2.5-flash")
+    MODEL_MAP_GEMINI_3_1_FLASH_LITE: str = Field(default="gemini-2.5-flash-lite")
+    MODEL_MAP_GEMINI_3_5_FLASH_LITE: str = Field(default="gemini-2.5-flash")
+    MODEL_MAP_GEMMA_4_31B: str = Field(default="gemini-2.5-flash")
+    MODEL_MAP_GPT_OSS_120B: str = Field(default="openai/gpt-oss-120b")
+    MODEL_MAP_QWEN_3_8_27B: str = Field(default="qwen/qwen3.8-27b")
+
     def ensure_directories(self) -> None:
         """Ensure runtime directories exist safely."""
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
