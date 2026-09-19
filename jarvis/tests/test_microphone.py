@@ -7,7 +7,6 @@ import pytest
 
 from jarvis.cognition.gemini_live import GeminiLiveBridge, LiveSessionState
 from jarvis.voice.microphone import (
-    AudioEnergyStats,
     MicrophoneCapture,
     get_default_input_device,
     list_input_devices,
