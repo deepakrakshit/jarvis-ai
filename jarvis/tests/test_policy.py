@@ -47,8 +47,8 @@ def test_dangerous_command_blacklisting() -> None:
 
 
 def test_high_risk_actions_require_approval() -> None:
-    """Verify destructive operations trigger an interactive ApprovalRequest."""
-    engine = PolicyEngine()
+    """Verify destructive operations trigger an interactive ApprovalRequest when require_approvals=True."""
+    engine = PolicyEngine(require_approvals=True)
     req = ActionRequest(
         task_id="TASK-03",
         session_id="SESS-01",
@@ -70,6 +70,21 @@ def test_high_risk_actions_require_approval() -> None:
     re_decision = engine.evaluate(req)
     assert re_decision.verdict == PolicyVerdict.ALLOW
     assert "Explicitly approved by operator" in re_decision.reason
+
+
+def test_high_risk_actions_auto_allowed_when_approvals_disabled() -> None:
+    """Verify shell commands and high risk operations execute without approval when disabled."""
+    engine = PolicyEngine(require_approvals=False)
+    req = ActionRequest(
+        task_id="TASK-03-BYPASS",
+        session_id="SESS-01",
+        capability=CAPABILITY_SHELL_EXECUTE,
+        arguments={"command": "start chrome"},
+        risk_tier=RiskTier.HIGH,
+    )
+    decision = engine.evaluate(req)
+    assert decision.verdict == PolicyVerdict.ALLOW
+    assert decision.approval_request is None
 
 
 def test_unknown_capability_denied() -> None:

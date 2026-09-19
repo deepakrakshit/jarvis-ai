@@ -33,11 +33,15 @@ class PolicyEngine:
         approvals: Optional[ApprovalManager] = None,
         database: Optional[DatabaseEngine] = None,
         allowed_capabilities: Optional[Set[str]] = None,
+        require_approvals: Optional[bool] = None,
     ) -> None:
         self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
         self.approvals = approvals or approval_manager
         self.db = database or db
         self.allowed_capabilities = allowed_capabilities
+        self.require_approvals = (
+            require_approvals if require_approvals is not None else settings.REQUIRE_APPROVALS
+        )
 
     def evaluate(self, request: ActionRequest) -> PolicyDecision:
         """Evaluate an ActionRequest and return an authoritative PolicyDecision."""
@@ -109,10 +113,10 @@ class PolicyEngine:
                 self._log_decision(request, decision)
                 return decision
 
-        # 4. Destructive / High Risk Actions Require Interactive Approval
-        if risk_tier == RiskTier.HIGH or capability in (
-            CAPABILITY_FILESYSTEM_DELETE,
-            CAPABILITY_PROCESS_TERMINATE,
+        # 4. Destructive / High Risk Actions Require Interactive Approval (if enabled)
+        if self.require_approvals and (
+            risk_tier == RiskTier.HIGH
+            or capability in (CAPABILITY_FILESYSTEM_DELETE, CAPABILITY_PROCESS_TERMINATE)
         ):
             target_desc = str(
                 request.arguments.get("path")
@@ -151,26 +155,30 @@ class PolicyEngine:
                 verdict = PolicyVerdict.ALLOW
                 reason = "Workspace file write permitted."
             except ValueError:
-                # Outside workspace
-                approval_req = self.approvals.create_request(
-                    action_id=request.action_id,
-                    task_id=request.task_id,
-                    session_id=request.session_id,
-                    capability=capability,
-                    target_resource=str(target_path),
-                    risk_summary="Filesystem modification outside workspace",
-                    arguments_summary=request.arguments,
-                )
-                decision = PolicyDecision(
-                    action_id=request.action_id,
-                    verdict=PolicyVerdict.ASK,
-                    reason="Writing outside workspace boundaries requires approval",
-                    capability=capability,
-                    risk_tier=RiskTier.HIGH.value,
-                    approval_request=approval_req,
-                )
-                self._log_decision(request, decision)
-                return decision
+                if self.require_approvals:
+                    # Outside workspace
+                    approval_req = self.approvals.create_request(
+                        action_id=request.action_id,
+                        task_id=request.task_id,
+                        session_id=request.session_id,
+                        capability=capability,
+                        target_resource=str(target_path),
+                        risk_summary="Filesystem modification outside workspace",
+                        arguments_summary=request.arguments,
+                    )
+                    decision = PolicyDecision(
+                        action_id=request.action_id,
+                        verdict=PolicyVerdict.ASK,
+                        reason="Writing outside workspace boundaries requires approval",
+                        capability=capability,
+                        risk_tier=RiskTier.HIGH.value,
+                        approval_request=approval_req,
+                    )
+                    self._log_decision(request, decision)
+                    return decision
+                else:
+                    verdict = PolicyVerdict.ALLOW
+                    reason = "External filesystem write permitted (approvals disabled)."
 
             decision = PolicyDecision(
                 action_id=request.action_id,

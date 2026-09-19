@@ -29,7 +29,7 @@ from jarvis.execution.windows.host import windows_node
 from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
 from jarvis.storage.database import DatabaseEngine, db
-from jarvis.telemetry import logger
+from jarvis.telemetry import logger, set_console_logging
 from jarvis.voice import PcmStreamPlayer, voice_synthesizer
 
 
@@ -258,6 +258,7 @@ async def handle_chat(
                 print("Error: GEMINI_API_KEY is not configured in environment.")
                 return {"error": "Missing GEMINI_API_KEY"}
 
+            set_console_logging(False)
             bridge = GeminiLiveBridge(session_id=session_id)
             pcm_player = PcmStreamPlayer(samplerate=24000)
             audio_chunk_count = 0
@@ -269,34 +270,54 @@ async def handle_chat(
                 audio_chunk_count += 1
                 pcm_player.play_chunk(chunk)
 
+            async def on_tool_call(name: str, args: Dict[str, Any]) -> None:
+                if name == "shell_execute":
+                    cmd = args.get("command", "")
+                    sys.stdout.write(f"\n⚡ [Running: {cmd}]\n")
+                elif name == "delegate_task":
+                    target = args.get("target_model", "Specialist Model")
+                    sys.stdout.write(f"\n⚡ [Delegating to {target}...]\n")
+                elif name == "browser_navigate":
+                    url = args.get("url", "")
+                    sys.stdout.write(f"\n⚡ [Navigating Browser: {url}]\n")
+                elif name == "system_info":
+                    sys.stdout.write("\n⚡ [Checking system hardware and OS status...]\n")
+                elif name == "system_screenshot":
+                    sys.stdout.write("\n⚡ [Capturing primary desktop screenshot...]\n")
+                elif name == "system_volume_set":
+                    level = args.get("level", "")
+                    sys.stdout.write(f"\n⚡ [Setting volume to {level}%]\n")
+                else:
+                    sys.stdout.write(f"\n⚡ [Executing: {name}]\n")
+                sys.stdout.flush()
+
             async def on_text(chunk: str) -> None:
                 nonlocal text_chunk_count
                 if text_chunk_count == 0:
-                    sys.stdout.write("JARVIS [Live Voice] > ")
+                    sys.stdout.write("\nJARVIS > ")
                 text_chunk_count += 1
                 sys.stdout.write(chunk)
                 sys.stdout.flush()
 
             async def on_turn_complete() -> None:
                 if text_chunk_count > 0:
-                    sys.stdout.write("\n")
+                    sys.stdout.write("\n\n")
                     sys.stdout.flush()
                 turn_finished.set()
 
             bridge.audio_chunk_handler = on_audio
             bridge.text_chunk_handler = on_text
             bridge.turn_complete_handler = on_turn_complete
+            bridge.tool_call_handler = on_tool_call
 
             print("================================================================")
-            print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live)")
-            print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name}")
-            if with_daemon:
-                print(" Background Services: Gateway (ws://127.0.0.1:18789) + Heartbeat ACTIVE")
-            print(" Native Execution Nodes: WINDOWS + BROWSER (In-flight Tool Calling)")
-            print(" Multimodal Inputs: Text, Audio, Images (/image <path>), Video")
-            print(" Multimodal Outputs: Simultaneous Voice (Speakers) + Streamed Text")
+            print("             JARVIS OPERATING SYSTEM (GEMINI LIVE)")
+            print("================================================================")
+            print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name} | Approvals: OFF")
+            print(" Native Tools: Windows Node (Native) + Browser Node (Autonomous)")
+            print(" Multi-Modal: Voice (Speakers) + Text Stream + Vision (/image <path>)")
             print(" Specialist Delegation: GPT-OSS 120B & Qwen 3.8 27B")
-            print(" Type 'exit' or 'quit' to terminate the live session.")
+            print(" Type 'exit' or 'quit' to terminate.")
             print("================================================================\n")
 
             await bridge.connect()
@@ -312,7 +333,7 @@ async def handle_chat(
                     except asyncio.TimeoutError:
                         pass
                     if text_chunk_count == 0 and audio_chunk_count > 0:
-                        print(f"JARVIS [Live Voice] > ({audio_chunk_count} voice chunks)")
+                        print(f"JARVIS > ({audio_chunk_count} voice chunks)\n")
                     return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
 
                 while True:
@@ -326,14 +347,14 @@ async def handle_chat(
                     if not user_input:
                         continue
                     if user_input.lower() in ("exit", "quit", "q"):
-                        print("JARVIS > Terminating live stream. Standing by.")
+                        print("\nJARVIS > Terminating live stream. Standing by.\n")
                         break
 
                     # Multimodal Image Input support: /image <path> [prompt]
                     if user_input.startswith("/image ") or user_input.startswith("/img "):
                         parts = user_input.split(maxsplit=2)
                         if len(parts) < 2:
-                            print("Usage: /image <file_path> [optional prompt]")
+                            print("Usage: /image <file_path> [optional prompt]\n")
                             continue
                         img_path_str = parts[1]
                         prompt_str = (
@@ -343,11 +364,11 @@ async def handle_chat(
                         )
                         img_path = Path(img_path_str)
                         if not img_path.exists():
-                            print(f"Error: Image file '{img_path_str}' not found.")
+                            print(f"Error: Image file '{img_path_str}' not found.\n")
                             continue
                         mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
                         img_bytes = img_path.read_bytes()
-                        print(f"[Uploading {img_path.name} ({len(img_bytes)} bytes)...]")
+                        print(f"\n[Uploading {img_path.name} ({len(img_bytes)} bytes)...]")
                         turn_finished.clear()
                         audio_chunk_count = 0
                         text_chunk_count = 0
@@ -358,7 +379,6 @@ async def handle_chat(
                             await asyncio.wait_for(turn_finished.wait(), timeout=30.0)
                         except asyncio.TimeoutError:
                             pass
-                        print()
                         continue
 
                     turn_finished.clear()
@@ -369,11 +389,11 @@ async def handle_chat(
                         await asyncio.wait_for(turn_finished.wait(), timeout=25.0)
                     except asyncio.TimeoutError:
                         pass
-                    print()
 
             finally:
                 pcm_player.stop()
                 await bridge.disconnect()
+                set_console_logging(True)
                 print("JARVIS Live session closed cleanly.")
             return None
 

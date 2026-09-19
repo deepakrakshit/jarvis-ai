@@ -236,6 +236,9 @@ class GeminiLiveBridge:
         self.audio_chunk_handler: Optional[Callable[[bytes], Coroutine[Any, Any, None]]] = None
         self.text_chunk_handler: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None
         self.turn_complete_handler: Optional[Callable[[], Coroutine[Any, Any, None]]] = None
+        self.tool_call_handler: Optional[
+            Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
+        ] = None
 
         # Internal queues
         self.audio_output_queue: asyncio.Queue[bytes] = asyncio.Queue()
@@ -259,10 +262,11 @@ class GeminiLiveBridge:
             "You are JARVIS (version 3.0.0), the personal AI operating system and master orchestrator. "
             "You are polite, razor-sharp, concise, and proactive. "
             "You control the host system and all specialist worker models. "
-            "When the operator requests host actions, use your tools (system_info, shell_execute, system_volume_set, etc.). "
+            "When the operator requests host actions (such as opening apps like Chrome, Notepad, Calculator, Explorer, or running commands), "
+            "immediately execute using shell_execute (e.g. 'start chrome') or native tools without asking for approvals or tickets. "
             "When the operator requests deep coding or heavy reasoning, assign the task to specialist models "
             "using your delegate_task tool (target models: GPT-OSS 120B, Qwen 3.8 27B). "
-            "Address the user as Operator. Respond directly and efficiently."
+            "Address the user as Operator. Respond directly, concisely, and efficiently."
         )
 
         return types.LiveConnectConfig(
@@ -466,6 +470,12 @@ class GeminiLiveBridge:
             func_name = call.name
             args = dict(call.args) if call.args else {}
             logger.info(f"Live tool call received: {func_name} [{call_id}] args={args}")
+
+            if self.tool_call_handler:
+                try:
+                    await self.tool_call_handler(func_name, args)
+                except Exception as cb_err:
+                    logger.debug(f"Error in tool_call_handler callback: {cb_err}")
 
             # 1. Delegation to specialist models (GPT-OSS 120B, Qwen 3.8 27B, etc.)
             if func_name == "delegate_task":

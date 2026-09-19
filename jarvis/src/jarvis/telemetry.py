@@ -71,3 +71,12 @@ def setup_logger(name: str = "jarvis") -> logging.Logger:
 
 
 logger = setup_logger("jarvis")
+
+
+def set_console_logging(enabled: bool = True) -> None:
+    """Enable or mute console log output while preserving background file logging."""
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, logging.FileHandler
+        ):
+            handler.setLevel(logging.INFO if enabled else logging.WARNING)

@@ -64,6 +64,9 @@ class JarvisSettings(BaseSettings):
     MAX_SUBAGENT_DEPTH: int = Field(default=3)
     DEFAULT_MAX_RETRIES: int = Field(default=3)
 
+    # Security & Policy Controls (approvals bypassed when False)
+    REQUIRE_APPROVALS: bool = Field(default=False)
+
     # Approved Runtime Models (Strict 6-Model Allowlist)
     ALLOWED_MODEL_FAMILIES: List[str] = Field(
         default_factory=lambda: [
