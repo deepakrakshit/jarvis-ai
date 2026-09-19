@@ -115,6 +115,8 @@ async def test_live_google_genai_completion() -> None:
         max_output_tokens=60,
     )
     res = await router.invoke(req)
+    if res.error and ("429" in res.error or "RESOURCE_EXHAUSTED" in res.error):
+        pytest.skip(f"Google GenAI free tier rate limit temporarily exceeded: {res.error}")
     assert res.error is None
     assert res.text_content is not None
     assert len(res.text_content) > 0

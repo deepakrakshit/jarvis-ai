@@ -37,6 +37,7 @@ DEFAULT_ROUTING_POLICY: Dict[TaskClass, List[ModelFamily]] = {
     TaskClass.REALTIME: [
         ModelFamily.GEMINI_3_8_LIVE,
         ModelFamily.GEMINI_3_5_FLASH_LITE,
+        ModelFamily.QWEN_3_8_27B,
     ],
     TaskClass.SIMPLE_TOOL: [
         ModelFamily.GEMINI_3_5_FLASH_LITE,
