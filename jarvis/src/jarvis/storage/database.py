@@ -178,6 +178,15 @@ class DatabaseEngine:
 
     def save_action_request(self, req: ActionRequest) -> None:
         """Persist an action execution request."""
+        # Ensure parent task and session exist to satisfy foreign key constraints
+        if not self.get_task(req.task_id):
+            self.save_task(
+                Task(
+                    task_id=req.task_id,
+                    session_id=req.session_id,
+                    raw_intent=f"Action requested: {req.capability}",
+                )
+            )
         with self.transaction() as cursor:
             cursor.execute(
                 """
