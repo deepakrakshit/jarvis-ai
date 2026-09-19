@@ -610,6 +610,163 @@ class DatabaseEngine:
                 ),
             )
 
+    # -------------------------------------------------------------------------
+    # ACP (Agent Control Protocol) Repository
+    # -------------------------------------------------------------------------
+
+    def save_acp_session(
+        self,
+        session_id: str,
+        harness_type: str,
+        model: str,
+        repo_path: str,
+        branch: Optional[str],
+        state: str,
+        allowed_tools: List[str],
+        network_allowed: bool = False,
+        read_only: bool = False,
+        parent_task_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Persist or update an ACP external coding agent session."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO acp_sessions (
+                    session_id, parent_task_id, harness_type, model, repo_path, branch,
+                    state, allowed_tools_json, network_allowed, read_only, created_at,
+                    updated_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    parent_task_id = excluded.parent_task_id,
+                    harness_type = excluded.harness_type,
+                    model = excluded.model,
+                    repo_path = excluded.repo_path,
+                    branch = excluded.branch,
+                    state = excluded.state,
+                    allowed_tools_json = excluded.allowed_tools_json,
+                    network_allowed = excluded.network_allowed,
+                    read_only = excluded.read_only,
+                    updated_at = datetime('now'),
+                    metadata_json = excluded.metadata_json;
+                """,
+                (
+                    session_id,
+                    parent_task_id,
+                    harness_type,
+                    model,
+                    repo_path,
+                    branch,
+                    state,
+                    json.dumps(allowed_tools),
+                    1 if network_allowed else 0,
+                    1 if read_only else 0,
+                    json.dumps(metadata or {}),
+                ),
+            )
+
+    def get_acp_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an ACP session by ID."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT * FROM acp_sessions WHERE session_id = ?;",
+                (session_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "session_id": row["session_id"],
+                "parent_task_id": row["parent_task_id"],
+                "harness_type": row["harness_type"],
+                "model": row["model"],
+                "repo_path": row["repo_path"],
+                "branch": row["branch"],
+                "state": row["state"],
+                "allowed_tools": json.loads(row["allowed_tools_json"] or "[]"),
+                "network_allowed": bool(row["network_allowed"]),
+                "read_only": bool(row["read_only"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "metadata": json.loads(row["metadata_json"] or "{}"),
+            }
+
+    def list_acp_sessions(self, state: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List ACP sessions optionally filtered by state."""
+        with self.transaction() as cursor:
+            sql = "SELECT * FROM acp_sessions"
+            params: List[Any] = []
+            if state:
+                sql += " WHERE state = ?"
+                params.append(state)
+            sql += " ORDER BY created_at DESC;"
+            cursor.execute(sql, params)
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append(
+                    {
+                        "session_id": row["session_id"],
+                        "parent_task_id": row["parent_task_id"],
+                        "harness_type": row["harness_type"],
+                        "model": row["model"],
+                        "repo_path": row["repo_path"],
+                        "branch": row["branch"],
+                        "state": row["state"],
+                        "allowed_tools": json.loads(row["allowed_tools_json"] or "[]"),
+                        "network_allowed": bool(row["network_allowed"]),
+                        "read_only": bool(row["read_only"]),
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                        "metadata": json.loads(row["metadata_json"] or "{}"),
+                    }
+                )
+            return results
+
+    def update_acp_session_state(self, session_id: str, state: str) -> None:
+        """Update lifecycle state of an ACP session."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "UPDATE acp_sessions SET state = ?, updated_at = datetime('now') WHERE session_id = ?;",
+                (state, session_id),
+            )
+
+    def save_acp_event(
+        self,
+        event_id: str,
+        session_id: str,
+        event_type: str,
+        payload: Dict[str, Any],
+    ) -> None:
+        """Record an immutable event into the ACP event ledger."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO acp_events (event_id, session_id, event_type, payload_json, timestamp)
+                VALUES (?, ?, ?, ?, datetime('now'));
+                """,
+                (event_id, session_id, event_type, json.dumps(payload)),
+            )
+
+    def get_acp_events(self, session_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all events recorded for an ACP session in chronological order."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT * FROM acp_events WHERE session_id = ? ORDER BY timestamp ASC;",
+                (session_id,),
+            )
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append(
+                    {
+                        "event_id": row["event_id"],
+                        "session_id": row["session_id"],
+                        "event_type": row["event_type"],
+                        "payload": json.loads(row["payload_json"] or "{}"),
+                        "timestamp": row["timestamp"],
+                    }
+                )
+            return results
+
 
 # Default singleton instance
 db = DatabaseEngine()

@@ -236,4 +236,38 @@ MIGRATIONS: List[str] = [
         summary TEXT
     );
     """,
+    # ACP Sessions & Event Ledger (v4)
+    """
+    -- ACP Sessions Table
+    CREATE TABLE IF NOT EXISTS acp_sessions (
+        session_id TEXT PRIMARY KEY,
+        parent_task_id TEXT,
+        harness_type TEXT NOT NULL,
+        model TEXT NOT NULL,
+        repo_path TEXT NOT NULL,
+        branch TEXT,
+        state TEXT NOT NULL,
+        allowed_tools_json TEXT NOT NULL,
+        network_allowed INTEGER DEFAULT 0,
+        read_only INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        metadata_json TEXT DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_acp_sessions_state ON acp_sessions(state);
+    CREATE INDEX IF NOT EXISTS idx_acp_sessions_parent ON acp_sessions(parent_task_id);
+
+    -- ACP Event Ledger Table
+    CREATE TABLE IF NOT EXISTS acp_events (
+        event_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES acp_sessions(session_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_acp_events_session ON acp_events(session_id);
+    """,
 ]
