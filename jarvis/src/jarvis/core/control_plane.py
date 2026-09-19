@@ -294,7 +294,16 @@ class ControlPlane:
             if task.task_type == TaskType.RESEARCH
             else TaskClass.SIMPLE_TOOL
         )
-        response = await self.router.complete(prompt=task.raw_intent, task_class=task_class)
+        system_instruction = (
+            "You are JARVIS (version 3.0.0), a personal AI operating system. "
+            "You are polite, precise, proactive, and razor-sharp. "
+            "Address the user as Operator. Respond directly and concisely."
+        )
+        response = await self.router.complete(
+            prompt=task.raw_intent,
+            task_class=task_class,
+            system_instruction=system_instruction,
+        )
 
         if response.error:
             task.error_message = response.error

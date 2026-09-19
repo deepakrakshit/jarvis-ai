@@ -14,6 +14,7 @@ from jarvis.contracts.task import TaskType
 
 from .commands import (
     handle_acp,
+    handle_chat,
     handle_cron,
     handle_gateway,
     handle_run,
@@ -103,6 +104,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Heartbeat monitor interval in seconds",
     )
 
+    # 7. chat
+    chat_parser = subparsers.add_parser(
+        "chat", help="Start real-time interactive dialogue session with JARVIS"
+    )
+    chat_parser.add_argument(
+        "--session-id", type=str, default=None, help="Session ID for conversation history"
+    )
+    chat_parser.add_argument(
+        "--live", action="store_true", help="Connect to Gemini 3.8 Live bidirectional audio stream"
+    )
+    chat_parser.add_argument(
+        "--message", type=str, default=None, help="Single-turn query to execute immediately"
+    )
+
     return parser
 
 
@@ -172,6 +187,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                     host=args.host,
                     port=args.port,
                     heartbeat_interval=args.heartbeat_interval,
+                )
+            )
+            return 0
+
+        elif args.command == "chat":
+            asyncio.run(
+                handle_chat(
+                    session_id=args.session_id,
+                    live_mode=args.live,
+                    message=args.message,
                 )
             )
             return 0

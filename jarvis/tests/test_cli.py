@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from jarvis.cli import build_parser, main
-from jarvis.cli.commands import handle_acp, handle_cron, handle_run, handle_status
+from jarvis.cli.commands import handle_acp, handle_chat, handle_cron, handle_run, handle_status
 from jarvis.contracts.task import TaskType
 from jarvis.core.control_plane import ControlPlane
 from jarvis.storage.database import DatabaseEngine
@@ -42,6 +42,12 @@ def test_cli_parser_structure() -> None:
     assert args_acp.command == "acp"
     assert args_acp.acp_subcommand == "spawn"
     assert args_acp.repo == "C:/test_repo"
+
+    # Chat
+    args_chat = parser.parse_args(["chat", "--message", "Hello JARVIS", "--live"])
+    assert args_chat.command == "chat"
+    assert args_chat.message == "Hello JARVIS"
+    assert args_chat.live is True
 
 
 def test_cli_handle_status(test_db: DatabaseEngine) -> None:
@@ -111,3 +117,19 @@ def test_cli_main_invocations(capsys: pytest.CaptureFixture[str]) -> None:
     assert exc_info.value.code == 0
     captured_version = capsys.readouterr()
     assert "JARVIS OS v" in captured_version.out
+
+
+@pytest.mark.asyncio
+async def test_cli_handle_chat(test_db: DatabaseEngine) -> None:
+    """Verify single-turn chat execution via handle_chat."""
+    cp = ControlPlane(database=test_db)
+    result = await handle_chat(
+        session_id="SESS-TEST-CHAT",
+        message="Check system status",
+        cp=cp,
+    )
+    assert result is not None
+    assert result["session_id"] == "SESS-TEST-CHAT"
+    assert "task_id" in result
+    assert result["state"] in ("COMPLETED", "FAILED")
+    assert len(result["response"]) > 0
