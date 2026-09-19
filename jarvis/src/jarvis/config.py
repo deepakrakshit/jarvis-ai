@@ -76,7 +76,7 @@ class JarvisSettings(BaseSettings):
     )
 
     # Dynamic Model Mappings (configurable via environment variables)
-    MODEL_MAP_GEMINI_LIVE: str = Field(default="gemini-2.5-flash")
+    MODEL_MAP_GEMINI_LIVE: str = Field(default="gemini-3.8-live")
     MODEL_MAP_GEMINI_3_1_FLASH_LITE: str = Field(default="gemini-2.5-flash-lite")
     MODEL_MAP_GEMINI_3_5_FLASH_LITE: str = Field(default="gemini-2.5-flash")
     MODEL_MAP_GEMMA_4_31B: str = Field(default="gemini-2.5-flash")
