@@ -62,9 +62,11 @@ class ControlPlane:
         database: Optional[DatabaseEngine] = None,
         router: Optional[ModelRouter] = None,
     ) -> None:
-        self.broker = broker or action_broker
-        self.policy = policy or policy_engine
         self.db = database or db
+        self.policy = policy or (PolicyEngine(database=self.db) if database else policy_engine)
+        self.broker = broker or (
+            ActionBroker(policy=self.policy, database=self.db) if database else action_broker
+        )
         self.router = router or model_router
         self._graph = self._build_graph()
 

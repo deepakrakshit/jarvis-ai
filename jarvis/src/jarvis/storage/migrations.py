@@ -207,4 +207,33 @@ MIGRATIONS: List[str] = [
     INSERT INTO memory_fts(record_id, content, key, relevance_tags)
     SELECT record_id, content, key, relevance_tags_json FROM memory_records;
     """,
+    # Scheduled Jobs & Heartbeat Run Logs (v3)
+    """
+    -- Scheduled Jobs Table
+    CREATE TABLE IF NOT EXISTS scheduled_jobs (
+        job_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        interval_seconds INTEGER NOT NULL,
+        raw_intent TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        last_run_at TEXT,
+        next_run_at TEXT,
+        created_at TEXT NOT NULL,
+        metadata_json TEXT DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs(enabled);
+
+    -- Heartbeat Run Audit Table
+    CREATE TABLE IF NOT EXISTS heartbeat_runs (
+        run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        status TEXT NOT NULL,
+        standing_intents_checked INTEGER DEFAULT 0,
+        standing_intents_fired INTEGER DEFAULT 0,
+        jobs_checked INTEGER DEFAULT 0,
+        jobs_triggered INTEGER DEFAULT 0,
+        summary TEXT
+    );
+    """,
 ]

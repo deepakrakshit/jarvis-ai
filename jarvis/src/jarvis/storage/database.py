@@ -88,8 +88,12 @@ class DatabaseEngine:
         with self.transaction() as cursor:
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO sessions (session_id, title, created_at, updated_at, metadata_json)
-                VALUES (?, ?, datetime('now'), datetime('now'), ?);
+                INSERT INTO sessions (session_id, title, created_at, updated_at, metadata_json)
+                VALUES (?, ?, datetime('now'), datetime('now'), ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    title = excluded.title,
+                    updated_at = datetime('now'),
+                    metadata_json = excluded.metadata_json;
                 """,
                 (session_id, title, json.dumps(metadata or {})),
             )
@@ -105,13 +109,33 @@ class DatabaseEngine:
         with self.transaction() as cursor:
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO tasks (
+                INSERT INTO tasks (
                     task_id, session_id, parent_task_id, task_type, priority, state,
                     raw_intent, normalized_goal, input_payload_json, assigned_model,
                     assigned_agent, token_budget, retry_count, max_retries,
                     state_history_json, result_summary, verification_passed, error_message,
                     created_at, updated_at, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    session_id = excluded.session_id,
+                    parent_task_id = excluded.parent_task_id,
+                    task_type = excluded.task_type,
+                    priority = excluded.priority,
+                    state = excluded.state,
+                    raw_intent = excluded.raw_intent,
+                    normalized_goal = excluded.normalized_goal,
+                    input_payload_json = excluded.input_payload_json,
+                    assigned_model = excluded.assigned_model,
+                    assigned_agent = excluded.assigned_agent,
+                    token_budget = excluded.token_budget,
+                    retry_count = excluded.retry_count,
+                    max_retries = excluded.max_retries,
+                    state_history_json = excluded.state_history_json,
+                    result_summary = excluded.result_summary,
+                    verification_passed = excluded.verification_passed,
+                    error_message = excluded.error_message,
+                    updated_at = excluded.updated_at,
+                    completed_at = excluded.completed_at;
                 """,
                 (
                     task.task_id,
@@ -495,6 +519,96 @@ class DatabaseEngine:
             params.append(intent_id)
             sql = f"UPDATE standing_intents SET {', '.join(updates)} WHERE id = ?;"
             cursor.execute(sql, tuple(params))
+
+    # -------------------------------------------------------------------------
+    # Scheduled Jobs & Heartbeat Audit Repository
+    # -------------------------------------------------------------------------
+
+    def save_scheduled_job(self, job_dict: Dict[str, Any]) -> None:
+        """Insert or update a periodic scheduled job."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO scheduled_jobs (
+                    job_id, name, interval_seconds, raw_intent, enabled,
+                    last_run_at, next_run_at, created_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    job_dict["job_id"],
+                    job_dict["name"],
+                    job_dict["interval_seconds"],
+                    job_dict["raw_intent"],
+                    1 if job_dict.get("enabled", True) else 0,
+                    job_dict.get("last_run_at"),
+                    job_dict.get("next_run_at"),
+                    job_dict["created_at"],
+                    json.dumps(job_dict.get("metadata", {})),
+                ),
+            )
+
+    def get_scheduled_jobs(self, enabled_only: bool = True) -> List[Dict[str, Any]]:
+        """Retrieve scheduled periodic jobs."""
+        with self.transaction() as cursor:
+            sql = "SELECT * FROM scheduled_jobs"
+            if enabled_only:
+                sql += " WHERE enabled = 1"
+            sql += " ORDER BY created_at ASC;"
+            cursor.execute(sql)
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append(
+                    {
+                        "job_id": row["job_id"],
+                        "name": row["name"],
+                        "interval_seconds": row["interval_seconds"],
+                        "raw_intent": row["raw_intent"],
+                        "enabled": bool(row["enabled"]),
+                        "last_run_at": row["last_run_at"],
+                        "next_run_at": row["next_run_at"],
+                        "created_at": row["created_at"],
+                        "metadata": json.loads(row["metadata_json"] or "{}"),
+                    }
+                )
+            return results
+
+    def update_scheduled_job(
+        self, job_id: str, last_run_at: Optional[str], next_run_at: str
+    ) -> None:
+        """Update last and next execution timestamps for a scheduled job."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "UPDATE scheduled_jobs SET last_run_at = ?, next_run_at = ? WHERE job_id = ?;",
+                (last_run_at, next_run_at, job_id),
+            )
+
+    def log_heartbeat_run(
+        self,
+        status: str,
+        standing_intents_checked: int = 0,
+        standing_intents_fired: int = 0,
+        jobs_checked: int = 0,
+        jobs_triggered: int = 0,
+        summary: str = "",
+    ) -> None:
+        """Record an immutable audit entry for a heartbeat cycle."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO heartbeat_runs (
+                    timestamp, status, standing_intents_checked,
+                    standing_intents_fired, jobs_checked, jobs_triggered, summary
+                ) VALUES (datetime('now'), ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    status,
+                    standing_intents_checked,
+                    standing_intents_fired,
+                    jobs_checked,
+                    jobs_triggered,
+                    summary,
+                ),
+            )
 
 
 # Default singleton instance
