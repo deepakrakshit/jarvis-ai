@@ -117,6 +117,11 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "--message", type=str, default=None, help="Single-turn query to execute immediately"
     )
+    chat_parser.add_argument(
+        "--with-daemon",
+        action="store_true",
+        help="Start background daemon (Gateway + Heartbeat) alongside chat session",
+    )
 
     return parser
 
@@ -197,6 +202,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     session_id=args.session_id,
                     live_mode=args.live,
                     message=args.message,
+                    with_daemon=args.with_daemon,
                 )
             )
             return 0

@@ -29,6 +29,7 @@ from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger
+from jarvis.voice import PcmStreamPlayer, voice_synthesizer
 
 
 def ensure_nodes_registered() -> None:
@@ -226,116 +227,158 @@ async def handle_chat(
     session_id: Optional[str] = None,
     live_mode: bool = False,
     message: Optional[str] = None,
+    with_daemon: bool = False,
     cp: Optional[ControlPlane] = None,
 ) -> Optional[Dict[str, Any]]:
     """Conduct an interactive or single-turn real-time dialogue session with JARVIS."""
     ensure_nodes_registered()
 
-    if live_mode:
-        if not settings.GEMINI_API_KEY:
-            print("Error: GEMINI_API_KEY is not configured in environment.")
-            return {"error": "Missing GEMINI_API_KEY"}
+    daemon_tasks: List[asyncio.Task[Any]] = []
+    gateway_server: Optional[GatewayServer] = None
 
-        bridge = GeminiLiveBridge(session_id=session_id)
-        audio_chunk_count = 0
+    if with_daemon:
+        gateway_server = GatewayServer()
+        await gateway_server.start()
+        logger.info("Gateway daemon started in background (ws://127.0.0.1:18789).")
 
-        async def on_audio(chunk: bytes) -> None:
-            nonlocal audio_chunk_count
-            audio_chunk_count += 1
-
-        bridge.audio_chunk_handler = on_audio
-
-        print("================================================================")
-        print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live Voice)")
-        print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name}")
-        print(" Type 'exit' or 'quit' to terminate the live session.")
-        print("================================================================\n")
-
-        await bridge.connect()
-        try:
-            if message:
-                print(f"Operator > {message}")
-                await bridge.send_text(message)
-                for _ in range(10):
-                    await asyncio.sleep(0.5)
-                    if audio_chunk_count > 0:
-                        break
-                print(f"JARVIS [Live Audio] > Received {audio_chunk_count} voice chunks.")
-                return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
-
+        async def heartbeat_loop() -> None:
             while True:
                 try:
-                    user_input = await asyncio.to_thread(input, "Operator > ")
-                    user_input = user_input.strip()
-                except (EOFError, KeyboardInterrupt):
-                    print("\nJARVIS > Concluding live streaming session.")
-                    break
+                    await heartbeat_monitor.pulse()
+                except Exception as err:
+                    logger.debug(f"Heartbeat pulse error: {err}")
+                await asyncio.sleep(60.0)
 
-                if not user_input:
-                    continue
-                if user_input.lower() in ("exit", "quit", "q"):
-                    print("JARVIS > Terminating live stream. Standing by.")
-                    break
+        daemon_tasks.append(asyncio.create_task(heartbeat_loop()))
 
-                audio_chunk_count = 0
-                await bridge.send_text(user_input)
-                for _ in range(10):
-                    await asyncio.sleep(0.5)
-                    if audio_chunk_count > 0:
+    try:
+        if live_mode:
+            if not settings.GEMINI_API_KEY:
+                print("Error: GEMINI_API_KEY is not configured in environment.")
+                return {"error": "Missing GEMINI_API_KEY"}
+
+            bridge = GeminiLiveBridge(session_id=session_id)
+            pcm_player = PcmStreamPlayer(samplerate=24000)
+            audio_chunk_count = 0
+
+            async def on_audio(chunk: bytes) -> None:
+                nonlocal audio_chunk_count
+                audio_chunk_count += 1
+                pcm_player.play_chunk(chunk)
+
+            bridge.audio_chunk_handler = on_audio
+
+            print("================================================================")
+            print(" JARVIS Real-Time Streaming Dialogue (Gemini 3.8 Live Voice)")
+            print(f" Session: {bridge.session_id} | Voice: {bridge.voice_name}")
+            print(" Type 'exit' or 'quit' to terminate the live session.")
+            print("================================================================\n")
+
+            await bridge.connect()
+            try:
+                if message:
+                    print(f"Operator > {message}")
+                    await bridge.send_text(message)
+                    for _ in range(16):
+                        await asyncio.sleep(0.5)
+                        if audio_chunk_count > 0:
+                            break
+                    print(f"JARVIS [Live Audio] > Received {audio_chunk_count} voice chunks.")
+                    return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
+
+                while True:
+                    try:
+                        user_input = await asyncio.to_thread(input, "Operator > ")
+                        user_input = user_input.strip()
+                    except (EOFError, KeyboardInterrupt):
+                        print("\nJARVIS > Concluding live streaming session.")
                         break
-                print(
-                    f"JARVIS [Live Audio] > Streaming audio synthesized ({audio_chunk_count} chunks received).\n"
-                )
 
-        finally:
-            await bridge.disconnect()
-            print("JARVIS Live session closed cleanly.")
+                    if not user_input:
+                        continue
+                    if user_input.lower() in ("exit", "quit", "q"):
+                        print("JARVIS > Terminating live stream. Standing by.")
+                        break
+
+                    audio_chunk_count = 0
+                    await bridge.send_text(user_input)
+                    for _ in range(16):
+                        await asyncio.sleep(0.5)
+                        if audio_chunk_count > 0:
+                            break
+                    print(
+                        f"JARVIS [Live Audio] > Streaming audio synthesized ({audio_chunk_count} chunks received).\n"
+                    )
+
+            finally:
+                pcm_player.stop()
+                await bridge.disconnect()
+                print("JARVIS Live session closed cleanly.")
+            return None
+
+        # Standard Interactive Dialogue via Control Plane
+        plane = cp or control_plane
+        sess_id = session_id or f"SESS-CHAT-{uuid4().hex[:8].upper()}"
+
+        if message:
+            logger.info(f"Submitting chat message: '{message}'")
+            final_task = await plane.submit_intent(raw_intent=message, session_id=sess_id)
+            response_text = (
+                final_task.result_summary or final_task.error_message or "Task processed."
+            )
+            print(f"\nJARVIS > {response_text}\n")
+            voice_synthesizer.speak(response_text)
+            return {
+                "session_id": sess_id,
+                "task_id": final_task.task_id,
+                "state": final_task.state.value,
+                "response": response_text,
+            }
+
+        # Boot greeting
+        greeting = "JARVIS operational. Standing by for your command, Operator."
+        voice_synthesizer.speak(greeting)
+
+        print("================================================================")
+        print("                 JARVIS OPERATING SYSTEM ONLINE")
+        print(f" Session ID: {sess_id}")
+        if with_daemon:
+            print(" Background Services: Gateway (ws://127.0.0.1:18789) + Heartbeat ACTIVE")
+        print(" Voice Synthesis: ACTIVE | Native Nodes: WINDOWS + BROWSER")
+        print(" Type any instruction, query, or system task ('exit' to terminate).")
+        print("================================================================\n")
+
+        while True:
+            try:
+                user_input = await asyncio.to_thread(input, "Operator > ")
+                user_input = user_input.strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nJARVIS > Concluding interactive session.")
+                break
+
+            if not user_input:
+                continue
+            if user_input.lower() in ("exit", "quit", "q"):
+                farewell = "Interactive session concluded. Standing by."
+                print(f"JARVIS > {farewell}")
+                voice_synthesizer.speak(farewell)
+                break
+
+            print("JARVIS is processing...")
+            final_task = await plane.submit_intent(raw_intent=user_input, session_id=sess_id)
+            if final_task.state == TaskState.COMPLETED:
+                answer = final_task.result_summary or "Task completed successfully."
+                print(f"\nJARVIS > {answer}\n")
+                voice_synthesizer.speak(answer)
+            else:
+                err = final_task.error_message or "Action could not be completed."
+                print(f"\nJARVIS [Error] > {err}\n")
+                voice_synthesizer.speak(f"Notice: {err}")
+
         return None
 
-    # Standard Interactive Dialogue via Control Plane
-    plane = cp or control_plane
-    sess_id = session_id or f"SESS-CHAT-{uuid4().hex[:8].upper()}"
-
-    if message:
-        logger.info(f"Submitting chat message: '{message}'")
-        final_task = await plane.submit_intent(raw_intent=message, session_id=sess_id)
-        response_text = final_task.result_summary or final_task.error_message or "Task processed."
-        print(f"\nJARVIS > {response_text}\n")
-        return {
-            "session_id": sess_id,
-            "task_id": final_task.task_id,
-            "state": final_task.state.value,
-            "response": response_text,
-        }
-
-    print("================================================================")
-    print(" JARVIS Interactive Dialogue Console")
-    print(f" Session ID: {sess_id}")
-    print(" Type any question, command, or host intent.")
-    print(" Type 'exit' or 'quit' to terminate the session.")
-    print("================================================================\n")
-
-    while True:
-        try:
-            user_input = await asyncio.to_thread(input, "Operator > ")
-            user_input = user_input.strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nJARVIS > Concluding interactive session.")
-            break
-
-        if not user_input:
-            continue
-        if user_input.lower() in ("exit", "quit", "q"):
-            print("JARVIS > Interactive session concluded. Standing by.")
-            break
-
-        print("JARVIS is thinking & checking policies...")
-        final_task = await plane.submit_intent(raw_intent=user_input, session_id=sess_id)
-        if final_task.state == TaskState.COMPLETED:
-            print(f"\nJARVIS > {final_task.result_summary or 'Task completed successfully.'}\n")
-        else:
-            print(
-                f"\nJARVIS [Error] > {final_task.error_message or 'Action could not be completed.'}\n"
-            )
-
-    return None
+    finally:
+        for t in daemon_tasks:
+            t.cancel()
+        if gateway_server:
+            await gateway_server.stop()
