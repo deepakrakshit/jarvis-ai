@@ -156,5 +156,55 @@ MIGRATIONS: List[str] = [
     CREATE INDEX IF NOT EXISTS idx_memory_key ON memory_records(key);
     CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_records(memory_type);
     CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action_id);
+    """,
+    # Standing Intents and Memory Full-Text Search (v2)
     """
+    -- Standing Intents Table
+    CREATE TABLE IF NOT EXISTS standing_intents (
+        id TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        trigger_keywords_json TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'conversation',
+        status TEXT NOT NULL DEFAULT 'armed',
+        expires_at TEXT,
+        max_fires INTEGER DEFAULT 3,
+        fire_count INTEGER DEFAULT 0,
+        cooldown_seconds INTEGER DEFAULT 86400,
+        last_fired_at TEXT,
+        created_at TEXT NOT NULL,
+        session_id TEXT,
+        metadata_json TEXT DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_standing_intents_status ON standing_intents(status);
+    CREATE INDEX IF NOT EXISTS idx_standing_intents_session ON standing_intents(session_id);
+
+    -- Memory Full-Text Search Table
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+        record_id UNINDEXED,
+        content,
+        key,
+        relevance_tags
+    );
+
+    -- Synchronize triggers for FTS index
+    CREATE TRIGGER IF NOT EXISTS trg_memory_records_ai AFTER INSERT ON memory_records BEGIN
+        INSERT INTO memory_fts(record_id, content, key, relevance_tags)
+        VALUES (new.record_id, new.content, new.key, new.relevance_tags_json);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_memory_records_ad AFTER DELETE ON memory_records BEGIN
+        DELETE FROM memory_fts WHERE record_id = old.record_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_memory_records_au AFTER UPDATE ON memory_records BEGIN
+        DELETE FROM memory_fts WHERE record_id = old.record_id;
+        INSERT INTO memory_fts(record_id, content, key, relevance_tags)
+        VALUES (new.record_id, new.content, new.key, new.relevance_tags_json);
+    END;
+
+    -- Backfill existing memory_records into memory_fts
+    INSERT INTO memory_fts(record_id, content, key, relevance_tags)
+    SELECT record_id, content, key, relevance_tags_json FROM memory_records;
+    """,
 ]

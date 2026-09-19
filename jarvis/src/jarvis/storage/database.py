@@ -342,6 +342,160 @@ class DatabaseEngine:
                 )
             return records
 
+    def search_memories_fts(
+        self, query: str, memory_type: Optional[MemoryType] = None, limit: int = 10
+    ) -> List[MemoryRecord]:
+        """Search memories using FTS5 full-text index with graceful fallback."""
+        with self.transaction() as cursor:
+            # First try FTS search
+            clean_terms = [
+                t.strip() for t in query.replace('"', " ").replace("'", " ").split() if t.strip()
+            ]
+            if not clean_terms:
+                return self.search_memories(query, memory_type=memory_type, limit=limit)
+
+            fts_query = " OR ".join(f'"{term}"*' for term in clean_terms)
+            try:
+                sql = """
+                    SELECT m.* FROM memory_fts f
+                    JOIN memory_records m ON f.record_id = m.record_id
+                    WHERE memory_fts MATCH ?
+                """
+                params: List[Any] = [fts_query]
+                if memory_type:
+                    sql += " AND m.memory_type = ?"
+                    params.append(memory_type.value)
+                sql += " ORDER BY m.importance_score DESC LIMIT ?"
+                params.append(limit)
+
+                cursor.execute(sql, tuple(params))
+                rows = cursor.fetchall()
+                if rows:
+                    return [
+                        MemoryRecord(
+                            record_id=row["record_id"],
+                            memory_type=MemoryType(row["memory_type"]),
+                            key=row["key"],
+                            content=row["content"],
+                            metadata=json.loads(row["metadata_json"] or "{}"),
+                            provenance_source=ProvenanceSource(row["provenance_source"]),
+                            trust_level=TrustLevel(row["trust_level"]),
+                            importance_score=row["importance_score"],
+                            relevance_tags=json.loads(row["relevance_tags_json"] or "[]"),
+                            session_id=row["session_id"],
+                            task_id=row["task_id"],
+                        )
+                        for row in rows
+                    ]
+            except Exception as fts_err:
+                logger.warning(f"FTS query failed, falling back to LIKE: {fts_err}")
+
+        # Fallback to standard LIKE matching
+        return self.search_memories(query, memory_type=memory_type, limit=limit)
+
+    def delete_memory(self, record_id: str) -> bool:
+        """Delete a memory record by ID."""
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM memory_records WHERE record_id = ?;", (record_id,))
+            return cursor.rowcount > 0
+
+    # -------------------------------------------------------------------------
+    # Standing Intents Repository
+    # -------------------------------------------------------------------------
+
+    def save_standing_intent(self, intent_dict: Dict[str, Any]) -> None:
+        """Insert or replace a standing intent record."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO standing_intents (
+                    id, description, trigger_keywords_json, scope, status,
+                    expires_at, max_fires, fire_count, cooldown_seconds,
+                    last_fired_at, created_at, session_id, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    intent_dict["id"],
+                    intent_dict["description"],
+                    json.dumps(intent_dict.get("trigger_keywords", [])),
+                    intent_dict.get("scope", "conversation"),
+                    intent_dict.get("status", "armed"),
+                    intent_dict.get("expires_at"),
+                    intent_dict.get("max_fires", 3),
+                    intent_dict.get("fire_count", 0),
+                    intent_dict.get("cooldown_seconds", 86400),
+                    intent_dict.get("last_fired_at"),
+                    intent_dict["created_at"],
+                    intent_dict.get("session_id"),
+                    json.dumps(intent_dict.get("metadata", {})),
+                ),
+            )
+
+    def get_standing_intents(
+        self, status: Optional[str] = "armed", session_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Retrieve standing intents filtered by status and optional session."""
+        with self.transaction() as cursor:
+            sql = "SELECT * FROM standing_intents WHERE 1=1"
+            params: List[Any] = []
+            if status:
+                sql += " AND status = ?"
+                params.append(status)
+            if session_id:
+                sql += " AND (session_id = ? OR session_id IS NULL OR scope = 'anywhere')"
+                params.append(session_id)
+            sql += " ORDER BY created_at ASC"
+
+            cursor.execute(sql, tuple(params))
+            results: List[Dict[str, Any]] = []
+            for row in cursor.fetchall():
+                results.append(
+                    {
+                        "id": row["id"],
+                        "description": row["description"],
+                        "trigger_keywords": json.loads(row["trigger_keywords_json"] or "[]"),
+                        "scope": row["scope"],
+                        "status": row["status"],
+                        "expires_at": row["expires_at"],
+                        "max_fires": row["max_fires"],
+                        "fire_count": row["fire_count"],
+                        "cooldown_seconds": row["cooldown_seconds"],
+                        "last_fired_at": row["last_fired_at"],
+                        "created_at": row["created_at"],
+                        "session_id": row["session_id"],
+                        "metadata": json.loads(row["metadata_json"] or "{}"),
+                    }
+                )
+            return results
+
+    def update_standing_intent(
+        self,
+        intent_id: str,
+        status: Optional[str] = None,
+        fire_count: Optional[int] = None,
+        last_fired_at: Optional[str] = None,
+    ) -> None:
+        """Update mutable fields of a standing intent."""
+        with self.transaction() as cursor:
+            updates: List[str] = []
+            params: List[Any] = []
+            if status is not None:
+                updates.append("status = ?")
+                params.append(status)
+            if fire_count is not None:
+                updates.append("fire_count = ?")
+                params.append(fire_count)
+            if last_fired_at is not None:
+                updates.append("last_fired_at = ?")
+                params.append(last_fired_at)
+
+            if not updates:
+                return
+
+            params.append(intent_id)
+            sql = f"UPDATE standing_intents SET {', '.join(updates)} WHERE id = ?;"
+            cursor.execute(sql, tuple(params))
+
 
 # Default singleton instance
 db = DatabaseEngine()
