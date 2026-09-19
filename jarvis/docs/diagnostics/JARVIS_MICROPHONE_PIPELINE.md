@@ -69,10 +69,11 @@ flowchart TD
 - Supports parameterization via `AUDIO_INPUT_DEVICE_INDEX` in `.env` / settings with automatic fallback to system default input.
 - If hardware is missing or in use, captures fail gracefully with clear warnings, keeping keyboard and text multimodal input functional.
 
-### 4.3 Duplex Management & Barge-In (Interruption)
-- `MicrophoneCapture.set_duplex_suppression(True)` suppresses microphone bleed during speaker playback.
-- If the operator interrupts loudly during playback, speech energy surpasses the interruption threshold, passing the chunk to Gemini Live.
-- When Gemini Live signals `sc.interrupted = True`, `PcmStreamPlayer.interrupt()` immediately aborts audio output and flushes all queues.
+### 4.3 Multi-Turn Streaming & Idle Lifecycle
+- Audio chunks are continuously streamed without client-side dropping, allowing Gemini 3.8 Live's neural VAD to handle natural pauses, quiet consonants, and consecutive turns.
+- `PcmStreamPlayer.mark_idle()` ensures playback transitions back to idle immediately upon turn completion, clearing playback flags and resetting chunk counters.
+- If the operator interrupts during playback, `PcmStreamPlayer.interrupt()` immediately aborts audio output and flushes all queues.
+- Upon turn completion, JARVIS renders a clear readiness indicator: `>> [JARVIS is listening... speak or type]`.
 
 ---
 
@@ -83,7 +84,8 @@ flowchart TD
 - Direct capture test of 16kHz mono `int16`: 3,200 bytes per 100ms block, zero overflow, RMS verified (silence: ~0.0, noise: ~31.9, speech: >100.0).
 
 ### 5.2 Quality Gates
-- **Pytest Pass Rate:** 90 passed, 1 skipped (quota), 0 failed.
-- **Mypy Strict Type Check:** 0 errors across 99 files.
+- **Pytest Pass Rate:** 91 passed, 1 skipped (quota), 0 failed.
+- **Multi-Turn Verification:** 10/10 microphone tests passing (`pytest tests/test_microphone.py`), verifying consecutive turn capture and playback idle transitions.
+- **Mypy Strict Type Check:** 0 errors across 100 files.
 - **Ruff Linter & Formatter:** Clean, 100% compliant.
 - **Forbidden Words Check:** Verified clean across all source code and documentation.
