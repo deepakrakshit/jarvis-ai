@@ -22,6 +22,7 @@ from jarvis.execution.computer.contract import (
     ComputerActResult,
     ComputerObservation,
 )
+from jarvis.execution.substrate_bridge import SubstrateBridge, substrate_bridge
 from jarvis.execution.windows.app_launcher import app_launcher
 from jarvis.execution.windows.app_registry import app_registry
 from jarvis.execution.windows.desktop import (
@@ -95,11 +96,24 @@ class AppActionResult:
 class AppControlEngine:
     """Universal Application and UI Control Engine."""
 
-    def __init__(self) -> None:
+    def __init__(self, bridge: Optional[SubstrateBridge] = None) -> None:
         self.registry = app_registry
         self.launcher = app_launcher
         self.windows = window_manager
         self.uia = windows_uia
+        self.substrate_bridge: SubstrateBridge = bridge or substrate_bridge
+
+    def delegate_to_substrate(
+        self, action: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Directly delegate computer action to OpenClaw Node.js execution substrate."""
+        return self.substrate_bridge.execute_act_sync(action, params)
+
+    async def delegate_to_substrate_async(
+        self, action: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Asynchronously delegate computer action to OpenClaw Node.js execution substrate."""
+        return await self.substrate_bridge.execute_act(action, params)
 
     def launch_application(
         self,
@@ -566,6 +580,19 @@ class AppControlEngine:
         if active_win:
             obs.active_window_title = active_win.title
             obs.active_window_hwnd = active_win.hwnd
+
+        # Primary route: delegate to OpenClaw Node.js execution substrate
+        try:
+            substrate_res = self.delegate_to_substrate(action_name, asdict(params))
+            if substrate_res and substrate_res.get("ok"):
+                return ComputerActResult(
+                    ok=True,
+                    effect=ActionResultEffect.CONFIRMED.value,
+                    observation=obs,
+                    details=substrate_res.get("details", substrate_res),
+                )
+        except Exception as substrate_err:
+            logger.debug(f"Substrate delegation bypassed or falling back: {substrate_err}")
 
         try:
             if action_name == ComputerActionName.SCREENSHOT.value:

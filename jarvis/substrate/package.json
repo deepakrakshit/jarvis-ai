@@ -1,0 +1,10 @@
+{
+  "name": "jarvis-substrate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "typebox": "^0.34.4",
+    "zod": "^3.24.2"
+  }
+}

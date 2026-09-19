@@ -1,0 +1,177 @@
+﻿{
+    "compilerOptions":  {
+                            "paths":  {
+                                          "openclaw/plugin-sdk/*":  [
+                                                                        "./substrate/plugin-sdk/*.ts",
+                                                                        "./substrate/plugin-sdk/*"
+                                                                    ],
+                                          "@openclaw/media-understanding-common/*":  [
+                                                                                         "./substrate/packages/media-understanding-common/src/*.ts",
+                                                                                         "./substrate/packages/media-understanding-common/src/*"
+                                                                                     ],
+                                          "@openclaw/session-url-contract/*":  [
+                                                                                   "./substrate/packages/session-url-contract/src/*.ts",
+                                                                                   "./substrate/packages/session-url-contract/src/*"
+                                                                               ],
+                                          "@openclaw/tool-call-repair/*":  [
+                                                                               "./substrate/packages/tool-call-repair/src/*.ts",
+                                                                               "./substrate/packages/tool-call-repair/src/*"
+                                                                           ],
+                                          "@openclaw/workboard-contract/*":  [
+                                                                                 "./substrate/packages/workboard-contract/src/*.ts",
+                                                                                 "./substrate/packages/workboard-contract/src/*"
+                                                                             ],
+                                          "@openclaw/plugin-sdk/*":  [
+                                                                         "./substrate/packages/plugin-sdk/src/*.ts",
+                                                                         "./substrate/packages/plugin-sdk/src/*"
+                                                                     ],
+                                          "@openclaw/gateway-client/*":  [
+                                                                             "./substrate/packages/gateway-client/src/*.ts",
+                                                                             "./substrate/packages/gateway-client/src/*"
+                                                                         ],
+                                          "@openclaw/acp-core/*":  [
+                                                                       "./substrate/packages/acp-core/src/*.ts",
+                                                                       "./substrate/packages/acp-core/src/*"
+                                                                   ],
+                                          "@openclaw/net-policy":  [
+                                                                       "./substrate/packages/net-policy/src/index.ts"
+                                                                   ],
+                                          "@openclaw/session-url-contract":  [
+                                                                                 "./substrate/packages/session-url-contract/src/index.ts"
+                                                                             ],
+                                          "@openclaw/mermaid-renderer":  [
+                                                                             "./substrate/packages/mermaid-renderer/src/index.ts"
+                                                                         ],
+                                          "@openclaw/ai/*":  [
+                                                                 "./substrate/packages/ai/src/*.ts",
+                                                                 "./substrate/packages/ai/src/*"
+                                                             ],
+                                          "@openclaw/agent-core/*":  [
+                                                                         "./substrate/packages/agent-core/src/*.ts",
+                                                                         "./substrate/packages/agent-core/src/*"
+                                                                     ],
+                                          "@openclaw/agent-core":  [
+                                                                       "./substrate/packages/agent-core/src/index.ts"
+                                                                   ],
+                                          "@openclaw/plugin-package-contract/*":  [
+                                                                                      "./substrate/packages/plugin-package-contract/src/*.ts",
+                                                                                      "./substrate/packages/plugin-package-contract/src/*"
+                                                                                  ],
+                                          "@openclaw/memory-host-sdk":  [
+                                                                            "./substrate/packages/memory-host-sdk/src/index.ts"
+                                                                        ],
+                                          "@openclaw/media-generation-core/*":  [
+                                                                                    "./substrate/packages/media-generation-core/src/*.ts",
+                                                                                    "./substrate/packages/media-generation-core/src/*"
+                                                                                ],
+                                          "@openclaw/llm-core/*":  [
+                                                                       "./substrate/packages/llm-core/src/*.ts",
+                                                                       "./substrate/packages/llm-core/src/*"
+                                                                   ],
+                                          "@openclaw/terminal-core":  [
+                                                                          "./substrate/packages/terminal-core/src/index.ts"
+                                                                      ],
+                                          "@openclaw/gateway-protocol/*":  [
+                                                                               "./substrate/packages/gateway-protocol/src/*.ts",
+                                                                               "./substrate/packages/gateway-protocol/src/*"
+                                                                           ],
+                                          "@openclaw/mermaid-renderer/*":  [
+                                                                               "./substrate/packages/mermaid-renderer/src/*.ts",
+                                                                               "./substrate/packages/mermaid-renderer/src/*"
+                                                                           ],
+                                          "@openclaw/media-core/*":  [
+                                                                         "./substrate/packages/media-core/src/*.ts",
+                                                                         "./substrate/packages/media-core/src/*"
+                                                                     ],
+                                          "@openclaw/media-generation-core":  [
+                                                                                  "./substrate/packages/media-generation-core/src/index.ts"
+                                                                              ],
+                                          "@openclaw/plugin-sdk":  [
+                                                                       "./substrate/packages/plugin-sdk/src/index.ts"
+                                                                   ],
+                                          "@openclaw/plugin-package-contract":  [
+                                                                                    "./substrate/packages/plugin-package-contract/src/index.ts"
+                                                                                ],
+                                          "@openclaw/acp-core":  [
+                                                                     "./substrate/packages/acp-core/src/index.ts"
+                                                                 ],
+                                          "@openclaw/media-core":  [
+                                                                       "./substrate/packages/media-core/src/index.ts"
+                                                                   ],
+                                          "@openclaw/model-catalog-core":  [
+                                                                               "./substrate/packages/model-catalog-core/src/index.ts"
+                                                                           ],
+                                          "@openclaw/markdown-core/*":  [
+                                                                            "./substrate/packages/markdown-core/src/*.ts",
+                                                                            "./substrate/packages/markdown-core/src/*"
+                                                                        ],
+                                          "@openclaw/gateway-protocol":  [
+                                                                             "./substrate/packages/gateway-protocol/src/index.ts"
+                                                                         ],
+                                          "@openclaw/ai":  [
+                                                               "./substrate/packages/ai/src/index.ts"
+                                                           ],
+                                          "@openclaw/net-policy/*":  [
+                                                                         "./substrate/packages/net-policy/src/*.ts",
+                                                                         "./substrate/packages/net-policy/src/*"
+                                                                     ],
+                                          "@openclaw/retry":  [
+                                                                  "./substrate/packages/retry/src/index.ts"
+                                                              ],
+                                          "@openclaw/sdk":  [
+                                                                "./substrate/packages/sdk/src/index.ts"
+                                                            ],
+                                          "@openclaw/tool-call-repair":  [
+                                                                             "./substrate/packages/tool-call-repair/src/index.ts"
+                                                                         ],
+                                          "@openclaw/retry/*":  [
+                                                                    "./substrate/packages/retry/src/*.ts",
+                                                                    "./substrate/packages/retry/src/*"
+                                                                ],
+                                          "@openclaw/model-catalog-core/*":  [
+                                                                                 "./substrate/packages/model-catalog-core/src/*.ts",
+                                                                                 "./substrate/packages/model-catalog-core/src/*"
+                                                                             ],
+                                          "@openclaw/gateway-client":  [
+                                                                           "./substrate/packages/gateway-client/src/index.ts"
+                                                                       ],
+                                          "@openclaw/terminal-core/*":  [
+                                                                            "./substrate/packages/terminal-core/src/*.ts",
+                                                                            "./substrate/packages/terminal-core/src/*"
+                                                                        ],
+                                          "@openclaw/llm-core":  [
+                                                                     "./substrate/packages/llm-core/src/index.ts"
+                                                                 ],
+                                          "@openclaw/sdk/*":  [
+                                                                  "./substrate/packages/sdk/src/*.ts",
+                                                                  "./substrate/packages/sdk/src/*"
+                                                              ],
+                                          "@openclaw/markdown-core":  [
+                                                                          "./substrate/packages/markdown-core/src/index.ts"
+                                                                      ],
+                                          "@openclaw/normalization-core":  [
+                                                                               "./substrate/packages/normalization-core/src/index.ts"
+                                                                           ],
+                                          "@openclaw/media-understanding-common":  [
+                                                                                       "./substrate/packages/media-understanding-common/src/index.ts"
+                                                                                   ],
+                                          "@openclaw/normalization-core/*":  [
+                                                                                 "./substrate/packages/normalization-core/src/*.ts",
+                                                                                 "./substrate/packages/normalization-core/src/*"
+                                                                             ],
+                                          "@openclaw/memory-host-sdk/*":  [
+                                                                              "./substrate/packages/memory-host-sdk/src/*.ts",
+                                                                              "./substrate/packages/memory-host-sdk/src/*"
+                                                                          ],
+                                          "@openclaw/workboard-contract":  [
+                                                                               "./substrate/packages/workboard-contract/src/index.ts"
+                                                                           ]
+                                      },
+                            "skipLibCheck":  true,
+                            "target":  "ES2022",
+                            "baseUrl":  ".",
+                            "module":  "NodeNext",
+                            "strict":  false,
+                            "moduleResolution":  "NodeNext"
+                        }
+}
