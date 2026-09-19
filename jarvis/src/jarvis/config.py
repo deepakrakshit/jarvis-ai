@@ -34,6 +34,7 @@ class JarvisSettings(BaseSettings):
     # Identity & Voice
     APP_NAME: str = Field(default="JARVIS")
     APP_VERSION: str = Field(default="3.0.0")
+    ENVIRONMENT: str = Field(default="production")
     VOICE_DEFAULT_NAME: str = Field(default="Algenib")
 
     # API Credentials (loaded securely via environment / .env, never hardcoded)

@@ -39,6 +39,17 @@ async def test_live_conversation_host_and_model() -> None:
         raw_intent="In one short sentence, state your operational readiness as JARVIS.",
         session_id="LIVE-CONV-TEST-01",
     )
+    if (
+        t2.state == TaskState.FAILED
+        and t2.error_message
+        and (
+            "429" in t2.error_message
+            or "RESOURCE_EXHAUSTED" in t2.error_message
+            or "rate limit" in t2.error_message.lower()
+        )
+    ):
+        pytest.skip(f"Live model rate limit temporarily reached: {t2.error_message}")
+
     assert t2.state == TaskState.COMPLETED
     assert t2.result_summary is not None
     assert len(t2.result_summary) > 0
