@@ -14,6 +14,12 @@ from jarvis.contracts.task import TaskType
 
 from .commands import (
     handle_acp,
+    handle_app_close,
+    handle_app_focus,
+    handle_app_inspect,
+    handle_app_interact,
+    handle_app_launch,
+    handle_app_windows,
     handle_chat,
     handle_cron,
     handle_gateway,
@@ -123,6 +129,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start background daemon (Gateway + Heartbeat) alongside chat session",
     )
 
+    # 8. app
+    app_parser = subparsers.add_parser("app", help="Deep in-app and UI automation controls")
+    app_sub = app_parser.add_subparsers(dest="app_subcommand", help="App subcommands")
+
+    launch_p = app_sub.add_parser("launch", help="Launch an application asynchronously")
+    launch_p.add_argument("target", type=str, help="Application name or executable path")
+    launch_p.add_argument("arguments", nargs="*", help="Optional command line arguments")
+
+    focus_p = app_sub.add_parser("focus", help="Focus an application window")
+    focus_p.add_argument("target", type=str, help="Application name or window title")
+
+    close_p = app_sub.add_parser("close", help="Close an application window")
+    close_p.add_argument("target", type=str, help="Application name or window title")
+
+    app_sub.add_parser("windows", help="List all open desktop application windows")
+
+    inspect_p = app_sub.add_parser("inspect", help="Inspect window UI automation tree")
+    inspect_p.add_argument("--window", type=str, default=None, help="Target window title")
+    inspect_p.add_argument("--depth", type=int, default=5, help="Traversal depth")
+
+    interact_p = app_sub.add_parser("interact", help="Interact with UI element")
+    interact_p.add_argument("--window", type=str, required=True, help="Target window title")
+    interact_p.add_argument("--query", type=str, required=True, help="Target element query")
+    interact_p.add_argument(
+        "--action", type=str, default="click", help="Action (click, set_value, toggle, etc.)"
+    )
+    interact_p.add_argument("--value", type=str, default=None, help="Value for set_value action")
+
     return parser
 
 
@@ -205,6 +239,34 @@ def main(argv: Optional[List[str]] = None) -> int:
                     with_daemon=args.with_daemon,
                 )
             )
+            return 0
+
+        elif args.command == "app":
+            if args.app_subcommand == "launch":
+                res = handle_app_launch(target=args.target, arguments=args.arguments or None)
+                print(json.dumps(res, indent=2))
+            elif args.app_subcommand == "focus":
+                res = handle_app_focus(target=args.target)
+                print(json.dumps(res, indent=2))
+            elif args.app_subcommand == "close":
+                res = handle_app_close(target=args.target)
+                print(json.dumps(res, indent=2))
+            elif args.app_subcommand == "windows":
+                win_list = handle_app_windows()
+                print(json.dumps(win_list, indent=2))
+            elif args.app_subcommand == "inspect":
+                res = handle_app_inspect(window_target=args.window, max_depth=args.depth)
+                print(json.dumps(res, indent=2))
+            elif args.app_subcommand == "interact":
+                res = handle_app_interact(
+                    window_target=args.window,
+                    element_query=args.query,
+                    action=args.action,
+                    value=args.value,
+                )
+                print(json.dumps(res, indent=2))
+            else:
+                parser.parse_args(["app", "--help"])
             return 0
 
         else:

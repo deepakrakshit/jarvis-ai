@@ -4,6 +4,7 @@ Registers native Windows capabilities into the Action Broker capability registry
 """
 
 from jarvis.actions.registry import capability_registry
+from jarvis.execution.computer.contract import ComputerActParams
 from jarvis.execution.windows.desktop import (
     capture_screenshot,
     mouse_click,
@@ -31,6 +32,8 @@ from jarvis.execution.windows.system import (
     set_system_volume,
 )
 from jarvis.policy.firewall import (
+    CAPABILITY_APP_LAUNCH,
+    CAPABILITY_COMPUTER_ACT,
     CAPABILITY_COMPUTER_CLICK,
     CAPABILITY_COMPUTER_KEY,
     CAPABILITY_COMPUTER_SCREENSHOT,
@@ -47,6 +50,11 @@ from jarvis.policy.firewall import (
     CAPABILITY_SYSTEM_BRIGHTNESS,
     CAPABILITY_SYSTEM_INFO,
     CAPABILITY_SYSTEM_VOLUME,
+    CAPABILITY_UI_INSPECT,
+    CAPABILITY_UI_INTERACT,
+    CAPABILITY_WINDOW_CLOSE,
+    CAPABILITY_WINDOW_FOCUS,
+    CAPABILITY_WINDOW_LIST,
 )
 from jarvis.telemetry import logger
 
@@ -176,6 +184,59 @@ class WindowsNode:
                 if "brightness_percent" in req.arguments
                 else get_display_brightness()
             ),
+        )
+
+        # Application & Window Control
+        from jarvis.core.app_control_engine import app_control_engine
+
+        capability_registry.register(
+            CAPABILITY_APP_LAUNCH,
+            lambda req: app_control_engine.launch_application(
+                target=str(req.arguments["target"]),
+                arguments=req.arguments.get("arguments"),
+                timeout_seconds=float(req.arguments.get("timeout_seconds", 6.0)),
+            ).to_dict(),
+        )
+        capability_registry.register(
+            CAPABILITY_WINDOW_FOCUS,
+            lambda req: app_control_engine.focus_window(
+                target=str(req.arguments["target"])
+            ).to_dict(),
+        )
+        capability_registry.register(
+            CAPABILITY_WINDOW_CLOSE,
+            lambda req: app_control_engine.close_window(
+                target=str(req.arguments["target"])
+            ).to_dict(),
+        )
+        capability_registry.register(
+            CAPABILITY_WINDOW_LIST,
+            lambda req: app_control_engine.list_windows(),
+        )
+
+        # UI Automation & In-App Interaction
+        capability_registry.register(
+            CAPABILITY_UI_INSPECT,
+            lambda req: app_control_engine.inspect_ui(
+                window_target=req.arguments.get("window_target"),
+                max_depth=int(req.arguments.get("max_depth", 5)),
+                max_elements=int(req.arguments.get("max_elements", 150)),
+            ),
+        )
+        capability_registry.register(
+            CAPABILITY_UI_INTERACT,
+            lambda req: app_control_engine.interact(
+                window_target=str(req.arguments["window_target"]),
+                element_query=str(req.arguments["element_query"]),
+                action=str(req.arguments.get("action", "click")),
+                value=req.arguments.get("value"),
+            ).to_dict(),
+        )
+        capability_registry.register(
+            CAPABILITY_COMPUTER_ACT,
+            lambda req: app_control_engine.execute_computer_action(
+                ComputerActParams(**req.arguments)
+            ).to_dict(),
         )
 
         self._registered = True

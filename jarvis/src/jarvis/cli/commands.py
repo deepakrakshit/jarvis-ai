@@ -26,6 +26,7 @@ from jarvis.acp import (
 from jarvis.cognition.gemini_live import GeminiLiveBridge, LiveSessionState
 from jarvis.config import settings
 from jarvis.contracts.task import TaskState, TaskType
+from jarvis.core.app_control_engine import app_control_engine
 from jarvis.core.control_plane import ControlPlane, control_plane
 from jarvis.cron import HeartbeatMonitor, heartbeat_monitor
 from jarvis.execution.browser.host import browser_node
@@ -699,3 +700,53 @@ async def handle_chat(
             t.cancel()
         if gateway_server:
             await gateway_server.stop()
+
+
+def handle_app_launch(target: str, arguments: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Launch an application and wait for window readiness."""
+    ensure_nodes_registered()
+    res = app_control_engine.launch_application(target=target, arguments=arguments)
+    return res.to_dict()
+
+
+def handle_app_focus(target: str) -> Dict[str, Any]:
+    """Focus an open application window."""
+    ensure_nodes_registered()
+    res = app_control_engine.focus_window(target=target)
+    return res.to_dict()
+
+
+def handle_app_close(target: str) -> Dict[str, Any]:
+    """Close an application window."""
+    ensure_nodes_registered()
+    res = app_control_engine.close_window(target=target)
+    return res.to_dict()
+
+
+def handle_app_windows() -> List[Dict[str, Any]]:
+    """List open desktop windows."""
+    ensure_nodes_registered()
+    return app_control_engine.list_windows()
+
+
+def handle_app_inspect(window_target: Optional[str] = None, max_depth: int = 5) -> Dict[str, Any]:
+    """Inspect the UI tree of a target window."""
+    ensure_nodes_registered()
+    return app_control_engine.inspect_ui(window_target=window_target, max_depth=max_depth)
+
+
+def handle_app_interact(
+    window_target: str,
+    element_query: str,
+    action: str = "click",
+    value: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Interact with an element inside a window."""
+    ensure_nodes_registered()
+    res = app_control_engine.interact(
+        window_target=window_target,
+        element_query=element_query,
+        action=action,
+        value=value,
+    )
+    return res.to_dict()

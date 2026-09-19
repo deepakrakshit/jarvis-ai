@@ -24,7 +24,9 @@ from jarvis.contracts.memory import MemoryRecord, MemoryType
 from jarvis.contracts.model import ModelFamily, ModelInvocationRequest
 from jarvis.memory.manager import memory_manager
 from jarvis.policy.firewall import (
+    CAPABILITY_APP_LAUNCH,
     CAPABILITY_BROWSER_NAVIGATE,
+    CAPABILITY_COMPUTER_ACT,
     CAPABILITY_COMPUTER_SCREENSHOT,
     CAPABILITY_FILESYSTEM_LIST,
     CAPABILITY_FILESYSTEM_READ,
@@ -33,6 +35,11 @@ from jarvis.policy.firewall import (
     CAPABILITY_SHELL_EXECUTE,
     CAPABILITY_SYSTEM_INFO,
     CAPABILITY_SYSTEM_VOLUME,
+    CAPABILITY_UI_INSPECT,
+    CAPABILITY_UI_INTERACT,
+    CAPABILITY_WINDOW_CLOSE,
+    CAPABILITY_WINDOW_FOCUS,
+    CAPABILITY_WINDOW_LIST,
 )
 from jarvis.telemetry import logger
 
@@ -206,6 +213,122 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             "required": ["query"],
         },
     },
+    {
+        "name": "app_launch",
+        "description": "Launch an installed Windows application or registered protocol handler asynchronously without blocking.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "Application name (e.g. 'Notepad', 'Paint', 'Spotify', 'Chrome') or executable path.",
+                },
+                "arguments": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "Optional command line arguments to pass to the application.",
+                },
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "app_focus",
+        "description": "Bring an application window cleanly to the foreground.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "Window title or application name to focus.",
+                }
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "app_close",
+        "description": "Close an application window gracefully.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "Window title or application name to close.",
+                }
+            },
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "window_list",
+        "description": "Enumerate all open desktop application windows with titles, HWNDs, and process information.",
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
+    {
+        "name": "ui_inspect",
+        "description": "Inspect the live interactive UI automation tree of an application window to discover controls (buttons, tabs, inputs, menus, sliders).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "window_target": {
+                    "type": "STRING",
+                    "description": "Optional window title or application name. If omitted, inspects the current foreground window.",
+                },
+                "max_depth": {
+                    "type": "INTEGER",
+                    "description": "Maximum tree traversal depth (default: 5).",
+                },
+            },
+        },
+    },
+    {
+        "name": "ui_interact",
+        "description": "Interact with an in-app UI control using Microsoft UI Automation patterns (click, set_value, toggle, select, expand, collapse, scroll) with closed-loop verification.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "window_target": {
+                    "type": "STRING",
+                    "description": "Window title or application name containing the control.",
+                },
+                "element_query": {
+                    "type": "STRING",
+                    "description": "Control name, label, or AutomationId (e.g. 'File', 'Save', 'Search', 'Text').",
+                },
+                "action": {
+                    "type": "STRING",
+                    "description": "Action to perform: 'click', 'set_value', 'toggle', 'select', 'expand', 'collapse', 'scroll' (default: 'click').",
+                },
+                "value": {
+                    "type": "STRING",
+                    "description": "Text value to enter if action is 'set_value' or 'type'.",
+                },
+            },
+            "required": ["window_target", "element_query"],
+        },
+    },
+    {
+        "name": "computer_action",
+        "description": "Execute a canonical computer-use action (mouse click, type, key, screenshot, wait) as a fallback.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "Action name: 'screenshot', 'left_click', 'right_click', 'double_click', 'type', 'key', 'wait'.",
+                },
+                "x": {"type": "NUMBER", "description": "X coordinate for mouse clicks."},
+                "y": {"type": "NUMBER", "description": "Y coordinate for mouse clicks."},
+                "text": {"type": "STRING", "description": "Text to type."},
+                "keys": {
+                    "type": "STRING",
+                    "description": "Keyboard key to press (e.g. 'enter', 'tab', 'esc').",
+                },
+            },
+            "required": ["action"],
+        },
+    },
 ]
 
 TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
@@ -219,6 +342,13 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "filesystem_list": CAPABILITY_FILESYSTEM_LIST,
     "process_list": CAPABILITY_PROCESS_ENUMERATE,
     "browser_navigate": CAPABILITY_BROWSER_NAVIGATE,
+    "app_launch": CAPABILITY_APP_LAUNCH,
+    "app_focus": CAPABILITY_WINDOW_FOCUS,
+    "app_close": CAPABILITY_WINDOW_CLOSE,
+    "window_list": CAPABILITY_WINDOW_LIST,
+    "ui_inspect": CAPABILITY_UI_INSPECT,
+    "ui_interact": CAPABILITY_UI_INTERACT,
+    "computer_action": CAPABILITY_COMPUTER_ACT,
 }
 
 
