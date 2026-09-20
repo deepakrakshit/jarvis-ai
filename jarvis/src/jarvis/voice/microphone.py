@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from jarvis.config import settings
 from jarvis.telemetry import logger
+from jarvis.voice.audio_aec import AudioEchoCanceller
 from jarvis.voice.state_machine import AudioSourceType, TaggedAudioFrame
 
 
@@ -59,6 +60,28 @@ def read_pcm16_audio_stats(audio_bytes: bytes, speech_threshold: float = 15.0) -
         )
 
 
+LOOPBACK_DEVICE_PATTERNS = (
+    "stereo mix",
+    "what u hear",
+    "wave out",
+    "sound mapper",
+    "virtual cable",
+    "voicemeeter",
+    "loopback",
+    "blackhole",
+    "vb-audio",
+)
+
+
+def is_genuine_capture_device(device_name: str) -> bool:
+    """Determine whether an audio input device name is a genuine physical microphone."""
+    lowered = device_name.lower()
+    for pattern in LOOPBACK_DEVICE_PATTERNS:
+        if pattern in lowered:
+            return False
+    return True
+
+
 def list_input_devices() -> List[Dict[str, Any]]:
     """Enumerate available audio input devices dynamically from the operating system."""
     devices: List[Dict[str, Any]] = []
@@ -69,14 +92,17 @@ def list_input_devices() -> List[Dict[str, Any]]:
         default_in, _ = sd.default.device
         for idx, dev in enumerate(all_devs):
             if dev.get("max_input_channels", 0) > 0:
+                dev_name = dev.get("name", "Unknown Input")
+                is_genuine = is_genuine_capture_device(dev_name)
                 devices.append(
                     {
                         "index": idx,
-                        "name": dev.get("name", "Unknown Input"),
+                        "name": dev_name,
                         "hostapi": dev.get("hostapi", 0),
                         "max_input_channels": dev.get("max_input_channels", 1),
                         "default_samplerate": dev.get("default_samplerate", 16000.0),
                         "is_default": (idx == default_in),
+                        "is_genuine_mic": is_genuine,
                     }
                 )
     except Exception as err:
@@ -85,8 +111,20 @@ def list_input_devices() -> List[Dict[str, Any]]:
 
 
 def get_default_input_device() -> Optional[Dict[str, Any]]:
-    """Return the default system audio input device or None if unavailable."""
+    """Return the primary genuine physical microphone, avoiding loopback/monitor devices."""
     devs = list_input_devices()
+    genuine_devs = [d for d in devs if d.get("is_genuine_mic", True)]
+
+    # 1. Prefer default device if it is a genuine physical microphone
+    for d in genuine_devs:
+        if d.get("is_default"):
+            return d
+
+    # 2. Fall back to first genuine physical microphone
+    if genuine_devs:
+        return genuine_devs[0]
+
+    # 3. Fallback to default if no genuine device was filtered
     for d in devs:
         if d.get("is_default"):
             return d
@@ -130,6 +168,12 @@ class MicrophoneCapture:
         self.total_frames_captured: int = 0
         self.overflow_count: int = 0
 
+        self.echo_canceller: AudioEchoCanceller = AudioEchoCanceller(
+            sample_rate=self.samplerate,
+            block_size=self.blocksize,
+            enabled=settings.AUDIO_AEC_ENABLED,
+        )
+
     @property
     def is_recording(self) -> bool:
         """Return True if the microphone capture stream is actively running."""
@@ -157,7 +201,11 @@ class MicrophoneCapture:
         if status and status.input_overflow:
             self.overflow_count += 1
 
-        stats = read_pcm16_audio_stats(indata, speech_threshold=self.speech_threshold)
+        # Process through Acoustic Echo Canceller to remove speaker / media playback
+        raw_pcm = bytes(indata)
+        cleaned_pcm = self.echo_canceller.process_pcm16_chunk(raw_pcm)
+
+        stats = read_pcm16_audio_stats(cleaned_pcm, speech_threshold=self.speech_threshold)
         self.current_stats = stats
         self.total_frames_captured += frames
 
@@ -166,7 +214,7 @@ class MicrophoneCapture:
 
         frame = TaggedAudioFrame(
             source=AudioSourceType.USER_MIC,
-            pcm_bytes=bytes(indata),
+            pcm_bytes=cleaned_pcm,
             sample_rate=self.samplerate,
             channels=self.channels,
         )
@@ -189,6 +237,13 @@ class MicrophoneCapture:
             if self._audio_chunk_callback is not None:
                 try:
                     loop.call_soon_threadsafe(self._audio_chunk_callback, frame.pcm_bytes)
+                except Exception:
+                    pass
+        else:
+            self._enqueue_frame(frame)
+            if self._audio_chunk_callback is not None:
+                try:
+                    self._audio_chunk_callback(frame.pcm_bytes)
                 except Exception:
                     pass
 
@@ -223,6 +278,24 @@ class MicrophoneCapture:
 
         self._audio_chunk_callback = on_chunk
 
+        # Resolve genuine physical input device to prevent digital loopback contamination (Case A)
+        target_device = self.device_index
+        if target_device is None:
+            default_dev = get_default_input_device()
+            if default_dev:
+                target_device = default_dev.get("index")
+        else:
+            devs = {d["index"]: d for d in list_input_devices()}
+            if target_device in devs and not devs[target_device].get("is_genuine_mic", True):
+                dev_name = devs[target_device].get("name", "Unknown")
+                logger.warning(
+                    f"Selected audio input device {target_device} ({dev_name}) "
+                    f"is a loopback/monitor endpoint. Selecting genuine physical microphone."
+                )
+                default_dev = get_default_input_device()
+                if default_dev:
+                    target_device = default_dev.get("index")
+
         import sounddevice as sd
 
         try:
@@ -231,24 +304,27 @@ class MicrophoneCapture:
                 channels=self.channels,
                 dtype="int16",
                 blocksize=self.blocksize,
-                device=self.device_index,
+                device=target_device,
                 callback=self._audio_callback,
             )
             self._stream.start()
             self._is_recording = True
+            self.echo_canceller.start()
             logger.info(
                 f"Microphone capture started: rate={self.samplerate}Hz, "
                 f"channels={self.channels}, blocksize={self.blocksize} "
-                f"({self.chunk_ms}ms), device={self.device_index}"
+                f"({self.chunk_ms}ms), device={target_device}"
             )
         except Exception as err:
             logger.error(f"Failed to start microphone stream: {err}")
             self._is_recording = False
+            self.echo_canceller.stop()
             raise
 
     def stop(self) -> None:
-        """Stop and close the audio capture stream."""
+        """Stop and close the audio capture stream and AEC engine."""
         self._is_recording = False
+        self.echo_canceller.stop()
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -280,8 +356,8 @@ class MicrophoneCapture:
         return frame.pcm_bytes if frame is not None else None
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """Return diagnostic metrics for microphone capture."""
-        return {
+        """Return diagnostic metrics for microphone capture and acoustic echo cancellation."""
+        diag: Dict[str, Any] = {
             "is_recording": self._is_recording,
             "is_muted": self._is_muted,
             "duplex_suppressed": self._duplex_suppressed,
@@ -296,3 +372,5 @@ class MicrophoneCapture:
             "current_rms": round(self.current_stats.rms, 2),
             "speech_detected": self.current_stats.is_speech,
         }
+        diag["aec"] = self.echo_canceller.get_diagnostics()
+        return diag

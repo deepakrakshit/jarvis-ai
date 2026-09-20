@@ -506,13 +506,19 @@ async def handle_chat(
                 else "[yellow]No microphone detected[/yellow]"
             )
 
+            aec_status = (
+                "[green]ACTIVE (WASAPI Loopback DSP)[/green]"
+                if settings.AUDIO_AEC_ENABLED
+                else "[dim]DISABLED[/dim]"
+            )
             live_header = (
                 f"[bold white]Session:[/bold white] [cyan]{bridge.session_id}[/cyan] | "
                 f"[bold white]Voice:[/bold white] [cyan]{bridge.voice_name}[/cyan] | "
-                f"[bold white]Voice Mode:[/bold white] [green]HALF-DUPLEX / ECHO-SAFE[/green]\n"
+                f"[bold white]Voice Mode:[/bold white] [green]HALF-DUPLEX + REALTIME AEC[/green]\n"
                 f"[bold white]Approvals:[/bold white] [green]BYPASSED (LIVE)[/green] | "
                 f"[bold white]Core Model:[/bold white] [cyan]Gemini 3.8 Live Multimodal (Audio/Text/Vision)[/cyan]\n"
                 f"[bold white]Microphone:[/bold white] {mic_label}\n"
+                f"[bold white]Echo Cancellation:[/bold white] {aec_status} [dim](YouTube / Spotify / Game Audio Suppressed)[/dim]\n"
                 f"[bold white]Capabilities:[/bold white] [cyan]Live Web Search + Windows Native + Browser Automation[/cyan]\n"
                 f"[bold white]Delegation:[/bold white] [cyan]GPT-OSS 120B & Qwen 3.8 27B Specialist Models[/cyan]\n"
                 f"[bold white]Input Modes:[/bold white] [cyan]Speak into Mic (Realtime VAD) OR Type in Console[/cyan]\n"

@@ -1,10 +1,12 @@
 """Voice and Audio Capture/Synthesis Subsystems for JARVIS."""
 
+from .audio_aec import AudioEchoCanceller, PartitionedBlockAEC, WasapiLoopbackStream
 from .input_gate import AudioInputGate
 from .microphone import (
     AudioEnergyStats,
     MicrophoneCapture,
     get_default_input_device,
+    is_genuine_capture_device,
     list_input_devices,
     read_pcm16_audio_stats,
 )
@@ -23,8 +25,12 @@ __all__ = [
     "PcmStreamPlayer",
     "voice_synthesizer",
     "MicrophoneCapture",
+    "AudioEchoCanceller",
+    "PartitionedBlockAEC",
+    "WasapiLoopbackStream",
     "AudioEnergyStats",
     "read_pcm16_audio_stats",
     "list_input_devices",
     "get_default_input_device",
+    "is_genuine_capture_device",
 ]

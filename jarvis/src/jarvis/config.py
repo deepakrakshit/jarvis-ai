@@ -47,6 +47,14 @@ class JarvisSettings(BaseSettings):
     AUDIO_DUPLEX_SUPPRESSION: bool = Field(default=True)
     VOICE_DRAIN_HOLD_MS: int = Field(default=250)
 
+    # Dynamic Acoustic Echo Cancellation (AEC) & Reference Loopback Settings
+    AUDIO_AEC_ENABLED: bool = Field(default=True)
+    AUDIO_AEC_PARTITIONS: int = Field(default=6)
+    AUDIO_AEC_STEP_SIZE: float = Field(default=0.25)
+    AUDIO_AEC_SUPPRESSION_DB: float = Field(default=30.0)
+    AUDIO_AEC_DELAY_MAX_MS: int = Field(default=250)
+    AUDIO_AEC_DIAGNOSTICS_DIR: Optional[Path] = Field(default=None)
+
     # API Credentials (loaded securely via environment / .env, never hardcoded)
     GEMINI_API_KEY: Optional[str] = Field(default=None)
     GROQ_API_KEY: Optional[str] = Field(default=None)

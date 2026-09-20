@@ -250,10 +250,10 @@ class SubstrateBridge:
                 f"Substrate synchronous call '{method}' failed: {exc}"
             ) from exc
 
-    async def is_healthy(self) -> bool:
+    async def is_healthy(self, timeout: float = 15.0) -> bool:
         """Performs a health check probe against the substrate runner asynchronously."""
         try:
-            res = await self.call_method("health", timeout=5.0)
+            res = await self.call_method("health", timeout=timeout)
             return res.get("ok") is True
         except Exception:
             return False
