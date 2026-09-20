@@ -1,8 +1,8 @@
-import type { Model, StreamFn } from "@openclaw/llm-core";
+import type { Model, StreamFn } from "@jarvis/llm-core";
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   estimateStringChars,
-} from "@openclaw/normalization-core/cjk-chars";
+} from "@jarvis/normalization-core/cjk-chars";
 import {
   type AgentCoreCompletionRuntimeDeps,
   consumeAgentCoreStream,

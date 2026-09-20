@@ -1,4 +1,4 @@
-import { retryAsync } from "@openclaw/retry";
+import { retryAsync } from "@jarvis/retry";
 import type { SsrFPolicy } from "./openclaw-runtime-network.js";
 import { postJson } from "./post-json.js";
 

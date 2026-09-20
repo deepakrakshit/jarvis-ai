@@ -4,7 +4,7 @@
 import {
   findNormalizedProviderKey,
   normalizeProviderId,
-} from "@openclaw/model-catalog-core/provider-id";
+} from "@jarvis/model-catalog-core/provider-id";
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.js";
 import { resolvePrimaryStringValue } from "../../packages/normalization-core/src/string-coerce.js";
 import { ensureStaticModelAllowlistEntry } from "../agents/model-allowlist-entry.js";

@@ -1,5 +1,5 @@
-import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
-import { normalizeNullableString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeAgentId } from "@jarvis/normalization-core/agent-id";
+import { normalizeNullableString } from "@jarvis/normalization-core/string-coerce";
 import {
   isReservedSessionRest,
   normalizeControlUiBasePath,

@@ -1,4 +1,4 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import type { PluginRuntime } from "../../plugins/runtime/types.js";
 
 type DeepPartial<T> = {

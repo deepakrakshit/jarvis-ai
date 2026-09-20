@@ -1,5 +1,5 @@
-import { parseBoolean } from "@openclaw/normalization-core/boolean-coercion";
-import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
+import { parseBoolean } from "@jarvis/normalization-core/boolean-coercion";
+import { normalizeLowercaseStringOrEmpty } from "@jarvis/normalization-core/string-coerce";
 
 // Lightweight debug logging for memory embedding internals.
 

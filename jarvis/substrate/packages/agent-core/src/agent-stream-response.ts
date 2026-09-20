@@ -1,12 +1,12 @@
-import { isResponsesOutputLimitToolCallError } from "@openclaw/ai/diagnostics";
-import { replaceCompactionReplayOwnerContent } from "@openclaw/ai/transports";
-import { PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE } from "@openclaw/llm-core";
+import { isResponsesOutputLimitToolCallError } from "@jarvis/ai/diagnostics";
+import { replaceCompactionReplayOwnerContent } from "@jarvis/ai/transports";
+import { PROVIDER_FAILURE_WITH_OUTPUT_ERROR_CODE } from "@jarvis/llm-core";
 import type {
   AssistantMessage,
   AssistantMessageEvent,
   Context,
   ToolResultMessage,
-} from "@openclaw/llm-core";
+} from "@jarvis/llm-core";
 import { uuidv7 } from "./harness/session/uuid.js";
 import {
   type AgentCoreStreamRuntimeDeps,

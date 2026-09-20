@@ -1,4 +1,4 @@
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import {
   evaluateRequirementsFromMetadataWithRemote,
   type RequirementConfigCheck,

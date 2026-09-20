@@ -4,7 +4,7 @@ import {
   removePathWithinRoot,
   resolvePreferredOpenClawTmpDir,
   root,
-} from "openclaw/plugin-sdk/file-access-runtime";
+} from "@jarvis/plugin-sdk/file-access-runtime";
 
 const RESOURCE_HANDLE_PREFIX = "openclaw:computer-resource:v1:";
 const RESOURCE_ROOT_NAME = "cua-computer-resources";

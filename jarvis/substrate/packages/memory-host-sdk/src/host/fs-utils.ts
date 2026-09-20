@@ -1,12 +1,12 @@
 // Retain fs-safe's process configuration for host-side memory file operations.
-export { root } from "@openclaw/fs-safe/root";
-export { isPathInside, isPathInsideWithRealpath } from "@openclaw/fs-safe/path";
+export { root } from "@jarvis/fs-safe/root";
+export { isPathInside, isPathInsideWithRealpath } from "@jarvis/fs-safe/path";
 export {
   assertNoSymlinkParents,
   readRegularFile,
   statRegularFile,
-} from "@openclaw/fs-safe/advanced";
-export { walkDirectory, type WalkDirectoryEntry } from "@openclaw/fs-safe/walk";
+} from "@jarvis/fs-safe/advanced";
+export { walkDirectory, type WalkDirectoryEntry } from "@jarvis/fs-safe/walk";
 
 /**
  * True for missing-file errors emitted by Node or fs-safe.

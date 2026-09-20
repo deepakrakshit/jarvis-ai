@@ -3,9 +3,9 @@ import {
   isDefinitiveRunLifecycle,
   resolveAgentRunLifecycleTerminalFacts,
   resolveAgentRunWaitTerminalFacts,
-} from "@openclaw/normalization-core/agent-run-terminal-outcome";
-import { asRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonEmptyStringPreservingWhitespace } from "@openclaw/normalization-core/string-coerce";
+} from "@jarvis/normalization-core/agent-run-terminal-outcome";
+import { asRecord } from "@jarvis/normalization-core/record-coerce";
+import { readNonEmptyStringPreservingWhitespace } from "@jarvis/normalization-core/string-coerce";
 import type { JsonObject, OpenClawEventType, RunResult, RunTimestamp } from "./types.js";
 
 const SDK_STATUS_BY_TERMINAL_CLASSIFICATION = {

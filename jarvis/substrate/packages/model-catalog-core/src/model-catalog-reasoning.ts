@@ -1,5 +1,5 @@
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeTrimmedStringList } from "@openclaw/normalization-core/string-normalization";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeTrimmedStringList } from "@jarvis/normalization-core/string-normalization";
 import type { ModelCatalogModel } from "./model-catalog-types.js";
 
 const OPENROUTER_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"];

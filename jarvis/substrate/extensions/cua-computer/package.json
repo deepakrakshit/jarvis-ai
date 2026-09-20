@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/cua-computer",
+  "name": "@jarvis/cua-computer",
   "version": "2026.9.4",
   "description": "Experimental CUA Driver computer control for macOS, Windows, and Linux node hosts",
   "type": "module",
@@ -9,7 +9,7 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@openclaw/plugin-sdk": "workspace:*"
+    "@jarvis/plugin-sdk": "workspace:*"
   },
   "cuaDriverArtifacts": {
     "darwin-universal-binary": {

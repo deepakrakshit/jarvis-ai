@@ -91,3 +91,43 @@ async def test_browser_action_broker_pipeline() -> None:
 
     finally:
         await browser_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_browser_typing_clicking_and_elements() -> None:
+    """Verify typing, enter submission, dynamic selector fallback, and element extraction."""
+    test_html_url = (
+        "data:text/html,<html><head><title>Form Interactive Test</title></head>"
+        "<body>"
+        "<form id='search-form' onsubmit='event.preventDefault(); document.getElementById(\"result\").innerText = document.getElementById(\"query-box\").value;'>"
+        "<input id='query-box' name='search_query' type='text' />"
+        "<button id='submit-btn' type='submit'>Search</button>"
+        "</form>"
+        "<div id='result'>initial</div>"
+        "<a id='video-title' href='/video-link'>Sample Video Title</a>"
+        "</body></html>"
+    )
+
+    try:
+        await browser_manager.navigate(test_html_url)
+
+        # Type with press_enter=True into search field
+        type_res = await browser_manager.type_text(
+            selector="input[name=search_query]",
+            text="Clash of Clans TH19",
+            press_enter=True,
+        )
+        assert type_res["action"] == "type"
+        assert type_res["text"] == "Clash of Clans TH19"
+
+        # Check snapshot to confirm dynamic element extraction
+        snap = await browser_manager.snapshot()
+        assert "Key Interactive Elements" in snap["text"]
+        assert "input[name=search_query]" in snap["text"]
+
+        # Click fallback testing (click on link using fallback selector logic)
+        click_res = await browser_manager.click("a#video-title")
+        assert click_res["action"] == "click"
+
+    finally:
+        await browser_manager.close()

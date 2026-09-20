@@ -2,8 +2,8 @@
 import {
   normalizeJsonSchemaForTypeBox,
   type JsonSchemaValue,
-} from "@openclaw/normalization-core/json-schema";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+} from "@jarvis/normalization-core/json-schema";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import { Compile } from "typebox/schema";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 

@@ -36,7 +36,7 @@ export {
 } from "../talk/audio-codec.js";
 export { REALTIME_VOICE_AGENT_CONSULT_TOOL_NAME } from "../talk/agent-consult-tool.js";
 
-export { canonicalizeBase64 } from "@openclaw/media-core/base64";
+export { canonicalizeBase64 } from "@jarvis/media-core/base64";
 export { rawDataToString } from "../infra/ws.js";
 export {
   coerceErrorMessage,
@@ -44,8 +44,8 @@ export {
   readErrorName,
   toErrorObject,
   toStringifiedError,
-} from "@openclaw/normalization-core/error-coercion";
+} from "@jarvis/normalization-core/error-coercion";
 export { sleepWithAbort } from "../infra/backoff.js";
 
-export { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+export { truncateUtf16Safe } from "@jarvis/normalization-core/utf16-slice";
 export { buildRealtimeVoiceAgentControlSpeechMessage } from "../talk/agent-run-control-shared.js";

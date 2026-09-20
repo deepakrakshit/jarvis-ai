@@ -92,6 +92,7 @@ class SubstrateBridge:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     cwd=str(self._workspace_dir),
+                    limit=20 * 1024 * 1024,
                 )
             except Exception as exc:
                 logger.error("Failed to spawn OpenClaw substrate daemon: %s", exc)
@@ -107,6 +108,11 @@ class SubstrateBridge:
             self._is_shutting_down = True
             if self._reader_task and not self._reader_task.done():
                 self._reader_task.cancel()
+                try:
+                    await self._reader_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                self._reader_task = None
 
             if self._process is not None:
                 if self._process.stdin is not None:
@@ -301,6 +307,14 @@ class SubstrateBridge:
     def run_system_sync(self, command: str) -> dict[str, Any]:
         """Executes a system shell command through the substrate pipeline synchronously."""
         return self.call_method_sync("system.run", {"command": command}, timeout=60.0)
+
+    async def repair_tool_call(self, text: str) -> dict[str, Any]:
+        """Repairs and extracts plain text or malformed tool call blocks via OpenClaw substrate."""
+        return await self.call_method("tool.repair", {"text": text}, timeout=15.0)
+
+    def repair_tool_call_sync(self, text: str) -> dict[str, Any]:
+        """Synchronously repairs and extracts plain text or malformed tool call blocks via OpenClaw substrate."""
+        return self.call_method_sync("tool.repair", {"text": text}, timeout=15.0)
 
 
 # Global singleton instance

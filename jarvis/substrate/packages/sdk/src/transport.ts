@@ -1,4 +1,4 @@
-import { GatewayClient, type GatewayClientOptions } from "@openclaw/gateway-client";
+import { GatewayClient, type GatewayClientOptions } from "@jarvis/gateway-client";
 import { EventHub } from "./event-hub.js";
 import type {
   ConnectableOpenClawTransport,
@@ -63,7 +63,7 @@ function toGatewayEvent(event: unknown): GatewayEvent {
   };
 }
 
-/** Connectable SDK transport backed by @openclaw/gateway-client. */
+/** Connectable SDK transport backed by @jarvis/gateway-client. */
 export class GatewayClientTransport implements ConnectableOpenClawTransport {
   private readonly eventsHub = new EventHub<GatewayEvent>({
     replayLimit: RAW_EVENT_REPLAY_LIMIT,

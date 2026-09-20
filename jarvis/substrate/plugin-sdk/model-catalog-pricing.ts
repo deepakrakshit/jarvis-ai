@@ -2,4 +2,4 @@
 export {
   normalizeModelPricingCatalog,
   normalizeOpenRouterModelPricing,
-} from "@openclaw/model-catalog-core/model-catalog-pricing";
+} from "@jarvis/model-catalog-core/model-catalog-pricing";

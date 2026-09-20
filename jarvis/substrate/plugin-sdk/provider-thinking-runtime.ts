@@ -1,10 +1,10 @@
-import { MODEL_CATALOG_THINKING_LEVELS } from "@openclaw/model-catalog-core/model-catalog-types";
+import { MODEL_CATALOG_THINKING_LEVELS } from "@jarvis/model-catalog-core/model-catalog-types";
 import type { ProviderThinkingProfile } from "../plugins/provider-thinking.types.js";
 export {
   isGoogleGemini3FlashModel,
   isGoogleGemini3ProModel,
   isGoogleGemini3ThinkingLevelModel,
-} from "@openclaw/ai/internal/google-model-family";
+} from "@jarvis/ai/internal/google-model-family";
 
 // Provider policies load eagerly; keep this module free of streaming runtime imports.
 export function resolveEffortThinkingProfile(

@@ -4,7 +4,7 @@ import {
   resolveClaudeSonnet5ModelIdentity,
   type Model,
   type SimpleStreamOptions,
-} from "@openclaw/llm-core";
+} from "@jarvis/llm-core";
 import type { ThinkingLevel } from "./types.js";
 
 export function resolveAgentReasoningOption(

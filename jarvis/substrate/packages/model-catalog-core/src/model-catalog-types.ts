@@ -1,5 +1,5 @@
 // Shared model catalog data contracts for provider manifests and normalized rows.
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import {
   MODEL_DATA_APIS,
   MODEL_DATA_THINKING_FORMATS,

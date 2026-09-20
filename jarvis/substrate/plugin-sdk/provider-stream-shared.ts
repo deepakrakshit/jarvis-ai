@@ -1,10 +1,10 @@
 // Provider stream shared helpers implement reusable stream wrappers and payload policies.
-import { resolveOpenAIReasoningEffortForModel } from "@openclaw/ai/internal/openai";
+import { resolveOpenAIReasoningEffortForModel } from "@jarvis/ai/internal/openai";
 import {
   createEmptyTransportUsage,
   resolveOpenAIReasoningEffortMap,
-} from "@openclaw/ai/transports";
-import { asOptionalObjectRecord } from "@openclaw/normalization-core/record-coerce";
+} from "@jarvis/ai/transports";
+import { asOptionalObjectRecord } from "@jarvis/normalization-core/record-coerce";
 import {
   createPromotedPlainTextToolCallBlock,
   createPromotedPlainTextToolCallEvents,
@@ -32,15 +32,15 @@ export {
   isGoogleGemini3FlashModel,
   isGoogleGemini3ProModel,
   isGoogleGemini3ThinkingLevelModel,
-} from "@openclaw/ai/internal/google-model-family";
+} from "@jarvis/ai/internal/google-model-family";
 export {
   applyAnthropicRefusal,
   isAnthropicOAuthApiKey,
   resolveAnthropicServerCompactionPlan,
   resolveAnthropicThinkingEffort,
-} from "@openclaw/ai/internal/anthropic";
-export { createDeferredEventBuffer } from "@openclaw/ai/internal/runtime";
-export { notifyLlmRequestActivity, onLlmRequestActivity } from "@openclaw/ai/internal/runtime";
+} from "@jarvis/ai/internal/anthropic";
+export { createDeferredEventBuffer } from "@jarvis/ai/internal/runtime";
+export { notifyLlmRequestActivity, onLlmRequestActivity } from "@jarvis/ai/internal/runtime";
 
 type ProviderWrapStreamFnContext = import("../plugins/types.js").ProviderWrapStreamFnContext;
 
@@ -718,7 +718,7 @@ export function createGoogleThinkingStreamWrapper(
 export {
   applyAnthropicPayloadPolicyToParams,
   resolveAnthropicPayloadPolicy,
-} from "@openclaw/ai/transports";
+} from "@jarvis/ai/transports";
 export { applyAnthropicEphemeralCacheControlMarkers } from "../llm/providers/stream-wrappers/anthropic-cache-control-payload.js";
 export {
   createMoonshotThinkingWrapper,
@@ -728,5 +728,5 @@ export {
 export { streamWithPayloadPatch };
 export { createToolStreamWrapper } from "../llm/providers/stream-wrappers/zai.js";
 
-export { applyCompletionsAnthropicCacheControl } from "@openclaw/ai/transports";
-export { projectCopilotRequestFacts } from "@openclaw/ai/internal/shared";
+export { applyCompletionsAnthropicCacheControl } from "@jarvis/ai/transports";
+export { projectCopilotRequestFacts } from "@jarvis/ai/internal/shared";

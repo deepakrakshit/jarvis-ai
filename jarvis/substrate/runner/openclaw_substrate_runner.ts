@@ -3,7 +3,7 @@
  * Executes actual OpenClaw CUA modules directly in Node.js runtime.
  */
 import { randomUUID } from "node:crypto";
-import { exec, execFile } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import readline from "node:readline";
 
@@ -41,9 +41,38 @@ import {
   type CuaComputerActParams,
 } from "../extensions/cua-computer/src/action-targets.js";
 import type { CuaDriverSession, CuaToolResult } from "../extensions/cua-computer/src/driver-client.js";
+import { parseStandalonePlainTextToolCallBlocks } from "../packages/tool-call-repair/src/payload.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+
+async function runWinAction(pyCode: string): Promise<string> {
+  const fullScript = `
+import ctypes, json, sys, os
+user32 = ctypes.windll.user32
+h = user32.OpenDesktopW("default", 0, False, 0x01FF)
+if h:
+    user32.SetThreadDesktop(h)
+${pyCode}
+`;
+  return new Promise((resolve, reject) => {
+    const child = spawn("python", ["-"], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += d;
+    });
+    child.stderr.on("data", (d) => {
+      stderr += d;
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve(stdout.trim());
+      else reject(new Error(stderr.trim() || `Exit code ${code}`));
+    });
+    child.stdin.write(fullScript);
+    child.stdin.end();
+  });
+}
 
 class OpenClawWindowsDriverSession implements CuaDriverSession {
   readonly generation = randomUUID();
@@ -61,79 +90,32 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
   ): Promise<CuaToolResult> {
     switch (name) {
       case "list_windows": {
-        const script = `
-          Add-Type @"
-            using System;
-            using System.Runtime.InteropServices;
-            using System.Collections.Generic;
-            using System.Text;
-
-            public struct RECT { public int Left, Top, Right, Bottom; }
-
-            public class WindowEnumerator {
-              [DllImport("user32.dll")]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-              [DllImport("user32.dll")]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              public static extern bool IsWindowVisible(IntPtr hWnd);
-
-              [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-              public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-              [DllImport("user32.dll", SetLastError = true)]
-              public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-              [DllImport("user32.dll")]
-              public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-              [DllImport("user32.dll")]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              public static extern bool IsIconic(IntPtr hWnd);
-
-              public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-              public static List<object> GetWindows() {
-                var list = new List<object>();
-                EnumWindows((hWnd, lParam) => {
-                  if (!IsWindowVisible(hWnd)) return true;
-                  var sb = new StringBuilder(256);
-                  GetWindowText(hWnd, sb, 256);
-                  string title = sb.ToString();
-                  if (string.IsNullOrWhiteSpace(title)) return true;
-                  uint pid;
-                  GetWindowThreadProcessId(hWnd, out pid);
-                  RECT rect;
-                  GetWindowRect(hWnd, out rect);
-                  bool minimized = IsIconic(hWnd);
-                  list.Add(new {
-                    window_id = (int)hWnd,
-                    pid = (int)pid,
-                    title = title,
-                    bounds = new {
-                      x = rect.Left,
-                      y = rect.Top,
-                      width = Math.Max(0, rect.Right - rect.Left),
-                      height = Math.Max(0, rect.Bottom - rect.Top)
-                    },
-                    is_on_screen = !minimized && (rect.Right > rect.Left) && (rect.Bottom > rect.Top),
-                    minimized = minimized
-                  });
-                  return true;
-                }, IntPtr.Zero);
-                return list;
-              }
-            }
-"@
-          [WindowEnumerator]::GetWindows() | ConvertTo-Json -Compress
-        `;
         try {
-          const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`, {
-            maxBuffer: 10 * 1024 * 1024,
-          });
-          const parsed = stdout.trim() ? JSON.parse(stdout.trim()) : [];
-          const windows = Array.isArray(parsed) ? parsed : [parsed];
+          const out = await runWinAction(`
+import win32gui, win32process
+windows = []
+def enum_cb(hwnd, _):
+    if win32gui.IsWindowVisible(hwnd):
+        title = win32gui.GetWindowText(hwnd).strip()
+        if title:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            rect = win32gui.GetWindowRect(hwnd)
+            minimized = win32gui.IsIconic(hwnd)
+            w = max(0, rect[2] - rect[0])
+            h_dim = max(0, rect[3] - rect[1])
+            windows.append({
+                "window_id": hwnd,
+                "pid": pid,
+                "title": title,
+                "bounds": {"x": rect[0], "y": rect[1], "width": w, "height": h_dim},
+                "is_on_screen": not minimized and w > 0 and h_dim > 0,
+                "minimized": bool(minimized)
+            })
+win32gui.EnumWindows(enum_cb, None)
+print(json.dumps({"windows": windows}))
+`);
+          const parsed = JSON.parse(out);
+          const windows = parsed.windows || [];
           return {
             text: `Found ${windows.length} windows`,
             structuredJson: JSON.stringify({ windows }),
@@ -147,25 +129,33 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
       }
 
       case "list_apps": {
-        const script = `
-          Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -ne '' } |
-          Select-Object Id, ProcessName, MainWindowTitle, Path |
-          ForEach-Object {
-            [PSCustomObject]@{
-              pid = $_.Id
-              name = $_.ProcessName
-              launch_path = $_.Path
-              running = $true
-              active = $false
-            }
-          } | ConvertTo-Json -Compress
-        `;
         try {
-          const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`, {
-            maxBuffer: 10 * 1024 * 1024,
-          });
-          const parsed = stdout.trim() ? JSON.parse(stdout.trim()) : [];
-          const apps = Array.isArray(parsed) ? parsed : [parsed];
+          const out = await runWinAction(`
+import psutil
+apps = []
+seen_pids = set()
+for proc in psutil.process_iter(['pid', 'name', 'exe']):
+    try:
+        pinfo = proc.info
+        pid = pinfo.get('pid')
+        if pid and pid not in seen_pids:
+            seen_pids.add(pid)
+            name = pinfo.get('name') or ''
+            exe = pinfo.get('exe') or ''
+            if name.lower().endswith('.exe'):
+                apps.append({
+                    "pid": pid,
+                    "name": name,
+                    "launch_path": exe,
+                    "running": True,
+                    "active": False
+                })
+    except Exception:
+        pass
+print(json.dumps({"apps": apps}))
+`);
+          const parsed = JSON.parse(out);
+          const apps = parsed.apps || [];
           return {
             text: `Found ${apps.length} apps`,
             structuredJson: JSON.stringify({ apps }),
@@ -184,7 +174,15 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
           return { isError: true, text: "launch_app: missing target name or path" };
         }
         try {
-          await execAsync(`powershell -NoProfile -NonInteractive -Command "Start-Process '${launchPath}'"`);
+          const jsonPath = JSON.stringify(launchPath);
+          await runWinAction(`
+import subprocess, os
+target = ${jsonPath}
+try:
+    os.startfile(target)
+except Exception:
+    subprocess.Popen(target, shell=True)
+`);
           return {
             text: `Launched ${launchPath}`,
             structuredJson: JSON.stringify({ name: launchPath, running: true, windows: [] }),
@@ -200,7 +198,11 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
           return { isError: true, text: "kill_app: missing pid" };
         }
         try {
-          await execAsync(`powershell -NoProfile -NonInteractive -Command "Stop-Process -Id ${pid} -Force"`);
+          await runWinAction(`
+import psutil
+p = psutil.Process(${pid})
+p.terminate()
+`);
           return { text: `Terminated process ${pid}` };
         } catch (err: unknown) {
           return { isError: true, text: `kill_app failed: ${String(err)}` };
@@ -212,20 +214,14 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
         if (!windowId) {
           return { isError: true, text: "bring_to_front: missing window_id" };
         }
-        const script = `
-          Add-Type @"
-            using System;
-            using System.Runtime.InteropServices;
-            public class WinBring {
-              [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-              [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-            }
-"@
-          [WinBring]::ShowWindowAsync([IntPtr]${windowId}, 9) | Out-Null
-          [WinBring]::SetForegroundWindow([IntPtr]${windowId}) | Out-Null
-        `;
         try {
-          await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
+          await runWinAction(`
+import win32gui, win32con
+hwnd = ${windowId}
+if win32gui.IsWindow(hwnd):
+    win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+    win32gui.SetForegroundWindow(hwnd)
+`);
           return { text: `Brought window ${windowId} to front` };
         } catch (err: unknown) {
           return { isError: true, text: `bring_to_front failed: ${String(err)}` };
@@ -242,13 +238,13 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
 
   async getCursorPosition(): Promise<CuaToolResult> {
     try {
-      const script = `
-        Add-Type -AssemblyName System.Windows.Forms
-        $pos = [System.Windows.Forms.Cursor]::Position
-        @{ x = $pos.X; y = $pos.Y } | ConvertTo-Json -Compress
-      `;
-      const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
-      const parsed = JSON.parse(stdout.trim());
+      const out = await runWinAction(`
+from ctypes import wintypes
+pt = wintypes.POINT()
+user32.GetCursorPos(ctypes.byref(pt))
+print(json.dumps({"x": pt.x, "y": pt.y}))
+`);
+      const parsed = JSON.parse(out);
       return {
         text: `Cursor at (${parsed.x}, ${parsed.y})`,
         structuredJson: JSON.stringify({ x: parsed.x, y: parsed.y }),
@@ -263,13 +259,12 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
 
   async getScreenSize(): Promise<CuaToolResult> {
     try {
-      const script = `
-        Add-Type -AssemblyName System.Windows.Forms
-        $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-        @{ width = $b.Width; height = $b.Height; scale_factor = 1.0 } | ConvertTo-Json -Compress
-      `;
-      const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
-      const parsed = JSON.parse(stdout.trim());
+      const out = await runWinAction(`
+w = user32.GetSystemMetrics(0)
+h_dim = user32.GetSystemMetrics(1)
+print(json.dumps({"width": w, "height": h_dim, "scale_factor": 1.0}))
+`);
+      const parsed = JSON.parse(out);
       return {
         text: `Screen ${parsed.width}x${parsed.height}`,
         structuredJson: JSON.stringify(parsed),
@@ -287,36 +282,20 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
   }
 
   async click(input: { x: number; y: number; button: number; count: number }): Promise<CuaToolResult> {
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${input.x}, ${input.y})
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        public class MouseClicker {
-          [DllImport("user32.dll",CharSet=CharSet.Auto, CallingConvention=CallingConvention.StdCall)]
-          public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
-          private const int MOUSEEVENTF_LEFTDOWN = 0x02;
-          private const int MOUSEEVENTF_LEFTUP = 0x04;
-          private const int MOUSEEVENTF_RIGHTDOWN = 0x08;
-          private const int MOUSEEVENTF_RIGHTUP = 0x10;
-          public static void Click(int button, int count) {
-            for (int i = 0; i < count; i++) {
-              if (button == 1) {
-                mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0);
-                mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0);
-              } else {
-                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-              }
-            }
-          }
-        }
-"@
-      [MouseClicker]::Click(${input.button}, ${input.count})
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
+      await runWinAction(`
+import time
+user32.SetCursorPos(${Math.round(input.x)}, ${Math.round(input.y)})
+button = ${input.button}
+count = ${input.count}
+down_flag = 0x08 if button == 1 else (0x20 if button == 2 else 0x02)
+up_flag = 0x10 if button == 1 else (0x40 if button == 2 else 0x04)
+for _ in range(count):
+    user32.mouse_event(down_flag, 0, 0, 0, 0)
+    time.sleep(0.02)
+    user32.mouse_event(up_flag, 0, 0, 0, 0)
+    time.sleep(0.02)
+`);
       return { text: `Clicked at (${input.x}, ${input.y})` };
     } catch (err: unknown) {
       return { isError: true, text: `Click failed: ${String(err)}` };
@@ -324,27 +303,22 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
   }
 
   async drag(input: { fromX: number; fromY: number; toX: number; toY: number }): Promise<CuaToolResult> {
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        public class MouseDragger {
-          [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
-          public static void Drag(int fx, int fy, int tx, int ty) {
-            [System.Windows.Forms.Cursor]::Position = new System.Drawing.Point(fx, fy);
-            mouse_event(0x02, 0, 0, 0, 0); // left down
-            System.Threading.Thread.Sleep(50);
-            [System.Windows.Forms.Cursor]::Position = new System.Drawing.Point(tx, ty);
-            System.Threading.Thread.Sleep(50);
-            mouse_event(0x04, 0, 0, 0, 0); // left up
-          }
-        }
-"@
-      [MouseDragger]::Drag(${input.fromX}, ${input.fromY}, ${input.toX}, ${input.toY})
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
+      await runWinAction(`
+import time
+user32.SetCursorPos(${Math.round(input.fromX)}, ${Math.round(input.fromY)})
+time.sleep(0.05)
+user32.mouse_event(0x02, 0, 0, 0, 0)
+steps = 20
+fx, fy = ${Math.round(input.fromX)}, ${Math.round(input.fromY)}
+tx, ty = ${Math.round(input.toX)}, ${Math.round(input.toY)}
+for i in range(1, steps + 1):
+    cx = int(fx + (tx - fx) * (i / float(steps)))
+    cy = int(fy + (ty - fy) * (i / float(steps)))
+    user32.SetCursorPos(cx, cy)
+    time.sleep(0.01)
+user32.mouse_event(0x04, 0, 0, 0, 0)
+`);
       return { text: `Dragged from (${input.fromX}, ${input.fromY}) to (${input.toX}, ${input.toY})` };
     } catch (err: unknown) {
       return { isError: true, text: `Drag failed: ${String(err)}` };
@@ -352,12 +326,10 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
   }
 
   async moveCursor(input: { x: number; y: number }): Promise<CuaToolResult> {
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${input.x}, ${input.y})
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
+      await runWinAction(`
+user32.SetCursorPos(${Math.round(input.x)}, ${Math.round(input.y)})
+`);
       return { text: `Moved cursor to (${input.x}, ${input.y})` };
     } catch (err: unknown) {
       return { isError: true, text: `Move failed: ${String(err)}` };
@@ -366,36 +338,24 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
 
   async scroll(input: { direction: number; amount: bigint }): Promise<CuaToolResult> {
     const delta = input.direction === 0 ? Number(input.amount) * 120 : -Number(input.amount) * 120;
-    const script = `
-      Add-Type @"
-        using System;
-        using System.Runtime.InteropServices;
-        public class Scroller {
-          [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, uint dwExtraInfo);
-          public static void Scroll(int delta) {
-            mouse_event(0x0800, 0, 0, (uint)delta, 0);
-          }
-        }
-"@
-      [Scroller]::Scroll(${delta})
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
-      return { text: `Scrolled ${input.direction} by ${input.amount}` };
+      await runWinAction(`
+user32.mouse_event(0x0800, 0, 0, ${delta}, 0)
+`);
+      return { text: `Scrolled by ${input.amount}` };
     } catch (err: unknown) {
       return { isError: true, text: `Scroll failed: ${String(err)}` };
     }
   }
 
   async typeText(text: string): Promise<CuaToolResult> {
-    // Escapes text for SendKeys
-    const escaped = text.replace(/[{}+^%~()[\]]/g, "{$&}");
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      [System.Windows.Forms.SendKeys]::SendWait('${escaped.replace(/'/g, "''")}')
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
+      const jsonText = JSON.stringify(text);
+      await runWinAction(`
+import pyautogui
+pyautogui.PAUSE = 0.01
+pyautogui.write(${jsonText})
+`);
       return { text: `Typed: ${text}` };
     } catch (err: unknown) {
       return { isError: true, text: `Type failed: ${String(err)}` };
@@ -403,36 +363,27 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
   }
 
   async pressKey(input: { key: string; modifiers: string[] }): Promise<CuaToolResult> {
-    let chord = "";
-    for (const mod of input.modifiers) {
-      if (mod === "ctrl") chord += "^";
-      else if (mod === "alt") chord += "%";
-      else if (mod === "shift") chord += "+";
-    }
-    const specialKeys: Record<string, string> = {
-      enter: "{ENTER}",
-      escape: "{ESC}",
-      tab: "{TAB}",
-      backspace: "{BKSP}",
-      delete: "{DEL}",
-      up: "{UP}",
-      down: "{DOWN}",
-      left: "{LEFT}",
-      right: "{RIGHT}",
-      home: "{HOME}",
-      end: "{END}",
-      pageup: "{PGUP}",
-      pagedown: "{PGDN}",
-    };
-    const keyRepr = specialKeys[input.key.toLowerCase()] ?? input.key;
-    chord += keyRepr;
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      [System.Windows.Forms.SendKeys]::SendWait('${chord.replace(/'/g, "''")}')
-    `;
     try {
-      await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`);
-      return { text: `Pressed chord: ${chord}` };
+      const mods = JSON.stringify(input.modifiers);
+      const key = JSON.stringify(input.key);
+      await runWinAction(`
+import pyautogui
+mods = ${mods}
+key = ${key}.lower()
+key_map = {
+    "enter": "enter", "return": "enter", "escape": "esc", "esc": "esc",
+    "backspace": "backspace", "delete": "delete", "tab": "tab",
+    "up": "up", "down": "down", "left": "left", "right": "right",
+    "home": "home", "end": "end", "pageup": "pageup", "pagedown": "pagedown",
+    "space": "space"
+}
+target_key = key_map.get(key, key)
+if mods:
+    pyautogui.hotkey(*mods, target_key)
+else:
+    pyautogui.press(target_key)
+`);
+      return { text: `Pressed key: ${[...input.modifiers, input.key].join("+")}` };
     } catch (err: unknown) {
       return { isError: true, text: `Press key failed: ${String(err)}` };
     }
@@ -444,6 +395,7 @@ class OpenClawWindowsDriverSession implements CuaDriverSession {
 
   async dispose(): Promise<void> {}
 }
+
 
 export class OpenClawSubstrateRunner {
   private readonly driver: OpenClawWindowsDriverSession;
@@ -472,58 +424,83 @@ export class OpenClawSubstrateRunner {
 
   async takeSnapshot(params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     const maxWidth = Number(params.maxWidth || 1280);
-    const format = String(params.format || "jpeg");
-    const script = `
-      Add-Type -AssemblyName System.Windows.Forms
-      Add-Type -AssemblyName System.Drawing
-      $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-      $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-      $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-      $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-      $ms = New-Object System.IO.MemoryStream
-      $formatObj = [System.Drawing.Imaging.ImageFormat]::Jpeg
-      $bitmap.Save($ms, $formatObj)
-      $bytes = $ms.ToArray()
-      $ms.Close()
-      $graphics.Dispose()
-      $bitmap.Dispose()
-      [System.Convert]::ToBase64String($bytes)
-    `;
-    try {
-      const { stdout } = await execAsync(`powershell -NoProfile -NonInteractive -Command "${script.replace(/\r?\n/g, " ")}"`, {
-        maxBuffer: 20 * 1024 * 1024,
+    const format = String(params.format || "jpeg").toLowerCase();
+    const pythonScript = `
+import ctypes, io, base64, json
+from PIL import ImageGrab
+try:
+    user32 = ctypes.windll.user32
+    h = user32.OpenDesktopW("default", 0, False, 0x01FF)
+    if h:
+        user32.SetThreadDesktop(h)
+    img = ImageGrab.grab()
+    orig_w, orig_h = img.size
+    max_w = ${maxWidth}
+    if orig_w > max_w:
+        ratio = max_w / float(orig_w)
+        img = img.resize((int(orig_w * ratio), int(orig_h * ratio)))
+    buf = io.BytesIO()
+    fmt = "PNG" if "${format}" == "png" else "JPEG"
+    img.save(buf, format=fmt, quality=85)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    print(json.dumps({"ok": True, "base64": b64, "width": orig_w, "height": orig_h, "shot_width": img.size[0], "shot_height": img.size[1]}))
+except Exception as e:
+    print(json.dumps({"ok": False, "error": str(e)}))
+`;
+
+    return new Promise((resolve) => {
+      const child = spawn("python", ["-"], { stdio: ["pipe", "pipe", "pipe"] });
+      let stdoutData = "";
+      let stderrData = "";
+      child.stdout.on("data", (chunk) => {
+        stdoutData += chunk;
       });
-      const base64 = stdout.trim();
-      const geometry: CuaDesktopGeometry = {
-        platform: process.platform,
-        display: "primary",
-        screenWidth: 1920,
-        screenHeight: 1080,
-        scaleFactor: 1.0,
-        screenshotWidth: 1920,
-        screenshotHeight: 1080,
-      };
-      adoptGeneration(this.frameState, this.driver.generation);
-      const displayFrameId = issueFrame(this.frameState, geometry, {
-        width: 1920,
-        height: 1080,
-        referenceWidth: maxWidth,
+      child.stderr.on("data", (chunk) => {
+        stderrData += chunk;
       });
-      return {
-        ok: true,
-        format,
-        base64,
-        displayFrameId,
-        screenIndex: 0,
-        width: 1920,
-        height: 1080,
-      };
-    } catch (err: unknown) {
-      return {
-        ok: false,
-        error: `Snapshot failed: ${String(err)}`,
-      };
-    }
+      child.on("close", () => {
+        try {
+          const parsed = JSON.parse(stdoutData.trim());
+          if (!parsed.ok) {
+            resolve({ ok: false, error: parsed.error || stderrData });
+            return;
+          }
+          const screenWidth = parsed.width || 1920;
+          const screenHeight = parsed.height || 1080;
+          const geometry: CuaDesktopGeometry = {
+            platform: process.platform,
+            display: "primary",
+            screenWidth,
+            screenHeight,
+            scaleFactor: 1.0,
+            screenshotWidth: parsed.shot_width || screenWidth,
+            screenshotHeight: parsed.shot_height || screenHeight,
+          };
+          adoptGeneration(this.frameState, this.driver.generation);
+          const displayFrameId = issueFrame(this.frameState, geometry, {
+            width: screenWidth,
+            height: screenHeight,
+            referenceWidth: maxWidth,
+          });
+          resolve({
+            ok: true,
+            format,
+            base64: parsed.base64,
+            displayFrameId,
+            screenIndex: 0,
+            width: screenWidth,
+            height: screenHeight,
+          });
+        } catch (err) {
+          resolve({
+            ok: false,
+            error: `Snapshot parse failure: ${String(err)} (${stderrData})`,
+          });
+        }
+      });
+      child.stdin.write(pythonScript);
+      child.stdin.end();
+    });
   }
 
   async act(params: CuaComputerActParams & Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -679,6 +656,15 @@ export class OpenClawSubstrateRunner {
       return { ok: false, stdout: err.stdout ?? "", stderr: err.stderr ?? String(err), exitCode: err.code ?? 1 };
     }
   }
+
+  repairToolCall(text: string): Record<string, unknown> {
+    try {
+      const blocks = parseStandalonePlainTextToolCallBlocks(text);
+      return { ok: true, blocks };
+    } catch (err: unknown) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), blocks: [] };
+    }
+  }
 }
 
 // Daemon / IPC Entry Point
@@ -707,6 +693,8 @@ export async function runDaemon() {
         result = await runner.act(params);
       } else if (method === "system.run") {
         result = await runner.runSystemCommand(params.command);
+      } else if (method === "tool.repair") {
+        result = runner.repairToolCall(params.text ?? "");
       } else if (method === "health") {
         result = { ok: true, status: "healthy", platform: process.platform, nodeVersion: process.version };
       } else {
@@ -748,12 +736,15 @@ if (process.argv[1]?.endsWith("openclaw_substrate_runner.ts") || process.argv[1]
           result = await runner.act(params);
         } else if (method === "system.run") {
           result = await runner.runSystemCommand(params.command);
+        } else if (method === "tool.repair") {
+          result = runner.repairToolCall(params.text ?? "");
         } else if (method === "health") {
           result = { ok: true, status: "healthy", platform: process.platform, nodeVersion: process.version };
         } else {
           throw new Error(`Unknown method: ${method}`);
         }
         process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        process.exit(0);
       } catch (err: unknown) {
         process.stderr.write(`Error: ${String(err)}\n`);
         process.exit(1);

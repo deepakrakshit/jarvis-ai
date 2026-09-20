@@ -1,5 +1,5 @@
 // Plugin config runtime helpers load and normalize plugin-owned configuration at execution time.
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import type { OpenClawConfig } from "../config/types.js";
 import { normalizePluginsConfig, resolveEffectiveEnableState } from "../plugins/config-state.js";
 

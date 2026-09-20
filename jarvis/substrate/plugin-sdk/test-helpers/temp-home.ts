@@ -2,7 +2,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expectDefined } from "@openclaw/normalization-core";
+import { expectDefined } from "@jarvis/normalization-core";
 import { hasUnjoinedWork } from "../../../scripts/lib/managed-child-process.mts";
 import { findVitestResourceOwner } from "../../../scripts/lib/vitest-resource-ownership.mts";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue } from "../../test-utils/env.js";

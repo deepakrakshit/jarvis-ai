@@ -1,4 +1,4 @@
-import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalLowercaseString } from "@jarvis/normalization-core/string-coerce";
 import { formatHumanList } from "./human-list.js";
 
 export function createEnumOptionParser(ErrorType: new (message: string) => Error = Error) {

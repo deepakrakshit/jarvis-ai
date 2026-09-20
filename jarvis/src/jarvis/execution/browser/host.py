@@ -46,6 +46,7 @@ class BrowserNode:
             return await browser_manager.type_text(
                 selector=str(req.arguments["selector"]),
                 text=str(req.arguments["text"]),
+                press_enter=bool(req.arguments.get("press_enter", True)),
             )
 
         async def handle_screenshot(req: ActionRequest) -> Any:

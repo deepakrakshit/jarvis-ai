@@ -1,4 +1,4 @@
-import type { BoardGetParams } from "@openclaw/gateway-protocol";
+import type { BoardGetParams } from "@jarvis/gateway-protocol";
 /** Semantic host components available to native Control UI plugins. */
 export type ControlUiComponentHandle<T> = {
   update: (props: T) => void;

@@ -1,4 +1,4 @@
-import type { RealtimeVoiceProviderPlugin } from "openclaw/plugin-sdk/realtime-voice";
+import type { RealtimeVoiceProviderPlugin } from "@jarvis/plugin-sdk/realtime-voice";
 import { GOOGLE_PREBUILT_VOICES } from "./voice-catalog.js";
 
 export const GOOGLE_REALTIME_DEFAULT_MODEL = "gemini-3.1-flash-live-preview";

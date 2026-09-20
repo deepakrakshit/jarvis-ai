@@ -133,3 +133,37 @@ async def test_cli_handle_chat(test_db: DatabaseEngine) -> None:
     assert "task_id" in result
     assert result["state"] in ("COMPLETED", "FAILED")
     assert len(result["response"]) > 0
+
+
+def test_cli_dynamic_callsign_management() -> None:
+    """Verify dynamic honorific/callsign extraction and configuration."""
+    from jarvis.cli.commands import check_for_callsign_update, get_user_callsign
+    from jarvis.config import settings
+
+    # Default callsign
+    assert get_user_callsign() == settings.USER_CALLSIGN
+
+    # Detect callsign updates
+    assert check_for_callsign_update("address me as sir") == "Sir"
+    assert check_for_callsign_update("Address me as Tony Stark!") == "Tony stark"
+    assert check_for_callsign_update("call me Commander") == "Commander"
+    assert check_for_callsign_update("please open youtube") is None
+
+    # Update settings
+    settings.USER_CALLSIGN = "Sir"
+    assert get_user_callsign() == "Sir"
+
+
+@pytest.mark.asyncio
+async def test_cli_handle_chat_with_daemon(test_db: DatabaseEngine) -> None:
+    """Verify chat execution with background daemon does not crash on occupied ports."""
+    cp = ControlPlane(database=test_db)
+    result = await handle_chat(
+        session_id="SESS-TEST-DAEMON",
+        message="System status",
+        with_daemon=True,
+        cp=cp,
+    )
+    assert result is not None
+    assert result["session_id"] == "SESS-TEST-DAEMON"
+    assert "task_id" in result

@@ -1,4 +1,4 @@
-import { retryAsync } from "@openclaw/retry";
+import { retryAsync } from "@jarvis/retry";
 
 // Retry helper for transient filesystem reads observed on memory stores.
 

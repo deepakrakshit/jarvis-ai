@@ -83,7 +83,7 @@ const providerHttpMocks = vi.hoisted(() => ({
     if (params.provider === "google") {
       return {
         ...params.defaultHeaders,
-        "x-goog-api-client": "openclaw/test",
+        "x-goog-api-client": "@jarvis/test",
         ...params.callerHeaders,
       };
     }
@@ -131,12 +131,12 @@ providerHttpMocks.postMultipartRequestMock.mockImplementation(
   },
 );
 
-vi.mock("openclaw/plugin-sdk/provider-auth-runtime", () => ({
+vi.mock("@jarvis/plugin-sdk/provider-auth-runtime", () => ({
   resolveApiKeyForProvider: providerHttpMocks.resolveApiKeyForProviderMock,
 }));
 
-vi.mock("openclaw/plugin-sdk/provider-http", async (importActual) => {
-  const actual = await importActual<typeof import("openclaw/plugin-sdk/provider-http")>();
+vi.mock("@jarvis/plugin-sdk/provider-http", async (importActual) => {
+  const actual = await importActual<typeof import("@jarvis/plugin-sdk/provider-http")>();
   const timeoutTransport = await vi.importActual<typeof import("../../utils/fetch-timeout.js")>(
     "../../utils/fetch-timeout.js",
   );

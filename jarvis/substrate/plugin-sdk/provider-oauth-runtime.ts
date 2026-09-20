@@ -1,5 +1,5 @@
 // Provider OAuth runtime helpers expose shared browser/OAuth flows for provider plugins.
-import { toErrorObject } from "@openclaw/normalization-core/error-coercion";
+import { toErrorObject } from "@jarvis/normalization-core/error-coercion";
 import {
   positiveSecondsToSafeMilliseconds,
   resolveExpiresAtMsFromDurationMs,

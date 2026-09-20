@@ -1,9 +1,9 @@
 import os from "node:os";
-import { lowercasePreservingWhitespace } from "@openclaw/normalization-core";
+import { lowercasePreservingWhitespace } from "@jarvis/normalization-core";
 import {
   normalizeHomeDirValue,
   resolveEffectiveHomeDir,
-} from "@openclaw/normalization-core/home-dir";
+} from "@jarvis/normalization-core/home-dir";
 
 // Display-safe string helpers for shortening user home paths.
 

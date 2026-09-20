@@ -222,3 +222,57 @@ async def test_gateway_task_create_and_streaming(
 
     finally:
         await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_port_collision_auto_recovery(temp_gateway_db: DatabaseEngine) -> None:
+    """Verify GatewayServer recovers from WSAEADDRINUSE by auto-discovering available port."""
+    base_port = get_free_port()
+
+    # Intentionally hold base_port with a blocking dummy socket
+    blocking_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    blocking_sock.bind(("127.0.0.1", base_port))
+    blocking_sock.listen(1)
+
+    try:
+        server = GatewayServer(
+            host="127.0.0.1",
+            port=base_port,
+            database=temp_gateway_db,
+        )
+        await server.start()
+        assert server._is_running is True
+        # Server must have shifted to base_port + 1 (or next available free port)
+        assert server.port > base_port
+        await server.stop()
+    finally:
+        blocking_sock.close()
+
+
+@pytest.mark.asyncio
+async def test_gateway_existing_daemon_detection(temp_gateway_db: DatabaseEngine) -> None:
+    """Verify second GatewayServer instance attaches safely when daemon is already active."""
+    shared_port = get_free_port()
+
+    primary_server = GatewayServer(
+        host="127.0.0.1",
+        port=shared_port,
+        database=temp_gateway_db,
+    )
+    await primary_server.start()
+    assert primary_server._is_running is True
+    assert primary_server.port == shared_port
+
+    try:
+        # Second instance targeting the same host/port
+        secondary_server = GatewayServer(
+            host="127.0.0.1",
+            port=shared_port,
+            database=temp_gateway_db,
+        )
+        await secondary_server.start()
+        # Must not throw WSAEADDRINUSE and must report running
+        assert secondary_server._is_running is True
+        await secondary_server.stop()
+    finally:
+        await primary_server.stop()

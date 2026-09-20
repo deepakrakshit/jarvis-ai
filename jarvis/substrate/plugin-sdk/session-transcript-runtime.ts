@@ -1,5 +1,5 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString as readNonEmptyString } from "@openclaw/normalization-core/string-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
+import { readNonBlankString as readNonEmptyString } from "@jarvis/normalization-core/string-coerce";
 import { buildSessionsYieldContextMessage } from "../agents/sessions-yield-context.js";
 import { redactTranscriptMessage } from "../agents/transcript-redact.js";
 import {

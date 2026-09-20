@@ -1,6 +1,6 @@
 // Provider catalog helpers normalize, hash, and expose model catalogs for provider plugins.
 import { createHash } from "node:crypto";
-import { findNormalizedProviderKey } from "@openclaw/model-catalog-core/provider-id";
+import { findNormalizedProviderKey } from "@jarvis/model-catalog-core/provider-id";
 import {
   isFutureDateTimestampMs,
   resolveExpiresAtMsFromDurationMs,
@@ -13,7 +13,7 @@ import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { recordLiveCatalogExpiry } from "../plugins/provider-catalog-expiry.js";
 import type { ModelProviderConfig } from "./provider-model-shared.js";
 
-export { normalizeOpenRouterModelReasoning } from "@openclaw/model-catalog-core/model-catalog-normalize";
+export { normalizeOpenRouterModelReasoning } from "@jarvis/model-catalog-core/model-catalog-normalize";
 
 export type {
   ProviderCatalogContext,

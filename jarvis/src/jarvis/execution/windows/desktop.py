@@ -15,8 +15,22 @@ from jarvis.config import settings
 from jarvis.telemetry import logger
 
 
+def ensure_interactive_desktop() -> None:
+    """Ensure thread is attached to interactive desktop (default)."""
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        h = user32.OpenDesktopW("default", 0, False, 0x01FF)
+        if h:
+            user32.SetThreadDesktop(h)
+    except Exception:
+        pass
+
+
 def capture_screenshot(save_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Capture current desktop display and save as an artifact."""
+    ensure_interactive_desktop()
     target_dir = save_dir or settings.ARTIFACTS_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
     filename = f"screenshot_{uuid4().hex[:8]}.png"

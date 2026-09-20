@@ -1,4 +1,4 @@
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import type { EmbeddingProviderOptions } from "./embeddings.types.js";
 import { requireApiKey, resolveApiKeyForProvider } from "./openclaw-runtime-auth.js";
 import type { SsrFPolicy } from "./openclaw-runtime-network.js";
@@ -16,7 +16,7 @@ function resolveOpenClawAttributionHeaders(): Record<string, string> {
   return {
     originator: "openclaw",
     ...(version ? { version } : {}),
-    "User-Agent": version ? `openclaw/${version}` : "openclaw",
+    "User-Agent": version ? `@jarvis/${version}` : "openclaw",
   };
 }
 

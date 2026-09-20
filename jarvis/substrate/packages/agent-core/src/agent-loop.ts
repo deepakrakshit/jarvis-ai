@@ -1,14 +1,14 @@
 // Keep the runtime class on the public package specifier so OpenClaw and
 // external consumers share one constructor identity.
-import { EventStream as LlmEventStream } from "@openclaw/ai/event-stream";
+import { EventStream as LlmEventStream } from "@jarvis/ai/event-stream";
 import type {
   AssistantMessage,
   EventStream,
   ToolResultMessage,
   EventStream as SourceEventStream,
-} from "@openclaw/llm-core";
-import { coerceErrorMessage } from "@openclaw/normalization-core/error-coercion";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+} from "@jarvis/llm-core";
+import { coerceErrorMessage } from "@jarvis/normalization-core/error-coercion";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import {
   streamAgentResponse,
   type AgentEventSink,

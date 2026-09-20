@@ -1,6 +1,6 @@
-import { registerComputerUseProvider } from "openclaw/plugin-sdk/computer-use";
-import { normalizePluginsConfig } from "openclaw/plugin-sdk/plugin-config-runtime";
-import { buildPluginConfigSchema, definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { registerComputerUseProvider } from "@jarvis/plugin-sdk/computer-use";
+import { normalizePluginsConfig } from "@jarvis/plugin-sdk/plugin-config-runtime";
+import { buildPluginConfigSchema, definePluginEntry } from "@jarvis/plugin-sdk/plugin-entry";
 import { z } from "zod";
 import { registerCuaDriverDoctorChecks } from "./api.js";
 import { createCuaComputerProvider } from "./src/commands.js";

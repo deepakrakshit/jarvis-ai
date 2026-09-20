@@ -20,11 +20,11 @@ import type {
   ProviderSanitizeReplayHistoryContext,
 } from "./plugin-entry.js";
 
-export { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
+export { normalizeProviderId } from "@jarvis/model-catalog-core/provider-id";
 export {
   normalizeAntigravityPreviewModelId,
   normalizeGooglePreviewModelId,
-} from "@openclaw/model-catalog-core/provider-model-id-normalize";
+} from "@jarvis/model-catalog-core/provider-model-id-normalize";
 
 type SelfHostedOpenAICompatibleProviderOverrides = Partial<
   Omit<ProviderPlugin, "id" | "label" | "docsPath" | "envVars" | "auth" | "catalog" | "wizard">
@@ -152,13 +152,13 @@ export {
   supportsClaudeFastMode,
   supportsClaudeNativeMaxEffort,
   supportsClaudeNativeXhighEffort,
-} from "@openclaw/llm-core";
+} from "@jarvis/llm-core";
 export type {
   UnifiedModelCatalogEntry,
   UnifiedModelCatalogKind,
   UnifiedModelCatalogSource,
-} from "@openclaw/model-catalog-core/model-catalog-types";
-export { isCloudModelRef } from "@openclaw/model-catalog-core/model-catalog-refs";
+} from "@jarvis/model-catalog-core/model-catalog-types";
+export { isCloudModelRef } from "@jarvis/model-catalog-core/model-catalog-refs";
 export { parseModelRef } from "../agents/model-selection-normalize.js";
 export type {
   BedrockDiscoveryConfig,

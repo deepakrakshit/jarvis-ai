@@ -9,6 +9,7 @@ authoritative ActionBroker and PolicyEngine pipeline.
 import asyncio
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 from uuid import uuid4
 
@@ -25,7 +26,11 @@ from jarvis.contracts.model import ModelFamily, ModelInvocationRequest
 from jarvis.memory.manager import memory_manager
 from jarvis.policy.firewall import (
     CAPABILITY_APP_LAUNCH,
+    CAPABILITY_BROWSER_CLICK,
     CAPABILITY_BROWSER_NAVIGATE,
+    CAPABILITY_BROWSER_SCREENSHOT,
+    CAPABILITY_BROWSER_SNAPSHOT,
+    CAPABILITY_BROWSER_TYPE,
     CAPABILITY_COMPUTER_ACT,
     CAPABILITY_COMPUTER_SCREENSHOT,
     CAPABILITY_FILESYSTEM_LIST,
@@ -178,6 +183,60 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             "properties": {"url": {"type": "STRING", "description": "The URL to navigate to."}},
             "required": ["url"],
         },
+    },
+    {
+        "name": "browser_snapshot",
+        "description": "Capture structured text, links, and accessibility tree of the current webpage to inspect elements and content.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "max_chars": {
+                    "type": "INTEGER",
+                    "description": "Maximum characters of text to return (default: 20000).",
+                }
+            },
+        },
+    },
+    {
+        "name": "browser_click",
+        "description": "Click an element on the current webpage using a CSS selector, link text, or button selector (e.g. 'text=Search', 'button#submit', 'a[href*=watch]').",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "selector": {
+                    "type": "STRING",
+                    "description": "CSS selector, text selector (e.g. 'text=Play', 'button.yt-spec-button-shape-next'), or XPath.",
+                }
+            },
+            "required": ["selector"],
+        },
+    },
+    {
+        "name": "browser_type",
+        "description": "Type text into an input field or search bar on the current webpage.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "selector": {
+                    "type": "STRING",
+                    "description": "CSS selector for the input field (e.g. 'input[name=search_query]', 'input#search').",
+                },
+                "text": {
+                    "type": "STRING",
+                    "description": "The text string to type into the field.",
+                },
+                "press_enter": {
+                    "type": "BOOLEAN",
+                    "description": "Optional: whether to press Enter after typing to submit form or search (default: true).",
+                },
+            },
+            "required": ["selector", "text"],
+        },
+    },
+    {
+        "name": "browser_screenshot",
+        "description": "Capture a viewport screenshot of the current webpage.",
+        "parameters": {"type": "OBJECT", "properties": {}},
     },
     {
         "name": "memory_store",
@@ -342,6 +401,10 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "filesystem_list": CAPABILITY_FILESYSTEM_LIST,
     "process_list": CAPABILITY_PROCESS_ENUMERATE,
     "browser_navigate": CAPABILITY_BROWSER_NAVIGATE,
+    "browser_snapshot": CAPABILITY_BROWSER_SNAPSHOT,
+    "browser_click": CAPABILITY_BROWSER_CLICK,
+    "browser_type": CAPABILITY_BROWSER_TYPE,
+    "browser_screenshot": CAPABILITY_BROWSER_SCREENSHOT,
     "app_launch": CAPABILITY_APP_LAUNCH,
     "app_focus": CAPABILITY_WINDOW_FOCUS,
     "app_close": CAPABILITY_WINDOW_CLOSE,
@@ -408,17 +471,22 @@ class GeminiLiveBridge:
 
     def _build_config(self) -> types.LiveConnectConfig:
         """Construct the authoritative LiveConnectConfig."""
+        callsign = getattr(settings, "USER_CALLSIGN", "Sir")
         system_instruction = (
             "You are JARVIS (version 3.0.0), the personal AI operating system and master orchestrator. "
-            "You are polite, razor-sharp, concise, and proactive. "
-            "You control the host system, the live web, and all specialist worker models. "
-            "When the operator requests real-time information, latest news, weather, facts, or web searches, "
-            "use your web_search tool to retrieve up-to-date information before answering. "
-            "When the operator requests host actions (such as opening apps like Chrome, Notepad, Calculator, Explorer, or running commands), "
-            "immediately execute using shell_execute (e.g. 'start chrome') or native tools without asking for approvals or tickets. "
-            "When the operator requests deep coding or heavy reasoning, assign the task to specialist models "
-            "using your delegate_task tool (target models: GPT-OSS 120B, Qwen 3.8 27B). "
-            "Address the user as Operator. Respond directly, concisely, and efficiently."
+            f"Always address the user with respect as {callsign} (or by their preferred honorific). "
+            "You are razor-sharp, proactive, polite, and concise. "
+            "You control the host system, the live web, and all specialist worker models without requiring approval tickets. "
+            "When the user requests real-time information, news, weather, or web searches, use web_search. "
+            "When the user asks to open Chrome and browse, search, or play media (e.g. YouTube, web pages), "
+            "immediately use browser_navigate (e.g. browser_navigate('https://www.youtube.com')). "
+            "browser_navigate automatically opens and controls Chrome visibly on the desktop. "
+            "Do NOT call app_launch('chrome.exe') separately when performing web automation—browser_navigate directly launches and controls the visible browser. "
+            "To search inside a webpage, use browser_type(selector='input[name=search_query]', text='...', press_enter=True). "
+            "To select and play a video or click a link, use browser_click(selector='a#video-title') or browser_snapshot to extract available elements. "
+            "For native desktop apps (Notepad, Calculator, Paint), use app_launch, ui_inspect, ui_interact, or computer_action. "
+            "When the user requests deep coding or heavy reasoning, assign the task to specialist models using delegate_task. "
+            f"Respond directly, concisely, and efficiently, always addressing the user as {callsign}."
         )
 
         return types.LiveConnectConfig(
@@ -601,7 +669,7 @@ class GeminiLiveBridge:
 
                             # Handle server-detected interruption (barge-in)
                             if getattr(sc, "interrupted", False):
-                                logger.info("Live session: operator barge-in detected by server")
+                                logger.info("Live session: user barge-in detected by server")
                                 self.in_flight_tool_call = False
                                 while not self.audio_output_queue.empty():
                                     try:
@@ -611,7 +679,7 @@ class GeminiLiveBridge:
                                 if self.interrupted_handler:
                                     await self.interrupted_handler()
 
-                            # Handle operator input audio transcription
+                            # Handle user input audio transcription
                             if (
                                 getattr(sc, "input_transcription", None)
                                 and sc.input_transcription.text
@@ -813,7 +881,14 @@ class GeminiLiveBridge:
 
             target = (
                 ExecutionTarget.BROWSER_NODE
-                if capability == CAPABILITY_BROWSER_NAVIGATE
+                if capability
+                in (
+                    CAPABILITY_BROWSER_NAVIGATE,
+                    CAPABILITY_BROWSER_SNAPSHOT,
+                    CAPABILITY_BROWSER_CLICK,
+                    CAPABILITY_BROWSER_TYPE,
+                    CAPABILITY_BROWSER_SCREENSHOT,
+                )
                 else ExecutionTarget.WINDOWS_NODE
             )
 
@@ -841,6 +916,36 @@ class GeminiLiveBridge:
                     "output": result.output,
                     "verified": result.verified,
                 }
+
+            # Closed-loop visual feedback: if the tool produced visual screen data,
+            # feed the image frame into the active Live session so Gemini is not blind.
+            try:
+                img_bytes: Optional[bytes] = None
+                if isinstance(result.output, dict):
+                    if "base64" in result.output and result.output["base64"]:
+                        import base64
+
+                        img_bytes = base64.b64decode(result.output["base64"])
+                    elif "artifact_path" in result.output and result.output["artifact_path"]:
+                        p = Path(result.output["artifact_path"])
+                        if p.exists():
+                            img_bytes = p.read_bytes()
+                    elif "filepath" in result.output and result.output["filepath"]:
+                        p = Path(result.output["filepath"])
+                        if p.exists():
+                            img_bytes = p.read_bytes()
+
+                if img_bytes and self.state == LiveSessionState.ACTIVE and self._active_session:
+                    await self.send_image(
+                        img_bytes,
+                        mime_type="image/jpeg",
+                        prompt=f"[Visual context update after {func_name}]",
+                    )
+                    logger.info(
+                        f"Injected visual observation frame ({len(img_bytes)} bytes) into Gemini Live session"
+                    )
+            except Exception as obs_err:
+                logger.debug(f"Visual feedback delivery skipped: {obs_err}")
 
             function_responses.append(
                 types.FunctionResponse(

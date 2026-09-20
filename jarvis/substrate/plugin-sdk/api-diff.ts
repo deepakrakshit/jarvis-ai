@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import { truncateUtf8Prefix } from "../utils/utf8-truncate.js";
 import type { PluginSdkApiDeclarationSection } from "./api-baseline-declaration-closure.js";
 import { renderPluginSdkApiBaseline, type PluginSdkApiExport } from "./api-baseline.js";

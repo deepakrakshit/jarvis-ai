@@ -1,12 +1,12 @@
 import {
   parseComputerActParamsJSON,
   type ComputerActParams,
-} from "openclaw/plugin-sdk/computer-use";
+} from "@jarvis/plugin-sdk/computer-use";
 import type {
   OpenClawPluginNodeInvokePolicy,
   OpenClawPluginNodeInvokePolicyContext,
-} from "openclaw/plugin-sdk/plugin-entry";
-import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+} from "@jarvis/plugin-sdk/plugin-entry";
+import { isRecord } from "@jarvis/plugin-sdk/string-coerce-runtime";
 
 const COMPUTER_ACT_COMMAND = "computer.act";
 

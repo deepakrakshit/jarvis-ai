@@ -1,5 +1,5 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeBoundedOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeBoundedOptionalString } from "@jarvis/normalization-core/string-coerce";
 import type { SessionCatalogTranscriptItem } from "../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 
 /** Keep a host's publication owned until its callback finishes, even after a fail-soft list. */

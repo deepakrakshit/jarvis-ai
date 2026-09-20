@@ -1,4 +1,4 @@
-import { normalizeNullableString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeNullableString } from "@jarvis/normalization-core/string-coerce";
 import { DEFAULT_MAIN_KEY } from "./session-key.js";
 
 export { DEFAULT_MAIN_KEY };

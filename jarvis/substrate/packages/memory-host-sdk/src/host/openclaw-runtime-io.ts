@@ -11,7 +11,7 @@ export type {
 } from "../../../../src/infra/sqlite-wal.js";
 export { root } from "../../../../src/infra/fs-safe.js";
 export { createSubsystemLogger } from "../../../../src/logging/subsystem.js";
-export { detectMime } from "@openclaw/media-core/mime";
+export { detectMime } from "@jarvis/media-core/mime";
 export { installProcessWarningFilter } from "../../../../src/infra/warning-filter.js";
 export {
   captureSensitiveTextRedactionSnapshot,

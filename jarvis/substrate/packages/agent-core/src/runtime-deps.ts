@@ -1,4 +1,4 @@
-import type { CompleteSimpleFn, StreamFn, Usage } from "@openclaw/llm-core";
+import type { CompleteSimpleFn, StreamFn, Usage } from "@jarvis/llm-core";
 
 /** Runtime functions injected by host packages so agent-core stays provider-agnostic. */
 export interface AgentCoreRuntimeDeps {
@@ -23,7 +23,7 @@ export type AgentCoreCompletionRuntimeDeps = Pick<
 
 function missingRuntimeDep(name: keyof AgentCoreRuntimeDeps): Error {
   return new Error(
-    `@openclaw/agent-core runtime dependency "${name}" is not configured. Pass an AgentCoreRuntimeDeps instance or a streamFn explicitly.`,
+    `@jarvis/agent-core runtime dependency "${name}" is not configured. Pass an AgentCoreRuntimeDeps instance or a streamFn explicitly.`,
   );
 }
 

@@ -1,11 +1,11 @@
 {
-  "name": "@openclaw/memory-host-sdk",
+  "name": "@jarvis/memory-host-sdk",
   "version": "0.0.0-private",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@openclaw/normalization-core": "workspace:*",
-    "@openclaw/retry": "workspace:*",
+    "@jarvis/normalization-core": "workspace:*",
+    "@jarvis/retry": "workspace:*",
     "p-map": "7.0.7"
   },
   "devDependencies": {

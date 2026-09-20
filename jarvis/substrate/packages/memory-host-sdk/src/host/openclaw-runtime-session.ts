@@ -1,6 +1,6 @@
 // Session/runtime facade for memory transcript helpers.
 import path from "node:path";
-import { isValidAgentId, normalizeAgentId } from "@openclaw/normalization-core/agent-id";
+import { isValidAgentId, normalizeAgentId } from "@jarvis/normalization-core/agent-id";
 import {
   readTranscriptExportSnapshotReadOnlySync,
   readTranscriptStatsBatchReadOnlySync,

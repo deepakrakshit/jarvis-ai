@@ -1,5 +1,5 @@
 // Node presence helpers normalize live node presence and heartbeat metadata.
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import { NODE_PRESENCE_ALIVE_REASONS } from "../../packages/gateway-protocol/src/node-presence.js";
 import type { NodePresenceAliveReason } from "../../packages/gateway-protocol/src/schema/nodes.js";
 

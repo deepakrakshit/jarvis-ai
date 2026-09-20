@@ -136,7 +136,12 @@ class WindowsUIAutomation:
         interactive_only: bool = True,
         max_depth: int = 5,
     ) -> List[UIElementInfo]:
-        """Inspect and return a flattened list of controls inside the specified window."""
+        """Inspect and return a flattened list of controls inside the specified window.
+
+        Adheres to official Microsoft UI Automation architectural standards:
+        - Uses ControlViewCondition to filter out non-interactive layout artifacts at COM layer.
+        - Avoids deep recursive raw-tree traversals that cause performance bottlenecks.
+        """
         root_elem = self.get_element_from_hwnd(hwnd)
         if root_elem is None:
             return []
@@ -145,9 +150,13 @@ class WindowsUIAutomation:
         visited = set()
 
         try:
-            true_cond = self._uia.CreateTrueCondition()
-            # Find descendants
-            elements = root_elem.FindAll(self._client.TreeScope_Descendants, true_cond)
+            # Official UIA pattern: Control view provides the interactive user-facing controls
+            condition = (
+                self._uia.ControlViewCondition
+                if interactive_only and hasattr(self._uia, "ControlViewCondition")
+                else self._uia.CreateTrueCondition()
+            )
+            elements = root_elem.FindAll(self._client.TreeScope_Descendants, condition)
             count = min(elements.Length, max_elements * 2)
 
             for i in range(count):
@@ -156,7 +165,6 @@ class WindowsUIAutomation:
                 if info is None:
                     continue
 
-                # Filter out redundant empty panes or invisible containers if requested
                 if interactive_only:
                     is_interactive = info.control_type in (
                         "Button",
@@ -195,21 +203,25 @@ class WindowsUIAutomation:
         control_type: Optional[str] = None,
         class_name: Optional[str] = None,
     ) -> Optional[Any]:
-        """Find the single best matching raw IUIAutomationElement within target window."""
+        """Find the single best matching raw IUIAutomationElement within target window.
+
+        Implements official two-pass resolution:
+        1. Fast exact match via FindFirst using combined PropertyConditions.
+        2. Fallback normalized/substring scan over ControlView elements if exact match misses.
+        """
         root_elem = self.get_element_from_hwnd(hwnd)
         if root_elem is None:
             return None
 
-        # Build condition
+        # Build condition for pass 1 (exact match)
         conditions = []
         if name:
-            name_val = comtypes.automation.BSTR(name) if comtypes is not None else name
-            cond = self._uia.CreatePropertyCondition(self._client.UIA_NamePropertyId, name_val)
+            cond = self._uia.CreatePropertyCondition(self._client.UIA_NamePropertyId, str(name))
             conditions.append(cond)
 
         if automation_id:
             cond = self._uia.CreatePropertyCondition(
-                self._client.UIA_AutomationIdPropertyId, automation_id
+                self._client.UIA_AutomationIdPropertyId, str(automation_id)
             )
             conditions.append(cond)
 
@@ -223,7 +235,7 @@ class WindowsUIAutomation:
 
         if class_name:
             cond = self._uia.CreatePropertyCondition(
-                self._client.UIA_ClassNamePropertyId, class_name
+                self._client.UIA_ClassNamePropertyId, str(class_name)
             )
             conditions.append(cond)
 
@@ -233,11 +245,58 @@ class WindowsUIAutomation:
             elif len(conditions) > 1:
                 target_cond = self._uia.CreateAndConditionFromArray(conditions)
             else:
-                target_cond = self._uia.CreateTrueCondition()
+                target_cond = self._uia.ControlViewCondition
 
-            # First search immediate children, then descendants
+            # Pass 1: exact match
             elem = root_elem.FindFirst(self._client.TreeScope_Descendants, target_cond)
-            return elem
+            if elem is not None:
+                return elem
+
+            # Pass 2: If searching by name or automation_id and exact match missed,
+            # execute a normalized case-insensitive scan over ControlView
+            if name or automation_id:
+                query_name = (name or "").strip().lower()
+                query_id = (automation_id or "").strip().lower()
+                control_cond = getattr(
+                    self._uia, "ControlViewCondition", self._uia.CreateTrueCondition()
+                )
+                descendants = root_elem.FindAll(self._client.TreeScope_Descendants, control_cond)
+
+                best_match: Optional[Any] = None
+                best_priority = 0
+
+                for i in range(min(descendants.Length, 300)):
+                    candidate = descendants.GetElement(i)
+                    try:
+                        cand_name = str(candidate.CurrentName or "").strip().lower()
+                        cand_id = str(candidate.CurrentAutomationId or "").strip().lower()
+
+                        # Priority 3: Exact case-insensitive match
+                        if (query_name and cand_name == query_name) or (
+                            query_id and cand_id == query_id
+                        ):
+                            return candidate
+
+                        # Priority 2: Substring match
+                        if query_name and query_name in cand_name:
+                            if best_priority < 2:
+                                best_match = candidate
+                                best_priority = 2
+                        elif query_id and query_id in cand_id:
+                            if best_priority < 2:
+                                best_match = candidate
+                                best_priority = 2
+                        elif query_name and cand_name and cand_name in query_name:
+                            if best_priority < 1:
+                                best_match = candidate
+                                best_priority = 1
+                    except Exception:
+                        continue
+
+                if best_match is not None:
+                    return best_match
+
+            return None
         except Exception as err:
             logger.debug(f"Error in find_element: {err}")
             return None
@@ -299,16 +358,40 @@ class WindowsUIAutomation:
         except Exception:
             pass
 
-        # 4. Fallback to programmatic focus + simulated click if coordinates exist
+        # 4. Try ExpandCollapsePattern (comboboxes, dropdowns, tree items)
+        try:
+            pattern_obj = element.GetCurrentPattern(self._client.UIA_ExpandCollapsePatternId)
+            if pattern_obj:
+                ec_pattern = pattern_obj.QueryInterface(
+                    self._client.IUIAutomationExpandCollapsePattern
+                )
+                ec_pattern.Expand()
+                logger.info("Successfully executed ExpandCollapsePattern.Expand()")
+                return True
+        except Exception:
+            pass
+
+        # 5. Fallback to programmatic focus + simulated click via OpenClaw substrate
         try:
             element.SetFocus()
             rect = element.CurrentBoundingRectangle
             x = rect.left + (rect.right - rect.left) // 2
             y = rect.top + (rect.bottom - rect.top) // 2
-            import pyautogui
 
-            pyautogui.click(x, y)
-            logger.info(f"Fallback clicked at ({x}, {y})")
+            try:
+                from jarvis.execution.substrate_bridge import substrate_bridge
+
+                res = substrate_bridge.execute_act_sync("left_click", {"x": x, "y": y})
+                if res and res.get("ok"):
+                    logger.info(f"Fallback clicked at ({x}, {y}) via OpenClaw substrate")
+                    return True
+            except Exception as bridge_err:
+                logger.debug(f"Substrate bridge click fallback deferred: {bridge_err}")
+
+            from jarvis.execution.windows.desktop import mouse_click
+
+            mouse_click(x, y)
+            logger.info(f"Fallback clicked at ({x}, {y}) via native Win32 desktop")
             return True
         except Exception as err:
             logger.warning(f"All invocation strategies failed on element: {err}")
@@ -330,13 +413,23 @@ class WindowsUIAutomation:
         except Exception:
             pass
 
-        # 2. Fallback to SetFocus + typing
+        # 2. Fallback to SetFocus + typing via OpenClaw substrate
         try:
             element.SetFocus()
-            import pyautogui
+            try:
+                from jarvis.execution.substrate_bridge import substrate_bridge
 
-            pyautogui.write(value)
-            logger.info(f"Fallback typed value: '{value}'")
+                res = substrate_bridge.execute_act_sync("type", {"text": value})
+                if res and res.get("ok"):
+                    logger.info(f"Fallback typed value via OpenClaw substrate: '{value}'")
+                    return True
+            except Exception as bridge_err:
+                logger.debug(f"Substrate bridge type fallback deferred: {bridge_err}")
+
+            from jarvis.execution.windows.desktop import type_text
+
+            type_text(value)
+            logger.info(f"Fallback typed value via native Win32 desktop: '{value}'")
             return True
         except Exception as err:
             logger.warning(f"Failed to set value on element: {err}")

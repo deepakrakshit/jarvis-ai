@@ -1,10 +1,10 @@
-import type { Model, StreamFn, Usage } from "@openclaw/llm-core";
+import type { Model, StreamFn, Usage } from "@jarvis/llm-core";
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   estimateStringChars,
-} from "@openclaw/normalization-core/cjk-chars";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { sliceUtf16Safe, truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+} from "@jarvis/normalization-core/cjk-chars";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
+import { sliceUtf16Safe, truncateUtf16Safe } from "@jarvis/normalization-core/utf16-slice";
 import type { AgentCoreCompletionRuntimeDeps } from "../../runtime-deps.js";
 import type { AgentMessage, ThinkingLevel } from "../../types.js";
 import { isRuntimeContextCarrier } from "../messages.js";

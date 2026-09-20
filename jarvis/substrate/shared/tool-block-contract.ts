@@ -1,5 +1,5 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 const TOOL_CALL_BLOCK_TYPES = new Set([
   "toolCall",
   "toolUse",

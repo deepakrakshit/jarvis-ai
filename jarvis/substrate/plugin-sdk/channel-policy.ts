@@ -1,5 +1,5 @@
 // Channel policy helpers evaluate plugin channel runtime policy and operator-facing warnings.
-import { asNullableRecord as asObjectRecord } from "@openclaw/normalization-core/record-coerce";
+import { asNullableRecord as asObjectRecord } from "@jarvis/normalization-core/record-coerce";
 import {
   normalizeStringEntries,
   uniqueStrings,
@@ -90,7 +90,7 @@ type SenderGroupAccessDecision = {
   reason: "allowed" | "disabled" | "empty_allowlist" | "sender_not_allowlisted";
 };
 
-/** @deprecated Use `resolveChannelMessageIngress` from `openclaw/plugin-sdk/channel-ingress-runtime`. */
+/** @deprecated Use `resolveChannelMessageIngress` from `@jarvis/plugin-sdk/channel-ingress-runtime`. */
 export function resolveSenderScopedGroupPolicy(params: {
   groupPolicy: GroupPolicy;
   groupAllowFrom: string[];
@@ -101,7 +101,7 @@ export function resolveSenderScopedGroupPolicy(params: {
   return params.groupAllowFrom.length > 0 ? "allowlist" : "open";
 }
 
-/** @deprecated Use route descriptors with `resolveChannelMessageIngress` from `openclaw/plugin-sdk/channel-ingress-runtime`. */
+/** @deprecated Use route descriptors with `resolveChannelMessageIngress` from `@jarvis/plugin-sdk/channel-ingress-runtime`. */
 export function evaluateGroupRouteAccessForPolicy(params: {
   groupPolicy: GroupPolicy;
   routeAllowlistConfigured: boolean;
@@ -125,7 +125,7 @@ export function evaluateGroupRouteAccessForPolicy(params: {
   return { allowed: true, groupPolicy: params.groupPolicy, reason: "allowed" };
 }
 
-/** @deprecated Use `resolveChannelMessageIngress` from `openclaw/plugin-sdk/channel-ingress-runtime`. */
+/** @deprecated Use `resolveChannelMessageIngress` from `@jarvis/plugin-sdk/channel-ingress-runtime`. */
 export function evaluateSenderGroupAccessForPolicy(params: {
   groupPolicy: GroupPolicy;
   providerMissingFallbackApplied?: boolean;

@@ -1,6 +1,6 @@
-import type { AssistantMessage, Message } from "@openclaw/llm-core";
-import { asOptionalRecord as asRecord } from "@openclaw/normalization-core/record-coerce";
-import { sliceUtf16Safe, truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import type { AssistantMessage, Message } from "@jarvis/llm-core";
+import { asOptionalRecord as asRecord } from "@jarvis/normalization-core/record-coerce";
+import { sliceUtf16Safe, truncateUtf16Safe } from "@jarvis/normalization-core/utf16-slice";
 import type { AgentMessage } from "../../types.js";
 import type { FileOperations } from "../types.js";
 

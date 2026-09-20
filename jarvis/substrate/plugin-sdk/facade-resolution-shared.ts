@@ -2,7 +2,7 @@
  * Shared resolver for bundled plugin facade module paths and registry fallbacks.
  */
 import path from "node:path";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import { areBundledPluginsDisabled, resolveBundledPluginsDir } from "../plugins/bundled-dir.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import { parsePluginCacheJson, readPluginCacheFile } from "../plugins/plugin-cache-files.js";

@@ -459,6 +459,19 @@ class AppControlEngine:
             action_err = str(err)
             logger.warning(f"Error executing action on UI element: {err}")
 
+        if not success or action_err:
+            logger.info(
+                f"UIA action '{action_normalized}' unsuccessful (err={action_err}); "
+                f"attempting coordinate fallback via OpenClaw substrate..."
+            )
+            return self._fallback_computer_interaction(
+                win=win,
+                query=element_query,
+                action=action,
+                value=value,
+                target_element=target_elem,
+            )
+
         time.sleep(0.2)
 
         # 4. OBSERVE AGAIN & VERIFY
@@ -518,8 +531,9 @@ class AppControlEngine:
         query: str,
         action: str,
         value: Optional[str] = None,
+        target_element: Optional[UIElementInfo] = None,
     ) -> AppActionResult:
-        """Provider 4 fallback: Use coordinate mouse and keyboard automation."""
+        """Provider 4 fallback: Use coordinate mouse and keyboard automation via OpenClaw substrate."""
         logger.info(f"Executing computer coordinate fallback for '{query}' in '{win.title}'")
 
         # Focus window
@@ -528,7 +542,10 @@ class AppControlEngine:
 
         # If action is typing, type directly into focused window
         if action in ("type", "set_value", "write") and value:
-            type_text(value)
+            try:
+                self.delegate_to_substrate("type", {"text": value})
+            except Exception:
+                type_text(value)
             return AppActionResult(
                 status=ActionExecutionStatus.SUCCESS,
                 provider=ProviderType.COMPUTER_FALLBACK,
@@ -542,7 +559,10 @@ class AppControlEngine:
 
         # If key press
         if action in ("key", "press_key") and value:
-            press_key(value)
+            try:
+                self.delegate_to_substrate("key", {"key": value})
+            except Exception:
+                press_key(value)
             return AppActionResult(
                 status=ActionExecutionStatus.SUCCESS,
                 provider=ProviderType.COMPUTER_FALLBACK,
@@ -554,10 +574,26 @@ class AppControlEngine:
                 output={"key": value},
             )
 
-        # Default fallback: click center of window or report unverifiable
-        center_x = win.bounds["left"] + win.bounds["width"] // 2
-        center_y = win.bounds["top"] + win.bounds["height"] // 2
-        mouse_click(center_x, center_y)
+        # Calculate click coordinates: prioritize target element bounding box if available
+        if (
+            target_element
+            and target_element.width > 0
+            and target_element.height > 0
+            and target_element.left > 0
+            and target_element.top > 0
+        ):
+            center_x = target_element.left + target_element.width // 2
+            center_y = target_element.top + target_element.height // 2
+            confidence = 0.70
+        else:
+            center_x = win.bounds["left"] + win.bounds["width"] // 2
+            center_y = win.bounds["top"] + win.bounds["height"] // 2
+            confidence = 0.40
+
+        try:
+            self.delegate_to_substrate("left_click", {"x": center_x, "y": center_y})
+        except Exception:
+            mouse_click(center_x, center_y)
 
         return AppActionResult(
             status=ActionExecutionStatus.SUCCESS,
@@ -565,7 +601,7 @@ class AppControlEngine:
             action=action,
             target_window=win.title,
             target_element=query,
-            confidence=0.40,
+            confidence=confidence,
             verified=False,
             output={"fallback_click": {"x": center_x, "y": center_y}},
         )

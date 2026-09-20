@@ -5,8 +5,8 @@ import {
   acquireFileLock as acquireFsSafeFileLock,
   drainFileLockManagerForTest,
   resetFileLockManagerForTest,
-} from "@openclaw/fs-safe/file-lock";
-import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
+} from "@jarvis/fs-safe/file-lock";
+import { asNullableRecord } from "@jarvis/normalization-core/record-coerce";
 import {
   inspectStaleLockOwner,
   isLockOwnerDefinitelyStale,

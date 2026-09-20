@@ -79,28 +79,83 @@ class GatewayServer:
         self._server: Optional[WebSocketServer] = None
         self._is_running = False
 
+    @staticmethod
+    async def _is_gateway_alive(host: str, port: int) -> bool:
+        """Probe whether an existing JARVIS Gateway is already active on the port."""
+        uri = f"ws://{host}:{port}"
+        try:
+            from websockets.asyncio.client import connect as ws_connect
+
+            async with ws_connect(uri, open_timeout=0.8, close_timeout=0.5):
+                return True
+        except Exception:
+            return False
+
     async def start(self) -> None:
-        """Start the WebSocket gateway server."""
+        """Start the WebSocket gateway server with dynamic port discovery and collision recovery."""
         if self._is_running:
             return
 
-        logger.info(f"Starting JARVIS Gateway daemon on ws://{self.host}:{self.port}...")
-        self._server = await serve(
-            self._handle_connection,
-            self.host,
-            self.port,
-        )
-        self._is_running = True
-        logger.info(f"JARVIS Gateway successfully listening on ws://{self.host}:{self.port}")
+        target_port = self.port
+        auto_discover = getattr(settings, "GATEWAY_PORT_AUTO_DISCOVERY", True)
+        max_search = getattr(settings, "GATEWAY_PORT_SEARCH_LIMIT", 50) if auto_discover else 1
+
+        last_err: Optional[Exception] = None
+        for offset in range(max_search):
+            attempt_port = target_port + offset
+            try:
+                logger.info(f"Starting JARVIS Gateway daemon on ws://{self.host}:{attempt_port}...")
+                self._server = await serve(
+                    self._handle_connection,
+                    self.host,
+                    attempt_port,
+                    reuse_address=True,
+                )
+                self.port = attempt_port
+                settings.GATEWAY_PORT = attempt_port
+                self._is_running = True
+                logger.info(
+                    f"JARVIS Gateway successfully listening on ws://{self.host}:{self.port}"
+                )
+                return
+            except OSError as err:
+                last_err = err
+                # 10048 is WSAEADDRINUSE; 10013/13 is WSAEACCES (port occupied on Windows); 98 is EADDRINUSE on Linux; 48 on macOS
+                is_addr_in_use = (
+                    err.errno in (10048, 98, 48, 13, 10013)
+                    or getattr(err, "winerror", None) in (10048, 10013)
+                    or "address already in use" in str(err).lower()
+                    or "only one usage of each socket address" in str(err).lower()
+                    or "forbidden by its access permissions" in str(err).lower()
+                )
+                if is_addr_in_use:
+                    # Check if an active JARVIS Gateway is already running on this port
+                    if offset == 0 and await self._is_gateway_alive(self.host, attempt_port):
+                        logger.info(
+                            f"Active JARVIS Gateway daemon already detected on ws://{self.host}:{attempt_port}. Reusing active daemon."
+                        )
+                        self.port = attempt_port
+                        self._is_running = True
+                        return
+                    logger.warning(
+                        f"Port {attempt_port} occupied or in TIME_WAIT. Attempting next discoverable port..."
+                    )
+                    continue
+                raise
+
+        if last_err:
+            raise last_err
 
     async def stop(self) -> None:
         """Gracefully stop the WebSocket gateway server."""
-        if not self._is_running or not self._server:
+        if not self._is_running:
             return
 
-        logger.info("Stopping JARVIS Gateway daemon...")
-        self._server.close()
-        await self._server.wait_closed()
+        if self._server:
+            logger.info("Stopping JARVIS Gateway daemon...")
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
         self._is_running = False
         logger.info("JARVIS Gateway stopped.")
 

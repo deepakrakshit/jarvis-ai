@@ -1,4 +1,4 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import type {
   TranscriptMessageAppendOptions,
   TranscriptMessageAppendResult,

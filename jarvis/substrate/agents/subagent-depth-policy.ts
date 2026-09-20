@@ -1,6 +1,6 @@
-import { isParentOwnedBackgroundAcpSession } from "@openclaw/acp-core/session-interaction-mode";
-import { parseStrictNonNegativeInteger } from "@openclaw/normalization-core/number-coercion";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { isParentOwnedBackgroundAcpSession } from "@jarvis/acp-core/session-interaction-mode";
+import { parseStrictNonNegativeInteger } from "@jarvis/normalization-core/number-coercion";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import type { SessionEntry } from "../../../config/sessions/types.js";
 import { getSubagentDepth } from "../../../sessions/session-key-utils.js";
 

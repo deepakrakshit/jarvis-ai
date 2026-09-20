@@ -1,5 +1,5 @@
 /** Browser-safe typed operations over the existing plugin session-action transport. */
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import type { Static, TSchema } from "typebox";
 
 export type FeatureDisposer = () => void;

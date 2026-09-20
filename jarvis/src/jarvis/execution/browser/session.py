@@ -33,12 +33,30 @@ class BrowserManager:
         if self._page is not None and not self._page.is_closed():
             return self._page
 
-        logger.info("Initializing Playwright Chromium browser session...")
+        logger.info("Initializing Playwright browser session (visible on desktop)...")
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=True,
-            args=["--disable-gpu", "--no-sandbox"],
-        )
+
+        headless = getattr(settings, "BROWSER_HEADLESS", False)
+        browser_channel = getattr(settings, "BROWSER_CHANNEL", "chrome")
+        launch_args = [
+            "--no-sandbox",
+            "--disable-blink-features=AutomationControlled",
+        ]
+
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                channel=browser_channel,
+                headless=headless,
+                args=launch_args,
+            )
+            logger.info("Launched system Chrome browser via Playwright.")
+        except Exception as exc:
+            logger.info(f"System Chrome channel unavailable ({exc}), launching default Chromium...")
+            self._browser = await self._playwright.chromium.launch(
+                headless=headless,
+                args=launch_args,
+            )
+
         context = await self._browser.new_context(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 JARVIS/3.0",
@@ -47,11 +65,22 @@ class BrowserManager:
         return self._page
 
     async def navigate(self, url: str) -> Dict[str, Any]:
-        """Navigate to a target URL and wait for DOM content loaded."""
+        """Navigate to a target URL and wait for initial DOM content."""
         async with self._lock:
             page = await self._ensure_page()
             logger.info(f"Navigating browser to {url}")
             response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+            # Auto-dismiss cookie/consent dialogs if present
+            try:
+                consent_btn = page.locator(
+                    'button:has-text("Accept all"), button:has-text("Reject all"), button:has-text("I agree"), ytd-button-renderer:has-text("Accept all")'
+                )
+                if await consent_btn.count() > 0 and await consent_btn.first.is_visible():
+                    await consent_btn.first.click(timeout=1500)
+            except Exception:
+                pass
+
             title = await page.title()
             status_code = response.status if response else 200
 
@@ -64,7 +93,7 @@ class BrowserManager:
             }
 
     async def snapshot(self, max_chars: int = 20000) -> Dict[str, Any]:
-        """Capture structured text representation of the current page."""
+        """Capture structured text and interactive element representation of the current page."""
         async with self._lock:
             page = await self._ensure_page()
             title = await page.title()
@@ -79,41 +108,151 @@ class BrowserManager:
                 text_content = ""
 
             cleaned_text = " ".join(text_content.split())
-            if len(cleaned_text) > max_chars:
-                cleaned_text = cleaned_text[:max_chars] + "... [truncated]"
+
+            # Extract key interactive elements (videos, search inputs, major action buttons)
+            interactive_summary = ""
+            try:
+                elements = await page.evaluate("""() => {
+                    const items = [];
+                    // Top videos on search pages
+                    document.querySelectorAll('a#video-title, ytd-video-renderer a#video-title, h3 a').forEach((el, i) => {
+                        const txt = el.innerText ? el.innerText.trim() : '';
+                        if (i < 8 && txt) {
+                            items.push(`[Video: "${txt}" -> selector: "a#video-title"]`);
+                        }
+                    });
+                    // Search inputs
+                    document.querySelectorAll('input[name=search_query], input#search, input[type=search]').forEach((el) => {
+                        items.push(`[Search Input: selector="input[name=search_query]"]`);
+                    });
+                    return items.slice(0, 8).join("\\n");
+                }""")
+                if elements:
+                    interactive_summary = f"\\n\\n[Key Interactive Elements]\\n{elements}"
+            except Exception:
+                pass
+
+            total_content = cleaned_text + interactive_summary
+            if len(total_content) > max_chars:
+                total_content = total_content[:max_chars] + "... [truncated]"
 
             return {
                 "action": "snapshot",
                 "url": current_url,
                 "title": title,
-                "content_length": len(cleaned_text),
-                "text": cleaned_text,
+                "content_length": len(total_content),
+                "text": total_content,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     async def click(self, selector: str) -> Dict[str, Any]:
-        """Click an element matching the given CSS, XPath, or text selector."""
+        """Click an element matching the given selector with intelligent fallback resolution."""
         async with self._lock:
             page = await self._ensure_page()
             logger.info(f"Clicking browser element matching selector: '{selector}'")
-            await page.click(selector, timeout=10000)
+
+            loc = page.locator(selector)
+            count = 0
+            try:
+                count = await loc.count()
+            except Exception:
+                count = 0
+
+            # Dynamic fallback resolution for common elements
+            if count == 0:
+                fallbacks = []
+                if "video" in selector.lower() or "title" in selector.lower():
+                    fallbacks.extend(
+                        [
+                            "a#video-title",
+                            "ytd-video-renderer a#video-title",
+                            "#video-title",
+                            "h3 a",
+                            "ytd-thumbnail a",
+                        ]
+                    )
+                elif "search" in selector.lower():
+                    fallbacks.extend(
+                        [
+                            "button#search-icon-legacy",
+                            "button[aria-label='Search']",
+                            "button[aria-label*='Search']",
+                        ]
+                    )
+
+                for fb in fallbacks:
+                    fb_loc = page.locator(fb)
+                    try:
+                        if await fb_loc.count() > 0:
+                            loc = fb_loc
+                            count = 1
+                            break
+                    except Exception:
+                        pass
+
+            # If waiting for video elements on dynamic SPAs
+            if "video" in selector.lower() and count == 0:
+                try:
+                    await page.wait_for_selector("a#video-title, ytd-video-renderer", timeout=5000)
+                    loc = page.locator("a#video-title").first
+                except Exception:
+                    pass
+
+            await loc.first.click(timeout=10000)
+
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=4000)
+            except Exception:
+                pass
+
             return {
                 "action": "click",
                 "selector": selector,
                 "current_url": page.url,
+                "title": await page.title(),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-    async def type_text(self, selector: str, text: str) -> Dict[str, Any]:
-        """Fill or type text into an input element."""
+    async def type_text(self, selector: str, text: str, press_enter: bool = True) -> Dict[str, Any]:
+        """Fill or type text into an input element and optionally submit."""
         async with self._lock:
             page = await self._ensure_page()
             logger.info(f"Typing into browser element '{selector}' (length {len(text)})")
-            await page.fill(selector, text, timeout=10000)
+
+            target_loc = page.locator(selector)
+            count = 0
+            try:
+                count = await target_loc.count()
+            except Exception:
+                count = 0
+
+            if count == 0:
+                if "search" in selector.lower():
+                    fb = page.locator(
+                        "input[name='search_query'], input#search, input[type='search'], input"
+                    )
+                    if await fb.count() > 0:
+                        target_loc = fb.first
+                else:
+                    target_loc = page.locator("input, textarea").first
+
+            await target_loc.first.fill(text, timeout=10000)
+
+            should_enter = press_enter or text.endswith("\n") or ("search" in selector.lower())
+            if should_enter:
+                await page.keyboard.press("Enter")
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+
             return {
                 "action": "type",
                 "selector": selector,
+                "text": text,
                 "text_length": len(text),
+                "submitted": should_enter,
+                "current_url": page.url,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 

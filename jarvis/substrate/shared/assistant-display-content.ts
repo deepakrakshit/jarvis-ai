@@ -1,4 +1,4 @@
-import { asOptionalRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord, isRecord } from "@jarvis/normalization-core/record-coerce";
 import type { AssistantMessage } from "../llm/types.js";
 
 export const ASSISTANT_DISPLAY_CONTENT_FIELD = "openclawDisplayContent";

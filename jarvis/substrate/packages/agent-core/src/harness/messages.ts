@@ -1,6 +1,6 @@
-import type { ImageContent, Message, TextContent } from "@openclaw/llm-core";
-import { parseDateStringTimestampMs as parseSessionTimestampMs } from "@openclaw/normalization-core/number-coercion";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import type { ImageContent, Message, TextContent } from "@jarvis/llm-core";
+import { parseDateStringTimestampMs as parseSessionTimestampMs } from "@jarvis/normalization-core/number-coercion";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import type {
   AgentMessage,
   BashExecutionMessage,

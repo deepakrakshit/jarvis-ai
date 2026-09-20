@@ -10,7 +10,7 @@ import {
   optionalPositiveIntegerSchema,
   optionalStringEnum,
   stringEnum,
-} from "openclaw/plugin-sdk/channel-actions";
+} from "@jarvis/plugin-sdk/channel-actions";
 import { Type } from "typebox";
 import { BROWSER_TAB_BOUND_ACTIONS } from "./browser-tool-binding.js";
 import { ACT_MAX_VIEWPORT_DIMENSION } from "./browser/act-policy.js";

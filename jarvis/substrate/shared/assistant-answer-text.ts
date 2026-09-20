@@ -1,5 +1,5 @@
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import {
   extractAssistantTextForPhase,
   parseAssistantTextSignature,

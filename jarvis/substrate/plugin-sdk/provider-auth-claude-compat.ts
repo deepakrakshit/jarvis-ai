@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { userInfo } from "node:os";
 import path from "node:path";
-import { asNonArrayRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
+import { asNonArrayRecord, isRecord } from "@jarvis/normalization-core/record-coerce";
 import { resolveOsHomeRelativePath } from "../infra/home-dir.js";
 import { loadJsonFileThroughSymlink } from "../infra/json-file.js";
 

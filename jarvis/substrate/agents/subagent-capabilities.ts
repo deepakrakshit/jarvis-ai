@@ -6,11 +6,11 @@
 import {
   resolveIntegerOption,
   resolveNonNegativeIntegerOption,
-} from "@openclaw/normalization-core/number-coercion";
+} from "@jarvis/normalization-core/number-coercion";
 import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
-} from "@openclaw/normalization-core/string-coerce";
+} from "@jarvis/normalization-core/string-coerce";
 import {
   DEFAULT_SUBAGENT_MAX_SPAWN_DEPTH,
   isSubagentSpawnDepthAllowed,

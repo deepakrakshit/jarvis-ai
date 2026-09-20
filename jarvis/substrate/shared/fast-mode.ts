@@ -1,7 +1,7 @@
-import type { FastMode } from "@openclaw/normalization-core/string-coerce";
+import type { FastMode } from "@jarvis/normalization-core/string-coerce";
 import { modelKey } from "./model-key.js";
 
-export type { FastMode } from "@openclaw/normalization-core/string-coerce";
+export type { FastMode } from "@jarvis/normalization-core/string-coerce";
 
 export const DEFAULT_FAST_MODE_AUTO_ON_SECONDS = 60;
 

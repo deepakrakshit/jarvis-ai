@@ -9,5 +9,5 @@ export {
   resolveClaudeSonnet5ModelIdentity,
   supportsClaudeAdaptiveThinking,
   supportsClaudeFastMode,
-} from "@openclaw/llm-core/model-contracts/anthropic";
+} from "@jarvis/llm-core/model-contracts/anthropic";
 export { resolveClaudeThinkingProfile } from "../plugins/provider-claude-thinking.js";

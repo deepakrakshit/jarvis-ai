@@ -4,7 +4,7 @@ import type {
   BoardGetParams,
   SessionRow,
   SessionsListParams,
-} from "@openclaw/gateway-protocol";
+} from "@jarvis/gateway-protocol";
 import type { ControlUiComponents } from "./control-ui-components.js";
 export type {
   ControlUiAgentPickerProps,

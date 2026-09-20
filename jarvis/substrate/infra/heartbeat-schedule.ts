@@ -1,7 +1,7 @@
 // Computes deterministic phase anchors for cron-owned heartbeat monitor jobs.
 import { createHash } from "node:crypto";
-import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { resolveIntegerOption } from "@jarvis/normalization-core/number-coercion";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import { readStoredDeviceIdentityReadOnly } from "./device-identity-store.js";
 import { loadOrCreateDeviceIdentity } from "./device-identity.js";
 

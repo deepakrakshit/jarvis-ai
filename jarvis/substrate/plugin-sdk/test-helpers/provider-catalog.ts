@@ -34,13 +34,13 @@ export function useProviderCatalogMetadata(pluginRoot: URL): void {
 }
 
 type ProviderRuntimeCatalogModule = Pick<
-  typeof import("openclaw/plugin-sdk/provider-catalog-runtime"),
+  typeof import("@jarvis/plugin-sdk/provider-catalog-runtime"),
   "augmentModelCatalogWithProviderPlugins"
 >;
 
 export async function importProviderRuntimeCatalogModule(): Promise<ProviderRuntimeCatalogModule> {
   const { augmentModelCatalogWithProviderPlugins } =
-    await import("openclaw/plugin-sdk/provider-catalog-runtime");
+    await import("@jarvis/plugin-sdk/provider-catalog-runtime");
   return {
     augmentModelCatalogWithProviderPlugins,
   };

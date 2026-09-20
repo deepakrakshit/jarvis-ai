@@ -1,7 +1,7 @@
 // Assistant error formatting helpers normalize assistant-visible error payloads.
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeLowercaseStringOrEmpty } from "@jarvis/normalization-core/string-coerce";
+import { truncateUtf16Safe } from "@jarvis/normalization-core/utf16-slice";
 import { extractHttpResponseBody } from "./http-error-response.js";
 const ERROR_PAYLOAD_PREFIX_RE =
   /^(?:error|(?:[a-z][\w-]*\s+)?api\s*error|apierror|openai\s*error|anthropic\s*error|gateway\s*error|codex\s*error)(?:\s+\d{3})?[:\s-]+/i;

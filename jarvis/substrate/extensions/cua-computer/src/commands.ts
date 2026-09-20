@@ -6,9 +6,9 @@ import {
   parseScreenSnapshotParamsJSON,
   type ComputerActParams,
   type ComputerUseProvider,
-} from "openclaw/plugin-sdk/computer-use";
-import { canonicalizeBase64 } from "openclaw/plugin-sdk/media-runtime";
-import { resolvePreferredOpenClawTmpDir } from "openclaw/plugin-sdk/temp-path";
+} from "@jarvis/plugin-sdk/computer-use";
+import { canonicalizeBase64 } from "@jarvis/plugin-sdk/media-runtime";
+import { resolvePreferredOpenClawTmpDir } from "@jarvis/plugin-sdk/temp-path";
 import { createRastermill } from "rastermill";
 import { z } from "zod";
 import { normalizeModifiers, parseKeyChord, scalePoint } from "./actions.js";

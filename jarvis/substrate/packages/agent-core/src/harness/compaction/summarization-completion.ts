@@ -3,7 +3,7 @@ import {
   type Model,
   type SimpleStreamOptions,
   type StreamFn,
-} from "@openclaw/llm-core";
+} from "@jarvis/llm-core";
 import { resolveAgentReasoningOption } from "../../reasoning.js";
 import {
   type AgentCoreCompletionRuntimeDeps,

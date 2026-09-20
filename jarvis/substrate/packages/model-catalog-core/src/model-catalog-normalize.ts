@@ -2,13 +2,13 @@ import {
   asFiniteNumber as normalizeFiniteNumber,
   asNonNegativeFiniteNumber as normalizeNonNegativeNumber,
   asPositiveFiniteNumber as normalizePositiveNumber,
-} from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+} from "@jarvis/normalization-core/number-coercion";
+import { isRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import {
   normalizeOptionalTrimmedStringList,
   normalizeTrimmedStringList,
-} from "@openclaw/normalization-core/string-normalization";
+} from "@jarvis/normalization-core/string-normalization";
 import { normalizeModelCatalogContextWindowSelection } from "./model-catalog-context-windows.js";
 import { buildModelCatalogMergeKey, buildModelCatalogRef } from "./model-catalog-refs.js";
 import {

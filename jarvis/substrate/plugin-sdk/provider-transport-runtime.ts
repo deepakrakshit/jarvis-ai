@@ -7,7 +7,7 @@ export {
   sortPromptCacheToolsByName,
   splitSystemPromptCacheBoundary,
   stripSystemPromptCacheBoundary,
-} from "@openclaw/ai/internal/shared";
+} from "@jarvis/ai/internal/shared";
 export { transformTransportMessages } from "../agents/transport-message-transform.js";
 export {
   describeToolResultMediaPlaceholder,
@@ -15,7 +15,7 @@ export {
   extractToolResultText,
   formatToolResultText,
   isImageWithMediaPayload,
-} from "@openclaw/ai/internal/shared";
+} from "@jarvis/ai/internal/shared";
 export {
   coerceTransportToolCallArguments,
   consumeGoogleGenerateContentStream,
@@ -39,4 +39,4 @@ export {
   withProviderAcceptanceObserver,
   type ProviderAcceptance,
   type WritableTransportStream,
-} from "@openclaw/ai/transports";
+} from "@jarvis/ai/transports";

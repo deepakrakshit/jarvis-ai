@@ -3,7 +3,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
-} from "@openclaw/normalization-core/string-coerce";
+} from "@jarvis/normalization-core/string-coerce";
 
 /**
  * Shared node-selection policy for CLI, gateway-facing SDK helpers, and plugins.

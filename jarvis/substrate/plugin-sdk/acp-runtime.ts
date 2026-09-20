@@ -29,7 +29,7 @@ export type {
   AcpRuntimeTurnResult,
   AcpRuntimeTurnResultError,
   AcpSessionUpdateTag,
-} from "@openclaw/acp-core/runtime/types";
+} from "@jarvis/acp-core/runtime/types";
 export { readAcpSessionEntry } from "../acp/runtime/session-meta.js";
 export type { AcpSessionStoreEntry } from "../acp/runtime/session-meta.js";
 export { tryDispatchAcpReplyHook } from "./acpx.js";

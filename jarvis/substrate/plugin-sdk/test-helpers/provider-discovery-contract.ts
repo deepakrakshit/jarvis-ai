@@ -1,6 +1,6 @@
 // Provider discovery contract helpers define reusable discovery tests for provider plugins.
-import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { asNullableRecord } from "@jarvis/normalization-core/record-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runProviderCatalog } from "../../plugins/provider-discovery.js";
 import {
@@ -138,7 +138,7 @@ function providerModelIds(provider: Record<string, unknown>): Array<unknown> {
 function installDiscoveryHooks(state: DiscoveryState, options: DiscoveryContractOptions) {
   beforeAll(async () => {
     vi.resetModules();
-    vi.doMock("openclaw/plugin-sdk/provider-auth", async (importOriginal) => {
+    vi.doMock("@jarvis/plugin-sdk/provider-auth", async (importOriginal) => {
       const actual = await importOriginal<typeof import("../provider-auth.js")>();
       return {
         ...actual,
@@ -178,9 +178,9 @@ function installDiscoveryHooks(state: DiscoveryState, options: DiscoveryContract
         validateApiKeyInput: () => undefined,
       };
     });
-    vi.doMock("openclaw/plugin-sdk/provider-setup", async () => {
+    vi.doMock("@jarvis/plugin-sdk/provider-setup", async () => {
       const actual = await vi.importActual<typeof import("../provider-setup.js")>(
-        "openclaw/plugin-sdk/provider-setup",
+        "@jarvis/plugin-sdk/provider-setup",
       );
       return {
         ...actual,

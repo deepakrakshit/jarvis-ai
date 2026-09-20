@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ActionResult } from "@trycua/cua-driver";
-import { asOptionalRecord as record } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { asOptionalRecord as record } from "@jarvis/plugin-sdk/string-coerce-runtime";
 import {
   ClickButton,
   EscalationReason,
@@ -178,7 +178,7 @@ function createClient(binaryPath: string, socketPath: string, env: NodeJS.Proces
     }
   }
   // The normal Windows/Linux SDK route never loads the MCP runtime graph.
-  return import("openclaw/plugin-sdk/agent-harness-runtime")
+  return import("@jarvis/plugin-sdk/agent-harness-runtime")
     .then(({ mcpStdioRuntime }) => mcpStdioRuntime.load())
     .then(({ createMcpStdioClient }) =>
       createMcpStdioClient({

@@ -1,8 +1,8 @@
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   estimateStringChars,
-} from "@openclaw/normalization-core/cjk-chars";
-import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
+} from "@jarvis/normalization-core/cjk-chars";
+import { truncateUtf16Safe } from "@jarvis/normalization-core/utf16-slice";
 import { buildTextEmbeddingInput, type EmbeddingInput } from "./embedding-inputs.js";
 import { hashText } from "./hash.js";
 import type { MemoryEntryProvenance } from "./types.js";

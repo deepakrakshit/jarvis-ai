@@ -2,8 +2,8 @@
 import type { BaseProbeResult } from "../channels/plugins/types.public.js";
 import { withTimeout } from "../utils/with-timeout.js";
 
-export { estimateStringChars } from "@openclaw/normalization-core/cjk-chars";
-export { truncateCodePoints } from "@openclaw/normalization-core/code-points";
+export { estimateStringChars } from "@jarvis/normalization-core/cjk-chars";
+export { truncateCodePoints } from "@jarvis/normalization-core/code-points";
 
 export {
   estimateToolResultTextChars,

@@ -1,5 +1,5 @@
-import { asFiniteNumber, asSafeIntegerInRange } from "@openclaw/normalization-core/number-coercion";
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { asFiniteNumber, asSafeIntegerInRange } from "@jarvis/normalization-core/number-coercion";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 
 function readMetaValue<T>(
   meta: Record<string, unknown> | null | undefined,

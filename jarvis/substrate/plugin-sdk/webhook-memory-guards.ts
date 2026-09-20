@@ -1,5 +1,5 @@
 // Webhook memory guards keep in-process webhook dedupe and replay state bounded.
-import { resolveIntegerOption } from "@openclaw/normalization-core/number-coercion";
+import { resolveIntegerOption } from "@jarvis/normalization-core/number-coercion";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 
 type FixedWindowState = {

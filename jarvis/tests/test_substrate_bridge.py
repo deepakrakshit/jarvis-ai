@@ -80,6 +80,14 @@ def test_substrate_bridge_act_unsupported_action() -> None:
     )
 
 
+def test_substrate_bridge_tool_repair_sync() -> None:
+    """Verify tool repair capability dispatches to OpenClaw runner."""
+    sample = 'Click on the start menu.\n[call:computer_action{"action":"left_click"}]\n'
+    res = substrate_bridge.repair_tool_call_sync(sample)
+    assert isinstance(res, dict)
+    assert res.get("ok") is True
+
+
 @pytest.mark.asyncio
 async def test_substrate_bridge_daemon_lifecycle() -> None:
     """Verify asynchronous JSON-RPC daemon mode startup, communication, and shutdown."""
@@ -101,6 +109,16 @@ async def test_substrate_bridge_daemon_lifecycle() -> None:
         act_res = await bridge.execute_act("get_cursor_position")
         assert act_res.get("ok") is True
         assert "details" in act_res
+
+        # Test snapshot over JSON-RPC IPC
+        snap_res = await bridge.take_snapshot(max_width=640)
+        assert snap_res.get("ok") is True
+        assert "base64" in snap_res
+        assert "displayFrameId" in snap_res
+
+        # Test mouse movement over JSON-RPC IPC
+        move_res = await bridge.execute_act("mouse_move", {"x": 600, "y": 400})
+        assert move_res.get("ok") is True
     finally:
         await bridge.stop()
         assert not bridge.is_running

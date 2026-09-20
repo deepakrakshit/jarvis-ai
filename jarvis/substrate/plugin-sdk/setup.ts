@@ -5,7 +5,7 @@ export type { DmPolicy } from "../config/types.js";
 // Registry readers (2026-07-22): @nodeskai/feishu, openclaw-channel-whatsapp-official,
 // openclaw-vk, openclaw-ndr, moltbot-channel-feishu, @kagura-agent/openclaw-zulip,
 // @jeik/dingtalk-connector, @xzq-xu/feishu, @dingtalk-real-ai/dingtalk-connector,
-// @openclaw-vk/vk, yzw-dingtalk-connector, and openclaw-channel-zulip.
+// @jarvis-vk/vk, yzw-dingtalk-connector, and openclaw-channel-zulip.
 export type { GroupPolicy } from "../config/types.js";
 export type { SecretInput } from "../config/types.secrets.js";
 export type {
@@ -72,7 +72,7 @@ export {
   resolveSetupAccountId,
   runSingleChannelSecretStep,
   setSetupChannelEnabled,
-  // Registry readers (2026-07-22): openclaw-vk and @openclaw-vk/vk.
+  // Registry readers (2026-07-22): openclaw-vk and @jarvis-vk/vk.
   setTopLevelChannelDmPolicyWithAllowFrom,
   splitSetupEntries,
 } from "../channels/plugins/setup-wizard-helpers.js";

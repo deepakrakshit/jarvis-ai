@@ -191,7 +191,7 @@ export type {
   UnifiedModelCatalogEntry,
   UnifiedModelCatalogKind,
   UnifiedModelCatalogSource,
-} from "@openclaw/model-catalog-core/model-catalog-types";
+} from "@jarvis/model-catalog-core/model-catalog-types";
 
 export {
   buildJsonPluginConfigSchema,
@@ -227,7 +227,7 @@ type DefinedPluginEntry = Omit<DefinePluginEntryOptions, "configSchema"> & {
  *
  * Use this for provider, tool, command, service, memory, and context-engine
  * plugins. Channel plugins should use `defineChannelPluginEntry(...)` from
- * `openclaw/plugin-sdk/core` so they inherit the channel capability wiring.
+ * `@jarvis/plugin-sdk/core` so they inherit the channel capability wiring.
  *
  * @experimental Pin and test OpenClaw host versions; existing compatibility windows still apply.
  */

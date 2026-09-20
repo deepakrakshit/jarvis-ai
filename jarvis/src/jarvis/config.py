@@ -67,6 +67,8 @@ class JarvisSettings(BaseSettings):
     # Runtime Network / Gateway
     GATEWAY_HOST: str = Field(default="127.0.0.1")
     GATEWAY_PORT: int = Field(default=8765)
+    GATEWAY_PORT_AUTO_DISCOVERY: bool = Field(default=True)
+    GATEWAY_PORT_SEARCH_LIMIT: int = Field(default=50)
     HTTP_PORT: int = Field(default=8000)
 
     # Timeouts & Budgets
@@ -76,6 +78,13 @@ class JarvisSettings(BaseSettings):
 
     # Security & Policy Controls (defaults to True for system safety, bypassed dynamically during interactive live voice sessions)
     REQUIRE_APPROVALS: bool = Field(default=True)
+
+    # Operator & Persona Settings
+    USER_CALLSIGN: str = Field(default="Sir")
+
+    # Browser Automation Settings
+    BROWSER_HEADLESS: bool = Field(default=False)
+    BROWSER_CHANNEL: str = Field(default="chrome")
 
     # Real-Time Web Search Settings
     WEB_SEARCH_ENDPOINT: str = Field(default="https://html.duckduckgo.com/html/")

@@ -1,4 +1,4 @@
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import type { MemoryOriginClass } from "./types.js";
 
 export function classifySessionMessageOrigin(

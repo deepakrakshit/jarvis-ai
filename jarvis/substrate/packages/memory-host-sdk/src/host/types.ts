@@ -1,5 +1,5 @@
 // Public memory host contracts shared by runtime, builtin search, and package consumers.
-import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
+import { asNullableRecord } from "@jarvis/normalization-core/record-coerce";
 import type { MemorySearchDeadlineControlOptions } from "./search-deadline-control.js";
 export type MemorySource = "memory" | "sessions";
 

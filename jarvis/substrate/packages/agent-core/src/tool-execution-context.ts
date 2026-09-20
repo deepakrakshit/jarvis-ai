@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { AssistantMessage } from "@openclaw/llm-core";
+import type { AssistantMessage } from "@jarvis/llm-core";
 import type { AgentToolCall } from "./types.js";
 
 /** Internal assistant-turn context for one concrete tool invocation. */

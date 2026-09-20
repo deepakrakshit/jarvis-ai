@@ -1,5 +1,5 @@
 // Node resolution helpers resolve node references from names, ids, and URLs.
-import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import { formatErrorMessage } from "../infra/errors.js";
 import { type NodeMatchCandidate, resolveNodeIdFromCandidates } from "./node-match.js";
 

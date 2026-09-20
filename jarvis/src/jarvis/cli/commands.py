@@ -48,6 +48,24 @@ from jarvis.voice import (
 console = Console(force_terminal=True, highlight=False)
 
 
+def get_user_callsign() -> str:
+    """Dynamically retrieve the configured user callsign."""
+    return getattr(settings, "USER_CALLSIGN", "Sir")
+
+
+def check_for_callsign_update(user_text: str) -> Optional[str]:
+    """Detect if the user requested a callsign change dynamically."""
+    lower = user_text.lower().strip()
+    prefixes = ["address me as ", "call me as ", "call me "]
+    for p in prefixes:
+        if p in lower:
+            idx = lower.find(p) + len(p)
+            new_callsign = user_text[idx:].strip().strip(".!?,")
+            if new_callsign:
+                return new_callsign.capitalize()
+    return None
+
+
 def ensure_nodes_registered() -> None:
     """Ensure host and browser execution nodes are registered with the action broker."""
     windows_node.register_capabilities()
@@ -253,9 +271,14 @@ async def handle_chat(
     gateway_server: Optional[GatewayServer] = None
 
     if with_daemon:
-        gateway_server = GatewayServer()
-        await gateway_server.start()
-        logger.info("Gateway daemon started in background (ws://127.0.0.1:18789).")
+        try:
+            gateway_server = GatewayServer()
+            await gateway_server.start()
+            logger.info(
+                f"Gateway daemon active in background (ws://{gateway_server.host}:{gateway_server.port})."
+            )
+        except Exception as gw_err:
+            logger.warning(f"Notice: Background gateway daemon initialization warning: {gw_err}")
 
         async def heartbeat_loop() -> None:
             while True:
@@ -305,29 +328,91 @@ async def handle_chat(
             async def on_tool_call(name: str, args: Dict[str, Any]) -> None:
                 if name == "web_search":
                     query = args.get("query", "")
-                    console.print(f"\n[bold cyan]>> [Searching web: '{query}']...[/bold cyan]")
+                    console.print(f"\n[bold cyan]>> [Web Search: '{query}']...[/bold cyan]")
                 elif name == "shell_execute":
                     cmd = args.get("command", "")
-                    console.print(f"\n[bold cyan]>> [Running: {cmd}][/bold cyan]")
+                    console.print(f"\n[bold cyan]>> [Running Shell Command: {cmd}][/bold cyan]")
                 elif name == "delegate_task":
                     target = args.get("target_model", "Specialist Model")
-                    console.print(f"\n[bold cyan]>> [Delegating to {target}...][/bold cyan]")
+                    task = args.get("task", "")
+                    console.print(
+                        f"\n[bold cyan]>> [Delegating Task to {target}: '{task}']...[/bold cyan]"
+                    )
                 elif name == "browser_navigate":
                     url = args.get("url", "")
-                    console.print(f"\n[bold cyan]>> [Navigating Browser: {url}][/bold cyan]")
+                    console.print(f"\n[bold cyan]>> [Browser Navigating to: {url}][/bold cyan]")
+                elif name == "browser_type":
+                    sel = args.get("selector", "")
+                    text = args.get("text", "")
+                    enter = args.get("press_enter", False)
+                    console.print(
+                        f"\n[bold cyan]>> [Browser Typing: '{text}' into '{sel}' (press_enter={enter})][/bold cyan]"
+                    )
+                elif name == "browser_click":
+                    sel = args.get("selector", "")
+                    console.print(f"\n[bold cyan]>> [Browser Clicking: '{sel}'][/bold cyan]")
+                elif name == "browser_snapshot":
+                    console.print(
+                        "\n[bold cyan]>> [Browser Snapshot: Inspecting interactive DOM elements...][/bold cyan]"
+                    )
+                elif name == "browser_scroll":
+                    direction = args.get("direction", "down")
+                    amount = args.get("amount", 300)
+                    console.print(
+                        f"\n[bold cyan]>> [Browser Scrolling: {direction} by {amount}px][/bold cyan]"
+                    )
+                elif name == "app_launch":
+                    target = args.get("target", "")
+                    arguments = args.get("arguments", [])
+                    arg_str = f" with args {arguments}" if arguments else ""
+                    console.print(
+                        f"\n[bold cyan]>> [Launching Application: {target}{arg_str}][/bold cyan]"
+                    )
+                elif name == "app_focus":
+                    target = args.get("target", "")
+                    console.print(f"\n[bold cyan]>> [Focusing Window: {target}][/bold cyan]")
+                elif name == "app_close":
+                    target = args.get("target", "")
+                    console.print(f"\n[bold cyan]>> [Closing Application: {target}][/bold cyan]")
+                elif name == "ui_inspect":
+                    target = args.get("window_target", "foreground window")
+                    console.print(
+                        f"\n[bold cyan]>> [UI Inspect: Traversing controls in '{target}'...][/bold cyan]"
+                    )
+                elif name == "ui_interact":
+                    target = args.get("window_target", "")
+                    query = args.get("element_query", "")
+                    action = args.get("action", "click")
+                    console.print(
+                        f"\n[bold cyan]>> [UI Interact: {action} on '{query}' in '{target}'][/bold cyan]"
+                    )
+                elif name == "computer_action":
+                    action = args.get("action", "")
+                    coords = args.get("coordinate", "")
+                    text = args.get("text", "")
+                    keys = args.get("keys", "")
+                    details = f"action={action}"
+                    if coords:
+                        details += f", coords={coords}"
+                    if text:
+                        details += f", text='{text}'"
+                    if keys:
+                        details += f", keys='{keys}'"
+                    console.print(f"\n[bold cyan]>> [Computer Action: {details}][/bold cyan]")
                 elif name == "system_info":
                     console.print(
                         "\n[bold cyan]>> [Checking system hardware and OS status...][/bold cyan]"
                     )
                 elif name == "system_screenshot":
-                    console.print(
-                        "\n[bold cyan]>> [Capturing primary desktop screenshot...][/bold cyan]"
-                    )
+                    console.print("\n[bold cyan]>> [Capturing desktop screenshot...][/bold cyan]")
                 elif name == "system_volume_set":
                     level = args.get("level", "")
                     console.print(f"\n[bold cyan]>> [Setting volume to {level}%][/bold cyan]")
+                elif name == "system_volume_get":
+                    console.print("\n[bold cyan]>> [Checking master volume level...][/bold cyan]")
                 else:
-                    console.print(f"\n[bold cyan]>> [Executing: {name}][/bold cyan]")
+                    args_summary = ", ".join(f"{k}={v!r}" for k, v in args.items())
+                    console.print(f"\n[bold cyan]>> [Executing {name}({args_summary})][/bold cyan]")
 
             async def on_text(chunk: str) -> None:
                 turn_text_chunks.append(chunk)
@@ -368,18 +453,27 @@ async def handle_chat(
                 console.print("[dim cyan]>> [JARVIS is listening... speak or type][/dim cyan]\n")
 
             async def on_interrupted() -> None:
-                voice_state_machine.transition(VoiceState.INTERRUPTED, reason="Operator barge-in")
+                callsign = get_user_callsign()
+                voice_state_machine.transition(
+                    VoiceState.INTERRUPTED, reason=f"{callsign} barge-in"
+                )
                 pcm_player.interrupt()
                 voice_state_machine.transition(VoiceState.LISTENING, reason="Interruption reset")
                 console.print(
-                    "\n[bold yellow]>> [Operator Interrupted - Listening...][/bold yellow]\n"
+                    f"\n[bold yellow]>> [{callsign} Interrupted - Listening...][/bold yellow]\n"
                 )
 
             async def on_input_transcription(text: str, finished: bool) -> None:
                 if text:
+                    callsign = get_user_callsign()
                     console.print(
-                        f"\r[bold green]Operator (Voice) > [/bold green][green]{text}[/green]"
+                        f"\r[bold green]{callsign} (Voice) > [/bold green][green]{text}[/green]"
                     )
+                if finished and text:
+                    new_callsign = check_for_callsign_update(text)
+                    if new_callsign:
+                        settings.USER_CALLSIGN = new_callsign
+                        logger.info(f"User callsign updated dynamically to: {new_callsign}")
 
             bridge.audio_chunk_handler = on_audio
             bridge.text_chunk_handler = on_text
@@ -449,13 +543,16 @@ async def handle_chat(
                 )
 
             try:
+                callsign = get_user_callsign()
                 if message:
-                    console.print(f"[bold green]Operator > [/bold green][green]{message}[/green]\n")
+                    console.print(
+                        f"[bold green]{callsign} > [/bold green][green]{message}[/green]\n"
+                    )
                     turn_finished.clear()
                     audio_chunk_count = 0
                     turn_text_chunks.clear()
                     voice_state_machine.transition(
-                        VoiceState.THINKING, reason="Operator direct message"
+                        VoiceState.THINKING, reason=f"{callsign} direct message"
                     )
                     await bridge.send_text(message)
                     try:
@@ -467,14 +564,15 @@ async def handle_chat(
                     return {"session_id": bridge.session_id, "audio_chunks": audio_chunk_count}
 
                 while True:
+                    callsign = get_user_callsign()
                     try:
-                        sys.stdout.write("\033[1;32mOperator > \033[32m")
+                        sys.stdout.write(f"\033[1;32m{callsign} > \033[32m")
                         sys.stdout.flush()
                         user_input = await asyncio.to_thread(input)
                     except (EOFError, KeyboardInterrupt):
                         console.print(
                             Panel(
-                                "Concluding live streaming session. Standing by, Operator.",
+                                f"Concluding live streaming session. Standing by, {callsign}.",
                                 title="[bold cyan]JARVIS[/bold cyan]",
                                 border_style="bright_blue",
                                 box=box.ROUNDED,
@@ -489,10 +587,18 @@ async def handle_chat(
                     user_input = user_input.strip()
                     if not user_input:
                         continue
+
+                    # Dynamic honorific/callsign update check
+                    new_callsign = check_for_callsign_update(user_input)
+                    if new_callsign:
+                        settings.USER_CALLSIGN = new_callsign
+                        callsign = new_callsign
+                        logger.info(f"User callsign updated dynamically to: {new_callsign}")
+
                     if user_input.lower() in ("exit", "quit", "q"):
                         console.print(
                             Panel(
-                                "Terminating live stream. Standing by, Operator.",
+                                f"Terminating live stream. Standing by, {callsign}.",
                                 title="[bold cyan]JARVIS[/bold cyan]",
                                 border_style="bright_blue",
                                 box=box.ROUNDED,
@@ -530,7 +636,7 @@ async def handle_chat(
                         audio_chunk_count = 0
                         turn_text_chunks.clear()
                         voice_state_machine.transition(
-                            VoiceState.THINKING, reason="Operator image input"
+                            VoiceState.THINKING, reason=f"{callsign} image input"
                         )
                         await bridge.send_image(
                             image_bytes=img_bytes, mime_type=mime, prompt=prompt_str
@@ -547,7 +653,7 @@ async def handle_chat(
                     audio_chunk_count = 0
                     turn_text_chunks.clear()
                     voice_state_machine.transition(
-                        VoiceState.THINKING, reason="Operator text input"
+                        VoiceState.THINKING, reason=f"{callsign} text input"
                     )
                     await bridge.send_text(user_input)
                     try:
@@ -579,9 +685,10 @@ async def handle_chat(
         plane = cp or control_plane
         sess_id = session_id or f"SESS-CHAT-{uuid4().hex[:8].upper()}"
 
+        callsign = get_user_callsign()
         if message:
             logger.info(f"Submitting chat message: '{message}'")
-            console.print(f"[bold green]Operator > [/bold green][green]{message}[/green]\n")
+            console.print(f"[bold green]{callsign} > [/bold green][green]{message}[/green]\n")
             final_task = await plane.submit_intent(raw_intent=message, session_id=sess_id)
             response_text = (
                 final_task.result_summary or final_task.error_message or "Task processed."
@@ -605,7 +712,7 @@ async def handle_chat(
             }
 
         # Boot greeting
-        greeting = "JARVIS operational. Standing by for your command, Operator."
+        greeting = f"JARVIS operational. Standing by for your command, {callsign}."
         voice_synthesizer.speak(greeting)
 
         chat_banner = (
@@ -627,14 +734,15 @@ async def handle_chat(
         console.print("")
 
         while True:
+            callsign = get_user_callsign()
             try:
-                sys.stdout.write("\033[1;32mOperator > \033[32m")
+                sys.stdout.write(f"\033[1;32m{callsign} > \033[32m")
                 sys.stdout.flush()
                 user_input = await asyncio.to_thread(input)
             except (EOFError, KeyboardInterrupt):
                 console.print(
                     Panel(
-                        "Concluding interactive session. Standing by, Operator.",
+                        f"Concluding interactive session. Standing by, {callsign}.",
                         title="[bold cyan]JARVIS[/bold cyan]",
                         border_style="bright_blue",
                         box=box.ROUNDED,
@@ -649,8 +757,15 @@ async def handle_chat(
             user_input = user_input.strip()
             if not user_input:
                 continue
+
+            new_callsign = check_for_callsign_update(user_input)
+            if new_callsign:
+                settings.USER_CALLSIGN = new_callsign
+                callsign = new_callsign
+                logger.info(f"User callsign updated dynamically to: {new_callsign}")
+
             if user_input.lower() in ("exit", "quit", "q"):
-                farewell = "Interactive session concluded. Standing by, Operator."
+                farewell = f"Interactive session concluded. Standing by, {callsign}."
                 console.print(
                     Panel(
                         farewell,
