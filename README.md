@@ -58,35 +58,35 @@ The following diagram illustrates the complete end-to-end cognitive and executio
 
 ```mermaid
 graph TD
-    User([👤 User: Voice / Vision / Input]) <-->|Bidirectional Audio & Vision| GeminiLive[⚡ Gemini 3.8 Live API]
+    User(["👤 User: Voice / Vision / Input"]) <-->|Bidirectional Audio & Vision| GeminiLive["⚡ Gemini 3.8 Live API"]
     
-    subgraph JARVIS_CORE [JARVIS Control Plane & Kernel]
-        GeminiLive <-->|Tool Proposals & Audio| DialogueHost[🎙️ Live Dialogue Host]
-        DialogueHost <-->|Session State| ControlPlane[🧠 Cognitive Control Plane]
-        ControlPlane <-->|Intent & Routing| ModelRouter[🔀 Multi-Model Router]
-        ControlPlane <-->|Tool Dispatch| ActionBroker[🛡️ Action Broker & Capability Firewall]
-        ControlPlane <-->|Context & FTS5| MemoryFabric[(💾 Memory & Session Fabric)]
-        Gateway[🌐 Gateway WebSocket Daemon] <--> ControlPlane
+    subgraph JARVIS_CORE ["JARVIS Control Plane & Kernel"]
+        GeminiLive <-->|Tool Proposals & Audio| DialogueHost["🎙️ Live Dialogue Host"]
+        DialogueHost <-->|Session State| ControlPlane["🧠 Cognitive Control Plane"]
+        ControlPlane <-->|Intent & Routing| ModelRouter["🔀 Multi-Model Router"]
+        ControlPlane <-->|Tool Dispatch| ActionBroker["🛡️ Action Broker & Capability Firewall"]
+        ControlPlane <-->|Context & FTS5| MemoryFabric[("💾 Memory & Session Fabric")]
+        Gateway["🌐 Gateway WebSocket Daemon"] <--> ControlPlane
     end
 
-    subgraph AUDIO_PIPELINE [Audio & DSP Subsystem]
-        Microphone([🎤 Physical Mic]) --> PrimaryStream[Primary Capture d[n]]
-        Speakers([🔊 Speakers / Soundcard]) --> WASAPILoopback[WASAPI Loopback Ref x[n]]
-        PrimaryStream --> AEC[🎛️ PBFDAF Echo Canceller & Coherence Mask]
+    subgraph AUDIO_PIPELINE ["Audio & DSP Subsystem"]
+        Microphone(["🎤 Physical Mic"]) --> PrimaryStream["Primary Capture d(n)"]
+        Speakers(["🔊 Speakers / Soundcard"]) --> WASAPILoopback["WASAPI Loopback Ref x(n)"]
+        PrimaryStream --> AEC["🎛️ PBFDAF Echo Canceller & Coherence Mask"]
         WASAPILoopback --> AEC
-        AEC --> CleanMic[Clean 16kHz PCM Stream] --> GeminiLive
-        SpeakersTracker[⏱️ Playback Activity Tracker] -.->|Barge-in Gate| DialogueHost
+        AEC --> CleanMic["Clean 16kHz PCM Stream"] --> GeminiLive
+        SpeakersTracker["⏱️ Playback Activity Tracker"] -.->|Barge-in Gate| DialogueHost
     end
 
-    subgraph EXECUTION_FABRIC [Multi-Provider Execution Fabric]
-        ActionBroker --> AppControl[🖥️ Universal App Control Engine]
-        AppControl -->|Tier 1| NativeURI[⚡ Native URI / CLI Protocol]
-        AppControl -->|Tier 2| COM_UIA[🪟 Windows COM UI Automation]
-        AppControl -->|Tier 3| BrowserNode[🌐 Playwright Browser Node]
-        AppControl -->|Tier 4| SubstrateBridge[🔌 Substrate IPC Bridge]
+    subgraph EXECUTION_FABRIC ["Multi-Provider Execution Fabric"]
+        ActionBroker --> AppControl["🖥️ Universal App Control Engine"]
+        AppControl -->|Tier 1| NativeURI["⚡ Native URI / CLI Protocol"]
+        AppControl -->|Tier 2| COM_UIA["🪟 Windows COM UI Automation"]
+        AppControl -->|Tier 3| BrowserNode["🌐 Playwright Browser Node"]
+        AppControl -->|Tier 4| SubstrateBridge["🔌 Substrate IPC Bridge"]
         
-        SubstrateBridge <-->|JSON-RPC 2.0 stdio| SubstrateRunner[⚡ Node.js Substrate Runner]
-        SubstrateRunner --> CoordinateCUA[🖱️ Coordinate & Visual Automation]
+        SubstrateBridge <-->|JSON-RPC 2.0 stdio| SubstrateRunner["⚡ Node.js Substrate Runner"]
+        SubstrateRunner --> CoordinateCUA["🖱️ Coordinate & Visual Automation"]
     end
 ```
 
@@ -101,26 +101,26 @@ JARVIS solves this at the DSP level using a real-time **hardware reference subtr
 ```mermaid
 sequenceDiagram
     autonumber
-    participant SPK as 🔊 Sound Card (Render)
-    participant LB as 🔄 WASAPI Loopback Worker
-    participant MIC as 🎤 Physical Microphone
-    participant DSP as 🎛️ PBFDAF Engine
-    participant DTD as 📊 Double-Talk Detector
-    participant MSC as 🔬 Coherence Suppressor
-    participant GEM as ⚡ Gemini 3.8 Live
+    participant SPK as "🔊 Sound Card (Render)"
+    participant LB as "🔄 WASAPI Loopback Worker"
+    participant MIC as "🎤 Physical Microphone"
+    participant DSP as "🎛️ PBFDAF Engine"
+    participant DTD as "📊 Double-Talk Detector"
+    participant MSC as "🔬 Coherence Suppressor"
+    participant GEM as "⚡ Gemini 3.8 Live"
 
-    SPK->>LB: Capture pure digital reference x[n]
-    SPK-->>MIC: Acoustic room reverberation y[n]
-    User->>MIC: User voice s[n]
-    MIC->>DSP: Combined input d[n] = s[n] + y[n]
-    LB->>DSP: Send reference block x[n]
+    SPK->>LB: Capture pure digital reference x(n)
+    SPK-->>MIC: Acoustic room reverberation y(n)
+    User->>MIC: User voice s(n)
+    MIC->>DSP: Combined input d(n) = s(n) + y(n)
+    LB->>DSP: Send reference block x(n)
     DSP->>DTD: Compute cross-correlation & energy ratio
     alt Double-Talk Active (User Speaking)
         DTD->>DSP: Freeze filter weight updates (preserve voice)
     else Echo Only
         DTD->>DSP: Adapt filter weights W(f) via NLMS
     end
-    DSP->>MSC: Error signal e[n] = d[n] - y_hat[n]
+    DSP->>MSC: Error signal e(n) = d(n) - y_hat(n)
     MSC->>MSC: Compute Magnitude Squared Coherence mask
     MSC->>GEM: Stream clean microphone PCM (16kHz mono)
 ```
@@ -138,32 +138,32 @@ JARVIS does not rely on fragile coordinate clicks. It operates through a **close
 
 ```mermaid
 flowchart TD
-    Req([Action: 'Click Log in on WhatsApp']) --> ResolveWin[Find Target Window Handle]
-    ResolveWin --> FocusWin[Focus & Restore Window]
-    FocusWin --> ProviderCheck{Select Provider}
+    Req(["Action: Click Log in on WhatsApp"]) --> ResolveWin["Find Target Window Handle"]
+    ResolveWin --> FocusWin["Focus & Restore Window"]
+    FocusWin --> ProviderCheck{"Select Provider"}
     
-    ProviderCheck -->|URI / CLI available| Tier1[Tier 1: Native Application Protocol]
-    ProviderCheck -->|Desktop Application| Tier2[Tier 2: Microsoft COM UI Automation]
-    ProviderCheck -->|Web Page / CDP| Tier3[Tier 3: Playwright DOM Inspector]
-    ProviderCheck -->|Canvas / Game / Fallback| Tier4[Tier 4: Substrate CUA Coordinate Fallback]
+    ProviderCheck -->|URI / CLI available| Tier1["Tier 1: Native Application Protocol"]
+    ProviderCheck -->|Desktop Application| Tier2["Tier 2: Microsoft COM UI Automation"]
+    ProviderCheck -->|Web Page / CDP| Tier3["Tier 3: Playwright DOM Inspector"]
+    ProviderCheck -->|Canvas / Game / Fallback| Tier4["Tier 4: Substrate CUA Coordinate Fallback"]
     
-    Tier2 --> FindElem[Find UIElement via ControlViewWalker]
-    FindElem --> TryPattern{Supported Pattern?}
-    TryPattern -->|InvokePattern| DoInvoke[Execute Invoke]
-    TryPattern -->|ValuePattern| DoValue[Execute SetValue]
-    TryPattern -->|TogglePattern| DoToggle[Execute Toggle]
-    TryPattern -->|Unsupported / Protected| FallbackCoord[Calculate Bounding Box Center]
+    Tier2 --> FindElem["Find UIElement via ControlViewWalker"]
+    FindElem --> TryPattern{"Supported Pattern?"}
+    TryPattern -->|InvokePattern| DoInvoke["Execute Invoke"]
+    TryPattern -->|ValuePattern| DoValue["Execute SetValue"]
+    TryPattern -->|TogglePattern| DoToggle["Execute Toggle"]
+    TryPattern -->|Unsupported / Protected| FallbackCoord["Calculate Bounding Box Center"]
     
-    FallbackCoord --> SubstrateClick[Substrate mouse_click x, y]
+    FallbackCoord --> SubstrateClick["Substrate mouse_click (x, y)"]
     
-    DoInvoke --> Settle[Wait Settling Delay 200ms]
+    DoInvoke --> Settle["Wait Settling Delay (200ms)"]
     DoValue --> Settle
     DoToggle --> Settle
     SubstrateClick --> Settle
     
-    Settle --> VerifyState{Re-query UI State}
-    VerifyState -->|State Confirmed| Success([✅ Action Verified & Confirmed])
-    VerifyState -->|State Unchanged| Downgrade[Transition Down Provider Hierarchy]
+    Settle --> VerifyState{"Re-query UI State"}
+    VerifyState -->|State Confirmed| Success(["✅ Action Verified & Confirmed"])
+    VerifyState -->|State Unchanged| Downgrade["Transition Down Provider Hierarchy"]
     Downgrade --> Tier4
 ```
 
@@ -175,17 +175,17 @@ To ensure stability and isolate computer automation, JARVIS pairs its Python cog
 
 ```mermaid
 flowchart LR
-    subgraph Python_Kernel [Python Control Plane]
-        Bridge[SubstrateBridge Singleton]
-        Reader[Async Stdout Reader Loop]
-        Pending[Pending Request Futures Map]
+    subgraph Python_Kernel ["Python Control Plane"]
+        Bridge["SubstrateBridge Singleton"]
+        Reader["Async Stdout Reader Loop"]
+        Pending["Pending Request Futures Map"]
     end
 
-    subgraph Node_Substrate [Node.js Substrate Daemon]
-        Runner[JarvisSubstrateRunner]
-        Driver[JarvisWindowsDriverSession]
-        CUA[CUA Computer Action Handlers]
-        Repair[Tool Call Repair Engine]
+    subgraph Node_Substrate ["Node.js Substrate Daemon"]
+        Runner["JarvisSubstrateRunner"]
+        Driver["JarvisWindowsDriverSession"]
+        CUA["CUA Computer Action Handlers"]
+        Repair["Tool Call Repair Engine"]
     end
 
     Bridge -->|stdin: JSON-RPC 2.0 Request| Runner
@@ -204,23 +204,24 @@ The Gateway daemon operates a central WebSocket hub (`ws://127.0.0.1:8765`) enab
 
 ```mermaid
 sequenceDiagram
-    participant Client as 🖥️ Desktop / UI Client
-    participant GW as 🌐 Gateway Server
-    participant CP as 🧠 Control Plane
-    participant DB as 💾 SQLite Session Store
+    autonumber
+    participant Client as "🖥️ Desktop / UI Client"
+    participant GW as "🌐 Gateway Server"
+    participant CP as "🧠 Control Plane"
+    participant DB as "💾 SQLite Session Store"
 
-    Client->>GW: connect {client_id: "desktop-ui", token: "..."}
+    Client->>GW: Connect (client_id: desktop-ui)
     GW->>GW: Authenticate connection & verify session
-    GW->>Client: connected {session_id: "sess-01", capabilities: [...]}
+    GW->>Client: Connected (session_id: sess-01)
     
     loop Realtime Dialogue & Invocations
-        Client->>GW: request {method: "chat.turn", params: {text: "..."}}
+        Client->>GW: Request chat.turn (text: prompt)
         GW->>CP: Process cognitive conversational turn
         CP->>DB: Record turn provenance & state
-        CP-->>GW: Event stream (token, partial transcription, tool status)
-        GW-->>Client: event {event: "transcription", data: {...}}
-        CP->>GW: Turn completed {response: "..."}
-        GW->>Client: response {id: "req-1", result: {...}}
+        CP-->>GW: Event stream (transcription, tool status)
+        GW-->>Client: Event (transcription)
+        CP->>GW: Turn completed (response text)
+        GW->>Client: Response (status: success)
     end
 ```
 
@@ -276,29 +277,51 @@ pip install -e ".[dev]"
 
 ### 8.4 Configure Environment Variables
 
-Create your `.env` configuration file in the project root:
+A documented template is provided in [`.env.example`](file:///.env.example). Create your local `.env` configuration file in the project root:
 
 ```bash
 copy .env.example .env
 ```
 
-Open `.env` and configure your credentials:
+Open `.env` and fill in your desired parameters and API credentials:
 
 ```ini
+# ==============================================================================
+# 1. API Credentials & Authentication
+# ==============================================================================
 # Google Gemini API Key (Required for Live Audio & Multimodal Cognition)
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Groq API Key (Optional for ultra-fast text model routing)
+# Groq API Key (Optional for ultra-fast text model routing and fallback inference)
 GROQ_API_KEY=your_groq_api_key_here
 
-# Gateway Daemon Configuration
+# ==============================================================================
+# 2. Audio Capture & Hardware Pipeline Settings
+# ==============================================================================
+# Audio input device index (leave blank for automatic Windows default communication device)
+AUDIO_INPUT_DEVICE_INDEX=
+AUDIO_INPUT_SAMPLE_RATE=16000
+AUDIO_INPUT_CHANNELS=1
+AUDIO_OUTPUT_SAMPLE_RATE=24000
+AUDIO_VAD_ENERGY_THRESHOLD=15.0
+VOICE_DRAIN_HOLD_MS=250
+
+# ==============================================================================
+# 3. Acoustic Echo Cancellation (AEC) & DSP Pipeline
+# ==============================================================================
+AUDIO_AEC_ENABLED=true
+AUDIO_AEC_PARTITIONS=6
+AUDIO_AEC_STEP_SIZE=0.25
+AUDIO_AEC_SUPPRESSION_DB=30.0
+AUDIO_AEC_DELAY_MAX_MS=250
+
+# ==============================================================================
+# 4. Gateway Daemon & Network Server
+# ==============================================================================
 GATEWAY_HOST=127.0.0.1
 GATEWAY_PORT=8765
-
-# Audio Echo Cancellation DSP Parameters
-VOICE_DRAIN_HOLD_MS=250
-AEC_FRAME_SIZE=256
-AEC_STEP_SIZE=0.08
+GATEWAY_PORT_AUTO_DISCOVERY=true
+GATEWAY_PORT_SEARCH_LIMIT=50
 ```
 
 ---
