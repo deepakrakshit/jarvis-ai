@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-os"
-version = "3.0.0"
+version = "1.0.0"
 description = "JARVIS - Stateful Personal AI Operating System"
 readme = "README.md"
 requires-python = ">=3.10"

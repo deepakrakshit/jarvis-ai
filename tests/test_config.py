@@ -6,7 +6,7 @@ from jarvis.config import JarvisSettings, settings
 def test_settings_initialization() -> None:
     """Ensure settings are discovered and initialized properly."""
     assert settings.APP_NAME == "JARVIS"
-    assert settings.APP_VERSION == "3.0.0"
+    assert settings.APP_VERSION == "1.0.0"
     assert len(settings.ALLOWED_MODEL_FAMILIES) == 6
     assert "Gemini 3.8 Live" in settings.ALLOWED_MODEL_FAMILIES
     assert "GPT-OSS 120B" in settings.ALLOWED_MODEL_FAMILIES

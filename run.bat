@@ -5,6 +5,9 @@ title JARVIS Personal AI Operating System
 :: Change directory to current script root
 cd /d "%~dp0"
 
+:: Ensure src directory is always on PYTHONPATH
+set PYTHONPATH=%~dp0src;%PYTHONPATH%
+
 :: Resolve Python executable (prefer virtual environments if present, else system Python)
 set PYTHON_CMD=python
 if exist ".venv\Scripts\python.exe" (
@@ -16,7 +19,7 @@ if exist ".venv\Scripts\python.exe" (
 cls
 echo ================================================================
 echo             BOOTING JARVIS PERSONAL AI OPERATING SYSTEM
-echo                           Version 3.0.0
+echo                           Version 1.0.0
 echo ================================================================
 echo.
 echo Initializing Gemini 3.8 Live session, background gateway, and native nodes...

@@ -29,7 +29,7 @@ All messages exchanged over the WebSocket transport adhere to typed JSON envelop
 {
   "type": "connect",
   "client_id": "jarvis-desktop-ui",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "token": "optional-auth-token"
 }
 ```

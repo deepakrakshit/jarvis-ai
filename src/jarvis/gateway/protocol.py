@@ -96,7 +96,7 @@ def create_challenge_event(nonce: Optional[str] = None) -> EventFrame:
 def create_hello_ok_response(
     req_id: str,
     conn_id: str,
-    server_version: str = "3.0.0",
+    server_version: str = "1.0.0",
     supported_methods: Optional[List[str]] = None,
     supported_events: Optional[List[str]] = None,
 ) -> ResponseFrame:

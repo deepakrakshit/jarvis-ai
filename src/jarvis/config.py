@@ -37,7 +37,7 @@ class JarvisSettings(BaseSettings):
 
     # Identity & Voice
     APP_NAME: str = Field(default="JARVIS")
-    APP_VERSION: str = Field(default="3.0.0")
+    APP_VERSION: str = Field(default="1.0.0")
     ENVIRONMENT: str = Field(default="production")
     VOICE_DEFAULT_NAME: str = Field(default="Algenib")
 

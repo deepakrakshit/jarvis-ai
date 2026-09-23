@@ -295,7 +295,7 @@ class ControlPlane:
             else TaskClass.SIMPLE_TOOL
         )
         system_instruction = (
-            "You are JARVIS (version 3.0.0), a personal AI operating system. "
+            "You are JARVIS (version 1.0.0), a personal AI operating system. "
             "You are polite, precise, proactive, and razor-sharp. "
             "Address the user as Operator. Respond directly and concisely."
         )

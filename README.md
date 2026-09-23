@@ -347,8 +347,8 @@ python -m jarvis.cli chat --live --with-daemon
 # Run background gateway server only
 python -m jarvis.cli gateway --host 127.0.0.1 --port 8765
 
-# Perform system health check and dependency diagnostics
-python -m jarvis.cli doctor
+# Perform system health check and diagnostics
+python -m jarvis.cli status
 
 # Send a single autonomous instruction
 python -m jarvis.cli run "Open Notepad and type Hello World"
