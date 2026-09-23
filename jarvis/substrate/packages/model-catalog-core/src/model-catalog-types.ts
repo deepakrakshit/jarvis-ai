@@ -122,7 +122,7 @@ export function resolveOpenAIThinkingApi(api: unknown): string | undefined {
   if (typeof api !== "string") {
     return undefined;
   }
-  const sourceApi = api.replace(/^openclaw-(.+)-transport$/u, "$1");
+  const sourceApi = api.replace(/^jarvis-(.+)-transport$/u, "$1");
   return OPENAI_THINKING_APIS.has(sourceApi) ? sourceApi : undefined;
 }
 
@@ -284,7 +284,7 @@ export type ModelCatalogSuppression = {
 
 /** Raw model catalog manifest shape. */
 export type ModelCatalog = {
-  /** Publication-time opt-in: owned OpenClaw provider id -> models.dev provider id. */
+  /** Publication-time opt-in: owned JARVIS provider id -> models.dev provider id. */
   modelsDev?: Record<string, string>;
   providers?: Record<string, ModelCatalogProvider>;
   aliases?: Record<string, ModelCatalogAlias>;

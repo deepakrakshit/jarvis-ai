@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { ErrorCodes } from "../../../packages/gateway-protocol/src/schema/error-codes.js";
-import type { OpenClawPluginApi } from "../../plugins/plugin-api.types.js";
+import type { JarvisPluginApi } from "../../plugins/plugin-api.types.js";
 import type { TranscriptSourceProvider } from "../../transcripts/provider-types.js";
 import { createTestPluginApi } from "../plugin-test-api.js";
 import { createMeetingBrowserFixture, createMeetingLogger } from "./meeting-browser.js";
@@ -12,7 +12,7 @@ type GatewayHandler = (options: {
 }) => Promise<void>;
 
 type MeetingPluginFixtureOptions = {
-  plugin: { register(api: OpenClawPluginApi): void };
+  plugin: { register(api: JarvisPluginApi): void };
   id: string;
   name: string;
   url: string;
@@ -22,13 +22,13 @@ type MeetingPluginFixtureOptions = {
   toolName: string;
   nodeCommand: string;
   descriptor: NonNullable<
-    NonNullable<Parameters<OpenClawPluginApi["registerCli"]>[1]>["descriptors"]
+    NonNullable<Parameters<JarvisPluginApi["registerCli"]>[1]>["descriptors"]
   >[number];
   transcriptSource: { id: string; aliases: string[] };
 };
 
 export function createMeetingPluginFixture(options: MeetingPluginFixtureOptions) {
-  const createApi = (overrides: Partial<OpenClawPluginApi> = {}) =>
+  const createApi = (overrides: Partial<JarvisPluginApi> = {}) =>
     createTestPluginApi({
       id: options.id,
       name: options.name,
@@ -39,7 +39,7 @@ export function createMeetingPluginFixture(options: MeetingPluginFixtureOptions)
       pluginConfig: {},
       runtime: {
         gateway: { isAvailable: vi.fn(async () => false), request: vi.fn() },
-      } as unknown as OpenClawPluginApi["runtime"],
+      } as unknown as JarvisPluginApi["runtime"],
       logger: createMeetingLogger(),
       ...overrides,
     });
@@ -49,7 +49,7 @@ export function createMeetingPluginFixture(options: MeetingPluginFixtureOptions)
     options.plugin.register(
       createApi({
         pluginConfig: { defaultMode: "transcribe", chrome: { waitForInCallMs: 1 } },
-        runtime: { gateway: browser.runtime.gateway } as OpenClawPluginApi["runtime"],
+        runtime: { gateway: browser.runtime.gateway } as JarvisPluginApi["runtime"],
         registerGatewayMethod: (method, handler) => methods.set(method, handler as GatewayHandler),
       }),
     );
@@ -94,7 +94,7 @@ export function defineMeetingPluginSurfaceTests(
   it("registers the bounded gateway, tool, CLI, and node surfaces", () => {
     const methods = new Map<string, unknown>();
     const tools: Array<Record<string, unknown>> = [];
-    const cli: Array<Parameters<OpenClawPluginApi["registerCli"]>[1]> = [];
+    const cli: Array<Parameters<JarvisPluginApi["registerCli"]>[1]> = [];
     const nodeCommands: unknown[] = [];
     const policies: unknown[] = [];
     const transcriptProviders: TranscriptSourceProvider[] = [];

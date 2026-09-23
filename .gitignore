@@ -34,7 +34,7 @@ build/
 *.egg-info/
 
 # External Substrate & Build Output
-OpenClaw/
+secret/
 node_modules/
 .pnpm-store/
 

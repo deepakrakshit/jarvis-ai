@@ -1,7 +1,7 @@
 import { asOptionalRecord, isRecord } from "@jarvis/normalization-core/record-coerce";
 import type { AssistantMessage } from "../llm/types.js";
 
-export const ASSISTANT_DISPLAY_CONTENT_FIELD = "openclawDisplayContent";
+export const ASSISTANT_DISPLAY_CONTENT_FIELD = "jarvisDisplayContent";
 
 type AssistantModelContentBlock = AssistantMessage["content"][number];
 

@@ -13,21 +13,21 @@ export {
 } from "../infra/sqlite-worker-store.js";
 export { requestSqliteWorkerOperationAdmission } from "../infra/sqlite-worker-operation-admission.js";
 export {
-  openOpenClawAgentSqliteWorkerStore,
-  type OpenClawAgentSqliteWorkerStore,
-} from "../state/openclaw-agent-worker-store.js";
+  openJARVISAgentSqliteWorkerStore,
+  type JARVISAgentSqliteWorkerStore,
+} from "../state/jarvis-agent-worker-store.js";
 
 export {
-  borrowOpenClawAgentDatabase,
-  ensureOpenClawAgentDatabaseSchema,
-  openOpenClawAgentDatabase,
-  resolveOpenClawAgentSqlitePath,
-  withOpenClawAgentDatabaseAsync,
-} from "../state/openclaw-agent-db.js";
-export { withOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
-export { withOpenClawAgentDatabaseWrite } from "../state/openclaw-agent-db-write.js";
-export { assertOpenClawAgentDatabaseForMaintenance } from "../state/openclaw-agent-db-maintenance.js";
-export { ensureOpenClawAgentStandingIntentsSchema } from "../state/openclaw-agent-standing-intents-schema.js";
+  borrowJARVISAgentDatabase,
+  ensureJARVISAgentDatabaseSchema,
+  openJARVISAgentDatabase,
+  resolveJARVISAgentSqlitePath,
+  withJARVISAgentDatabaseAsync,
+} from "../state/jarvis-agent-db.js";
+export { withJARVISAgentDatabaseReadOnly } from "../state/jarvis-agent-db-readonly.js";
+export { withJARVISAgentDatabaseWrite } from "../state/jarvis-agent-db-write.js";
+export { assertJARVISAgentDatabaseForMaintenance } from "../state/jarvis-agent-db-maintenance.js";
+export { ensureJARVISAgentStandingIntentsSchema } from "../state/jarvis-agent-standing-intents-schema.js";
 export {
   compileSqliteQueryBindings,
   enableNodeSqliteKyselyStatementCache,
@@ -48,4 +48,4 @@ export {
   runSqliteImmediateTransaction,
   runSqliteImmediateTransactionSync,
 } from "../infra/sqlite-transaction.js";
-export { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
+export { tableExists } from "../state/jarvis-state-db-schema-helpers.js";

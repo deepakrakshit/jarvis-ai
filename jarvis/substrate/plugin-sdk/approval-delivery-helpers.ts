@@ -12,7 +12,7 @@ import {
   type NativeApprovalTarget,
 } from "./approval-native-helpers.js";
 import type { ChannelApprovalCapability } from "./channel-contract.js";
-import type { OpenClawConfig } from "./config-runtime.js";
+import type { JarvisConfig } from "./config-runtime.js";
 import { normalizeMessageChannel } from "./routing.js";
 import { normalizeOptionalString } from "./string-coerce-runtime.js";
 
@@ -29,7 +29,7 @@ type ChannelApprovalCapabilitySurfaces = Pick<
 
 type ApprovalAdapterParams = {
   /** Full config used to inspect channel approval settings. */
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   /** Optional channel account id for account-scoped approval settings. */
   accountId?: string | null;
   /** Actor attempting the approval action. */
@@ -38,7 +38,7 @@ type ApprovalAdapterParams = {
 
 type DeliverySuppressionParams = {
   /** Full config used to inspect native approval delivery settings. */
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   /** Approval kind being delivered. */
   approvalKind: ChannelApprovalKind;
   /** Forwarding fallback target under consideration. */
@@ -62,7 +62,7 @@ type ApproverRestrictedNativeApprovalCommonParams = {
 
 type ApproverRestrictedNativeApprovalFlatParams = {
   /** Lists configured account ids so DM-route availability can scan every account. */
-  listAccountIds: (cfg: OpenClawConfig) => string[];
+  listAccountIds: (cfg: JarvisConfig) => string[];
   /** Whether an account has approvers configured. */
   hasApprovers: (params: ApprovalAdapterParams) => boolean;
   /** Whether a sender can approve exec approvals for this account. */
@@ -70,10 +70,10 @@ type ApproverRestrictedNativeApprovalFlatParams = {
   /** Optional plugin approval authorization hook; defaults to exec authorization. */
   isPluginAuthorizedSender?: (params: ApprovalAdapterParams) => boolean;
   /** Whether native approval delivery is enabled for an account. */
-  isNativeDeliveryEnabled: (params: { cfg: OpenClawConfig; accountId?: string | null }) => boolean;
+  isNativeDeliveryEnabled: (params: { cfg: JarvisConfig; accountId?: string | null }) => boolean;
   /** Native delivery target preference for an account. */
   resolveNativeDeliveryMode: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) => NativeApprovalDeliveryMode;
   /** Requires the approval request's original turn channel to match this channel before suppression. */
@@ -82,14 +82,14 @@ type ApproverRestrictedNativeApprovalFlatParams = {
   resolveSuppressionAccountId?: (params: DeliverySuppressionParams) => string | undefined;
   /** Resolves the original channel target for native approval delivery. */
   resolveOriginTarget?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     approvalKind: ChannelApprovalKind;
     request: NativeApprovalRequest;
   }) => NativeApprovalTarget | null | Promise<NativeApprovalTarget | null>;
   /** Resolves approver DM targets for native approval delivery. */
   resolveApproverDmTargets?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     approvalKind: ChannelApprovalKind;
     request: NativeApprovalRequest;
@@ -130,21 +130,21 @@ type StandardNativeApprovalRoutingParams = {
   /** Default forwarding mode when top-level approval config omits one. */
   defaultForwardingMode: "session" | "targets" | "both";
   /** Whether the channel transport is available for an account. */
-  isTransportEnabled: (params: { cfg: OpenClawConfig; accountId?: string | null }) => boolean;
+  isTransportEnabled: (params: { cfg: JarvisConfig; accountId?: string | null }) => boolean;
   /** Lists channel account ids for route and DM availability checks. */
-  listAccountIds: (cfg: OpenClawConfig) => readonly string[];
+  listAccountIds: (cfg: JarvisConfig) => readonly string[];
   /** Resolves the channel's default account id. */
-  resolveDefaultAccountId: (cfg: OpenClawConfig) => string;
+  resolveDefaultAccountId: (cfg: JarvisConfig) => string;
   /** Normalizes a channel-local messaging destination. */
   normalizeTo: (to: string) => string | null | undefined;
   /** Resolves configured native approval recipients. */
   resolveApprovers: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) => readonly string[];
   /** Optional origin safety gate, such as requiring approvers for group conversations. */
   isOriginTargetAllowed?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     approvalKind?: ChannelApprovalKind;
     request: NativeApprovalRequest;
@@ -284,14 +284,14 @@ function buildApproverRestrictedNativeApprovalCapability(
     cfg,
     accountId,
   }: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) => params.hasApprovers({ cfg, accountId });
   const isExecInitiatingSurfaceEnabled = ({
     cfg,
     accountId,
   }: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) =>
     hasConfiguredApprovers({ cfg, accountId }) &&
@@ -300,7 +300,7 @@ function buildApproverRestrictedNativeApprovalCapability(
     cfg,
     accountId,
   }: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     action: "approve";
   }) => availabilityState(isExecInitiatingSurfaceEnabled({ cfg, accountId }));
@@ -312,7 +312,7 @@ function buildApproverRestrictedNativeApprovalCapability(
       senderId,
       approvalKind,
     }: {
-      cfg: OpenClawConfig;
+      cfg: JarvisConfig;
       accountId?: string | null;
       senderId?: string | null;
       action: "approve";
@@ -333,7 +333,7 @@ function buildApproverRestrictedNativeApprovalCapability(
       cfg,
       accountId,
     }: {
-      cfg: OpenClawConfig;
+      cfg: JarvisConfig;
       accountId?: string | null;
       action: "approve";
       approvalKind?: ChannelApprovalKind;
@@ -342,7 +342,7 @@ function buildApproverRestrictedNativeApprovalCapability(
     describeExecApprovalSetup: params.describeExecApprovalSetup,
     describePluginApprovalSetup: params.describePluginApprovalSetup,
     delivery: {
-      hasConfiguredDmRoute: ({ cfg }: { cfg: OpenClawConfig }) =>
+      hasConfiguredDmRoute: ({ cfg }: { cfg: JarvisConfig }) =>
         params.listAccountIds(cfg).some((accountId) => {
           if (!hasConfiguredApprovers({ cfg, accountId })) {
             return false;
@@ -383,7 +383,7 @@ function buildApproverRestrictedNativeApprovalCapability(
               cfg,
               accountId,
             }: {
-              cfg: OpenClawConfig;
+              cfg: JarvisConfig;
               accountId?: string | null;
               approvalKind: ChannelApprovalKind;
               request: NativeApprovalRequest;

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { normalizeProviderId } from "@jarvis/model-catalog-core/provider-id";
 import { resolveTimerTimeoutMs } from "@jarvis/normalization-core/number-coercion";
 import { ensureAuthProfileStore } from "../agents/auth-profiles/store-runtime.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { JarvisConfig } from "../config/config.js";
 import { startOAuthLoopbackCallbackServer } from "../infra/oauth-loopback-callback.js";
 import { escapeHtml } from "../shared/html-escape.js";
 
@@ -79,7 +79,7 @@ export type ProviderAuthProfileMetadata = {
 
 export function resolveProviderAuthProfileMetadata(params: {
   provider: string;
-  cfg?: OpenClawConfig;
+  cfg?: JarvisConfig;
   profileId?: string;
   agentDir?: string;
 }): ProviderAuthProfileMetadata {
@@ -236,7 +236,7 @@ export async function waitForLocalOAuthCallback(params: {
       body:
         "<!doctype html><html><head><meta charset='utf-8'/></head>" +
         `<body><h2>${escapedSuccessTitle}</h2>` +
-        "<p>You can close this window and return to OpenClaw.</p></body></html>",
+        "<p>You can close this window and return to JARVIS.</p></body></html>",
       contentType: "text/html; charset=utf-8",
     }),
   });

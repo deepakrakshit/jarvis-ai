@@ -12,7 +12,7 @@ export { resolveUserPath };
 
 /** Keep effective-home expansion at the memory-host boundary, before state selection. */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env.OPENCLAW_STATE_DIR?.trim();
+  const override = env.JARVIS_STATE_DIR?.trim();
   if (override) {
     return resolveUserPath(override, env);
   }
@@ -22,11 +22,11 @@ export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
 
 /** Preserve memory-host override expansion without re-expanding an effective home. */
 export function resolveDefaultAgentWorkspaceDir(env: NodeJS.ProcessEnv): string {
-  const workspaceDir = env.OPENCLAW_WORKSPACE_DIR?.trim();
+  const workspaceDir = env.JARVIS_WORKSPACE_DIR?.trim();
   if (workspaceDir) {
     return resolveUserPath(workspaceDir, env);
   }
-  if (env.OPENCLAW_STATE_DIR?.trim()) {
+  if (env.JARVIS_STATE_DIR?.trim()) {
     return path.join(resolveStateDir(env), "workspace");
   }
   return resolveCoreDefaultAgentWorkspaceDir(env);

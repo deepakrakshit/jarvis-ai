@@ -17,7 +17,7 @@ export {
   listSessionEntriesReadOnly,
 } from "../../../../src/config/sessions/session-accessor.js";
 export { isIncognitoSessionKey } from "../../../../src/routing/session-key.js";
-export { isIncognitoOpenClawAgentSqlitePath } from "../../../../src/state/openclaw-agent-db.paths.js";
+export { isIncognitoJARVISAgentSqlitePath } from "../../../../src/state/jarvis-agent-db.paths.js";
 export { cloneEnvWithPlatformSemantics } from "../../../../src/config/config-env-vars.js";
 
 /** Keep worker launch machinery behind the memory host's existing lazy runtime bridge. */

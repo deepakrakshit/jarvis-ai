@@ -47,7 +47,7 @@ export function resolveEffectiveHomeDir(
   homedir: () => string = os.homedir,
   options?: { preserveUnresolvedTilde?: boolean },
 ): string | undefined {
-  const explicitHome = normalizeHomeDirValue(env.OPENCLAW_HOME);
+  const explicitHome = normalizeHomeDirValue(env.JARVIS_HOME);
   if (!explicitHome) {
     return resolveOsHomeDir(env, homedir);
   }

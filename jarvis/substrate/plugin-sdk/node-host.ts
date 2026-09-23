@@ -9,7 +9,7 @@ export {
   type NodePtyResumeParams,
 } from "../node-host/pty-command.js";
 export { validateClaudeSessionId } from "../node-host/invoke-agent-cli-claude-params.js";
-export type { OpenClawPluginNodeHostCommandIo } from "../plugins/types.js";
+export type { JARVISPluginNodeHostCommandIo } from "../plugins/types.js";
 
 /** Resolve a node-host executable using the selected PATH source policy. */
 export function resolveNodeHostExecutable(

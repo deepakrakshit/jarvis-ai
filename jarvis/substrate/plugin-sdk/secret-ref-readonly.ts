@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../config/config.js";
+import type { JarvisConfig } from "../config/config.js";
 import { resolveSecretInputString } from "../config/types.secrets.js";
 import { canResolveEnvSecretRefInReadOnlyPath } from "./secret-ref-readonly.internal.js";
 
@@ -13,7 +13,7 @@ export type ReadOnlyEnvSecretRefResolution =
 export function resolveReadOnlyEnvSecretRef(params: {
   value: unknown;
   path: string;
-  cfg?: OpenClawConfig;
+  cfg?: JarvisConfig;
   expectedEnvId: string;
   normalizeValue: (value: unknown) => string | undefined;
 }): ReadOnlyEnvSecretRefResolution {

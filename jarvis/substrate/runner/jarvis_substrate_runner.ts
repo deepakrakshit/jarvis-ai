@@ -1,6 +1,6 @@
 /**
- * JARVIS OpenClaw Substrate Runner
- * Executes actual OpenClaw CUA modules directly in Node.js runtime.
+ * JARVIS Substrate Runner
+ * Executes native CUA automation modules directly in Node.js runtime.
  */
 import { randomUUID } from "node:crypto";
 import { exec, execFile, spawn } from "node:child_process";
@@ -74,7 +74,7 @@ ${pyCode}
   });
 }
 
-class OpenClawWindowsDriverSession implements CuaDriverSession {
+class JarvisWindowsDriverSession implements CuaDriverSession {
   readonly generation = randomUUID();
 
   isAvailable(): boolean {
@@ -397,12 +397,12 @@ else:
 }
 
 
-export class OpenClawSubstrateRunner {
-  private readonly driver: OpenClawWindowsDriverSession;
+export class JarvisSubstrateRunner {
+  private readonly driver: JarvisWindowsDriverSession;
   private readonly frameState: CuaFrameState;
 
   constructor() {
-    this.driver = new OpenClawWindowsDriverSession();
+    this.driver = new JarvisWindowsDriverSession();
     this.frameState = { generation: this.driver.generation };
   }
 
@@ -669,7 +669,7 @@ except Exception as e:
 
 // Daemon / IPC Entry Point
 export async function runDaemon() {
-  const runner = new OpenClawSubstrateRunner();
+  const runner = new JarvisSubstrateRunner();
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -714,7 +714,7 @@ export async function runDaemon() {
 }
 
 // One-shot CLI invocation support
-if (process.argv[1]?.endsWith("openclaw_substrate_runner.ts") || process.argv[1]?.endsWith("openclaw_substrate_runner.js")) {
+if (process.argv[1]?.endsWith("jarvis_substrate_runner.ts") || process.argv[1]?.endsWith("jarvis_substrate_runner.js")) {
   const isDaemon = process.argv.includes("--daemon");
   if (isDaemon) {
     runDaemon();
@@ -724,7 +724,7 @@ if (process.argv[1]?.endsWith("openclaw_substrate_runner.ts") || process.argv[1]
     const method = methodIdx !== -1 ? process.argv[methodIdx + 1] : "capabilities";
     const params = paramsIdx !== -1 ? JSON.parse(process.argv[paramsIdx + 1] || "{}") : {};
 
-    const runner = new OpenClawSubstrateRunner();
+    const runner = new JarvisSubstrateRunner();
     (async () => {
       try {
         let result: unknown;

@@ -3,7 +3,7 @@ import type { ChannelApprovalKind } from "../../infra/approval-types.js";
 import type { ExecApprovalRequest } from "../../infra/exec-approvals.js";
 import type { PluginApprovalRequest } from "../../infra/plugin-approvals.js";
 import type { ChannelApprovalCapability, ChannelOutboundPayloadHint } from "../channel-contract.js";
-import type { OpenClawConfig } from "../config-contracts.js";
+import type { JarvisConfig } from "../config-contracts.js";
 import type { ReplyPayload } from "../reply-runtime.js";
 
 type ApprovalTestConfig = {
@@ -13,9 +13,9 @@ type ApprovalTestConfig = {
     defaultAccount?: string;
     accounts?: Record<string, { enabled?: boolean }>;
   };
-  approvals?: OpenClawConfig["approvals"];
+  approvals?: JarvisConfig["approvals"];
 };
-type ApprovalConfigBuilder = (params?: ApprovalTestConfig) => OpenClawConfig;
+type ApprovalConfigBuilder = (params?: ApprovalTestConfig) => JarvisConfig;
 type ApprovalRequest = ExecApprovalRequest | PluginApprovalRequest;
 type ForwardingParams = Parameters<
   NonNullable<
@@ -80,7 +80,7 @@ export function createNativeApprovalTestFixture(params: {
     });
   }
   function getAvailability(
-    cfg: OpenClawConfig,
+    cfg: JarvisConfig,
     accountId = "default",
     approvalKind: ChannelApprovalKind = "exec",
   ) {
@@ -92,7 +92,7 @@ export function createNativeApprovalTestFixture(params: {
     });
   }
   function describeDelivery(
-    cfg: OpenClawConfig,
+    cfg: JarvisConfig,
     request: ApprovalRequest,
     approvalKind: ChannelApprovalKind = "exec",
   ) {
@@ -104,7 +104,7 @@ export function createNativeApprovalTestFixture(params: {
     });
   }
   function nativeShouldHandle(input: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     approvalKind: ChannelApprovalKind;
     request: ApprovalRequest;
     accountId?: string | null;
@@ -115,7 +115,7 @@ export function createNativeApprovalTestFixture(params: {
       context: {},
     });
   }
-  function resolveExecOrigin(cfg: OpenClawConfig, request: ExecApprovalRequest) {
+  function resolveExecOrigin(cfg: JarvisConfig, request: ExecApprovalRequest) {
     return capability.native?.resolveOriginTarget?.({
       cfg,
       accountId: "default",
@@ -126,7 +126,7 @@ export function createNativeApprovalTestFixture(params: {
   function suppressForwardingFallback(input: ForwardingParams) {
     return capability.delivery?.shouldSuppressForwardingFallback?.(input);
   }
-  function suppressTargetForwarding(cfg: OpenClawConfig, to: string, request = buildExecRequest()) {
+  function suppressTargetForwarding(cfg: JarvisConfig, to: string, request = buildExecRequest()) {
     return suppressForwardingFallback({
       cfg,
       approvalKind: "exec",
@@ -297,7 +297,7 @@ export function createNativeApprovalTestFixture(params: {
 }
 
 type LocalSuppressionParams = {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
   payload: ReplyPayload;
   hint?: ChannelOutboundPayloadHint;
@@ -338,7 +338,7 @@ export function createLocalApprovalPromptTestFixture(params: {
     return params.suppress({ ...input, hint: input.hint ?? activeExecHint });
   }
   function suppressLocalSessionPrompt(
-    cfg: OpenClawConfig,
+    cfg: JarvisConfig,
     sessionKey: string,
     input: { accountId?: string; agentId?: string | null } = {},
   ) {

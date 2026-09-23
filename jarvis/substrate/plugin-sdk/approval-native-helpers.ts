@@ -25,7 +25,7 @@ import type { SystemAgentApprovalRequest } from "../infra/system-agent-approvals
 import { normalizeAccountId } from "../routing/session-key.js";
 import type { ChannelApprovalCapability, ChannelOutboundPayloadHint } from "./channel-contract.js";
 import { channelRouteTargetsMatchExact } from "./channel-route.js";
-import type { OpenClawConfig } from "./config-runtime.js";
+import type { JarvisConfig } from "./config-runtime.js";
 import type { ReplyPayload } from "./reply-payload.js";
 
 type ApprovalRequest = ExecApprovalRequest | PluginApprovalRequest | SystemAgentApprovalRequest;
@@ -44,27 +44,27 @@ type LocalNativeExecApprovalConfig = {
 type ChannelApprovalForwardTarget = DeliverySuppressionInput["target"];
 
 type ApprovalResolverParams = {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
   approvalKind?: ChannelApprovalKind;
   request: ApprovalRequest;
 };
 
 type ApprovalTransportChecker = (params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
 }) => boolean;
 type ApprovalForwardingModeResolver = (
   config: ExecApprovalForwardingConfig,
 ) => ExecApprovalForwardingMode;
 type ApprovalForwardingTargetMatcher = (params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   config: ExecApprovalForwardingConfig;
   accountId?: string | null;
   target?: ChannelApprovalForwardTarget;
 }) => boolean;
 type ApprovalOriginOrSessionTargetChecker = (params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
   request: ApprovalRequest;
 }) => boolean;
@@ -72,7 +72,7 @@ type ApprovalOriginOrSessionTargetChecker = (params: {
 /** Inputs for checking whether one approval request can use session-native forwarding. */
 export type ChannelApprovalForwardingEligibilityParams = {
   /** Full config containing exec/plugin approval forwarding settings. */
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   /** Optional channel account id for account-scoped transport checks. */
   accountId?: string | null;
   /** Approval family whose forwarding config should be evaluated. */
@@ -84,7 +84,7 @@ export type ChannelApprovalForwardingEligibilityParams = {
 /** Inputs for checking whether approval forwarding is configured for a channel route. */
 export type ChannelApprovalPotentialRouteParams = {
   /** Full config containing exec/plugin approval forwarding settings. */
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   /** Optional channel account id for account-scoped transport checks. */
   accountId?: string | null;
   /** Approval family whose forwarding config should be evaluated. */
@@ -136,9 +136,9 @@ type NativeApprovalForwardingFallbackSuppressorParams<TTarget extends NativeAppr
 type NativeApprovalChannelRouteGateParams<TTarget extends NativeApprovalTarget> = {
   channel: string;
   defaultForwardingMode: ExecApprovalForwardingMode;
-  isTransportEnabled: (params: { cfg: OpenClawConfig; accountId?: string | null }) => boolean;
-  listAccountIds: (cfg: OpenClawConfig) => readonly string[];
-  resolveDefaultAccountId: (cfg: OpenClawConfig) => string;
+  isTransportEnabled: (params: { cfg: JarvisConfig; accountId?: string | null }) => boolean;
+  listAccountIds: (cfg: JarvisConfig) => readonly string[];
+  resolveDefaultAccountId: (cfg: JarvisConfig) => string;
   normalizeForwardTarget: (target: NativeApprovalForwardTarget) => TTarget | null;
   resolveTurnSourceTarget: (request: ApprovalRequest) => TTarget | null;
   targetsMatch?: (left: TTarget, right: TTarget) => boolean;
@@ -147,12 +147,12 @@ type NativeApprovalChannelRouteGateParams<TTarget extends NativeApprovalTarget> 
 type NativeApprovalChannelRouteGates = {
   canApprovalPotentiallyRouteToChannel: (params: ChannelApprovalPotentialRouteParams) => boolean;
   canAnyApprovalPotentiallyRouteToChannel: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     nativeSessionOnly?: boolean;
   }) => boolean;
   isNativeApprovalHandlerConfigured: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) => boolean;
   isSessionApprovalEligible: (params: ChannelApprovalForwardingEligibilityParams) => boolean;
@@ -289,7 +289,7 @@ export function nativeApprovalTargetsMatch(params: {
 /** Decide whether a channel-native exec approval route replaces the local text prompt. */
 export function shouldSuppressLocalNativeExecApprovalPrompt(params: {
   /** Full config containing top-level or channel-specific approval settings. */
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   /** Optional channel account id for account-scoped native delivery checks. */
   accountId?: string | null;
   /** Reply payload that may already contain exec approval metadata. */
@@ -297,12 +297,12 @@ export function shouldSuppressLocalNativeExecApprovalPrompt(params: {
   /** Outbound payload hint proving an active native exec approval route. */
   hint?: ChannelOutboundPayloadHint;
   /** Legacy transport gate for native delivery. */
-  isTransportEnabled?: (params: { cfg: OpenClawConfig; accountId?: string | null }) => boolean;
+  isTransportEnabled?: (params: { cfg: JarvisConfig; accountId?: string | null }) => boolean;
   /** Preferred transport gate for native delivery. */
-  isNativeDeliveryEnabled?: (params: { cfg: OpenClawConfig; accountId?: string | null }) => boolean;
+  isNativeDeliveryEnabled?: (params: { cfg: JarvisConfig; accountId?: string | null }) => boolean;
   /** Optional channel-specific approval config resolver. */
   resolveApprovalConfig?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     metadata: ExecApprovalReplyMetadata;
   }) => LocalNativeExecApprovalConfig | undefined;
@@ -312,7 +312,7 @@ export function shouldSuppressLocalNativeExecApprovalPrompt(params: {
   enforceForwardingMode?: boolean;
   /** Optional session-route gate for the approval metadata. */
   isSessionRouteEligible?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     metadata: ExecApprovalReplyMetadata;
   }) => boolean;
@@ -402,7 +402,7 @@ export function resolveApprovalKind(
 }
 
 function resolveApprovalForwardingConfig(params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   approvalKind: ChannelApprovalKind;
 }): ExecApprovalForwardingConfig | undefined {
   return params.approvalKind === "plugin"
@@ -541,7 +541,7 @@ export function createNativeApprovalChannelRouteGates<TTarget extends NativeAppr
       nativeApprovalTargetsMatch({ channel: params.channel, left, right }));
 
   const targetAccountMatchesChannelAccount = (input: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     targetAccountId?: string | null;
     accountId?: string | null;
   }): boolean => {
@@ -559,7 +559,7 @@ export function createNativeApprovalChannelRouteGates<TTarget extends NativeAppr
   };
 
   const hasMatchingChannelTarget = (input: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     config: ExecApprovalForwardingConfig;
     accountId?: string | null;
     target?: NativeApprovalForwardTarget;
@@ -587,7 +587,7 @@ export function createNativeApprovalChannelRouteGates<TTarget extends NativeAppr
   };
 
   const hasChannelOriginOrSessionTarget = (input: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     request: ApprovalRequest;
   }): boolean => {
@@ -621,7 +621,7 @@ export function createNativeApprovalChannelRouteGates<TTarget extends NativeAppr
   };
 
   const canAnyApprovalPotentiallyRouteToChannel = (input: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     nativeSessionOnly?: boolean;
   }): boolean =>
@@ -863,7 +863,7 @@ export function createChannelApproverDmTargetResolver<
   shouldHandleRequest?: (params: ApprovalResolverParams) => boolean;
   /** Resolves approver records from config and optional account scope. */
   resolveApprovers: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
   }) => readonly TApprover[];
   /** Maps one approver record to a native DM target; nullish results are skipped. */

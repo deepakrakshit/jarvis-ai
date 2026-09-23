@@ -189,7 +189,7 @@ function createClient(binaryPath: string, socketPath: string, env: NodeJS.Proces
           CUA_DRIVER_RS_TELEMETRY_ENABLED: "false",
           CUA_DRIVER_RS_UPDATE_CHECK: "false",
         },
-        clientInfo: { name: "openclaw-cua-computer", version: "1" },
+        clientInfo: { name: "jarvis-cua-computer", version: "1" },
         protocolVersion: MCP_PROTOCOL_VERSION,
         startupTimeoutMs: MCP_STARTUP_TIMEOUT_MS,
         maxPendingRequests: MAX_PENDING_REQUESTS,
@@ -252,7 +252,7 @@ function sessionState(value: CuaToolResult): import("@trycua/cua-driver").Sessio
 
 class McpCuaDriverSession implements CuaDriverSession {
   readonly generation = randomUUID();
-  private readonly publicSession = `openclaw-${randomUUID()}`;
+  private readonly publicSession = `jarvis-${randomUUID()}`;
   private startPromise: Promise<void> | undefined;
   private started = false;
   private disposed = false;

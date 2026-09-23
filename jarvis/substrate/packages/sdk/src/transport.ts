@@ -1,10 +1,10 @@
 import { GatewayClient, type GatewayClientOptions } from "@jarvis/gateway-client";
 import { EventHub } from "./event-hub.js";
 import type {
-  ConnectableOpenClawTransport,
+  ConnectableJARVISTransport,
   GatewayEvent,
   GatewayRequestOptions,
-  OpenClawTransport,
+  JARVISTransport,
 } from "./types.js";
 
 // Gateway transport adapter that converts the lower-level GatewayClient into the
@@ -64,7 +64,7 @@ function toGatewayEvent(event: unknown): GatewayEvent {
 }
 
 /** Connectable SDK transport backed by @jarvis/gateway-client. */
-export class GatewayClientTransport implements ConnectableOpenClawTransport {
+export class GatewayClientTransport implements ConnectableJARVISTransport {
   private readonly eventsHub = new EventHub<GatewayEvent>({
     replayLimit: RAW_EVENT_REPLAY_LIMIT,
   });
@@ -181,7 +181,7 @@ export class GatewayClientTransport implements ConnectableOpenClawTransport {
 
 /** Narrow an SDK transport to one that supports explicit connect. */
 export function isConnectableTransport(
-  transport: OpenClawTransport,
-): transport is ConnectableOpenClawTransport {
+  transport: JARVISTransport,
+): transport is ConnectableJARVISTransport {
   return typeof (transport as { connect?: unknown }).connect === "function";
 }

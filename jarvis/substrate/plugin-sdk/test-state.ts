@@ -1,6 +1,6 @@
-// Test-state exports provide isolated OpenClaw filesystem and environment fixtures.
+// Test-state exports provide isolated JARVIS filesystem and environment fixtures.
 export {
-  createOpenClawTestState,
-  withOpenClawTestState,
-  type OpenClawTestState,
-} from "../test-utils/openclaw-test-state.js";
+  createJARVISTestState,
+  withJARVISTestState,
+  type JARVISTestState,
+} from "../test-utils/jarvis-test-state.js";

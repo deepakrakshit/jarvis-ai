@@ -37,7 +37,7 @@ import type {
   SessionTranscriptDeliveryMirror,
   SessionTranscriptUpdateMode,
 } from "../config/sessions/transcript.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { extractAssistantPhaseText } from "../shared/chat-message-content.js";
 import type { AgentMessage } from "./agent-core.js";
@@ -90,7 +90,7 @@ export type SessionTranscriptTargetParams = SessionTranscriptReadParams;
 /** Persists a successful yield's private context through the admitted session writer. */
 export async function appendSessionYieldContext(
   params: SessionTranscriptTargetParams & {
-    config?: OpenClawConfig;
+    config?: JarvisConfig;
     message: string;
     assertCurrent: () => void;
   },
@@ -191,7 +191,7 @@ export type SessionTranscriptStrictMessageAppendResult<TMessage> =
   | { kind: "rejected"; reason: "session-rebound" };
 
 export type SessionTranscriptAssistantMirrorAppendParams = SessionTranscriptReadParams & {
-  config?: OpenClawConfig;
+  config?: JarvisConfig;
   deliveryMirror?: SessionTranscriptDeliveryMirror;
   expectedLifecycleRevision?: string;
   expectedWriterRunId?: string;
@@ -390,7 +390,7 @@ export async function appendAssistantMirrorMessageByIdentity(
       if (facts.existingIdempotencyKeys.has(key)) {
         // Keep the writer's original correlation while normal append still checks the payload.
         const stored = facts.messagesByIdempotencyKey.get(key);
-        const marker = isRecord(stored) ? stored.openclawDeliveryMirror : undefined;
+        const marker = isRecord(stored) ? stored.jarvisDeliveryMirror : undefined;
         if (isRecord(marker) && typeof marker.sourceAssistantMessageId === "string") {
           sourceAssistantMessageId = marker.sourceAssistantMessageId;
         }
@@ -417,7 +417,7 @@ export async function appendAssistantMirrorMessageByIdentity(
       }
       const correlatedMessage = {
         ...message,
-        openclawDeliveryMirror: {
+        jarvisDeliveryMirror: {
           kind: "channel-final",
           ...(params.deliveryMirror.sourceMessageId !== undefined
             ? { sourceMessageId: params.deliveryMirror.sourceMessageId }
@@ -451,7 +451,7 @@ export async function appendAssistantMirrorMessageByIdentity(
 
 /**
  * Appends an already-canonical transcript message by scoped transcript target.
- * Media-bearing user turns use ordered `message.__openclaw.media` facts; this
+ * Media-bearing user turns use ordered `message.__jarvis.media` facts; this
  * low-level API does not infer deprecated top-level Media* projections.
  */
 export async function appendSessionTranscriptMessageByIdentity<TMessage>(
@@ -543,7 +543,7 @@ function createAssistantMirrorMessage(params: {
     role: "assistant",
     content: [{ type: "text", text: params.text }],
     api: "openai-responses",
-    provider: "openclaw",
+    provider: "jarvis",
     model: "delivery-mirror",
     usage: {
       input: 0,
@@ -558,7 +558,7 @@ function createAssistantMirrorMessage(params: {
     ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
     ...(params.deliveryMirror
       ? {
-          openclawDeliveryMirror: {
+          jarvisDeliveryMirror: {
             kind: params.deliveryMirror.kind,
             ...(params.deliveryMirror.sourceMessageId !== undefined
               ? { sourceMessageId: params.deliveryMirror.sourceMessageId }
@@ -575,7 +575,7 @@ function createAssistantMirrorMessage(params: {
 function findLatestEquivalentAssistantMessageId(
   events: readonly SessionTranscriptEvent[],
   message: SessionTranscriptAssistantMessage,
-  config: OpenClawConfig | undefined,
+  config: JarvisConfig | undefined,
   excludeDeliveryMirrors = false,
 ): string | undefined {
   const expectedText = extractAssistantMirrorComparableText(message, config);
@@ -609,7 +609,7 @@ function findLatestEquivalentAssistantMessageId(
 
 function extractAssistantMirrorComparableText(
   message: SessionTranscriptAssistantMessage,
-  config: OpenClawConfig | undefined,
+  config: JarvisConfig | undefined,
 ): string | undefined {
   const redacted = redactTranscriptMessage(
     message as Parameters<typeof redactTranscriptMessage>[0],
@@ -619,7 +619,7 @@ function extractAssistantMirrorComparableText(
 }
 
 function isDeliveryMirrorAssistantMessage(message: SessionTranscriptAssistantMessage): boolean {
-  return message.provider === "openclaw" && message.model === "delivery-mirror";
+  return message.provider === "jarvis" && message.model === "delivery-mirror";
 }
 
 function isAgentMessageRecord(value: unknown): value is AgentMessage & Record<string, unknown> {

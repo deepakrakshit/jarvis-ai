@@ -1,6 +1,6 @@
 """Playback Activity Tracker for Assistant Audio Output.
 
-Adapted from Section 4 of Voice Architecture (and OpenClaw output-activity-tracker):
+Adapted from Section 4 of Voice Architecture (and native output-activity-tracker):
 Tracks audio duration emitted by the model, distinguishes between generationFinished
 and playbackFinished, and ensures the microphone input gate remains closed until
 all speaker output has physically drained from hardware buffers and room acoustics settle.

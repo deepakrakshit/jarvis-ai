@@ -1,7 +1,7 @@
 import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
 import type { EmbeddingProviderOptions } from "./embeddings.types.js";
-import { requireApiKey, resolveApiKeyForProvider } from "./openclaw-runtime-auth.js";
-import type { SsrFPolicy } from "./openclaw-runtime-network.js";
+import { requireApiKey, resolveApiKeyForProvider } from "./jarvis-runtime-auth.js";
+import type { SsrFPolicy } from "./jarvis-runtime-network.js";
 import { buildRemoteBaseUrlPolicy } from "./remote-http.js";
 import { resolveMemorySecretInputString } from "./secret-input.js";
 
@@ -11,12 +11,12 @@ import { resolveMemorySecretInputString } from "./secret-input.js";
 export type RemoteEmbeddingProviderId = string;
 
 /** Attribution headers for native OpenAI embedding calls. */
-function resolveOpenClawAttributionHeaders(): Record<string, string> {
-  const version = typeof process !== "undefined" ? process.env.OPENCLAW_VERSION?.trim() : undefined;
+function resolveJARVISAttributionHeaders(): Record<string, string> {
+  const version = typeof process !== "undefined" ? process.env.JARVIS_VERSION?.trim() : undefined;
   return {
-    originator: "openclaw",
+    originator: "jarvis",
     ...(version ? { version } : {}),
-    "User-Agent": version ? `@jarvis/${version}` : "openclaw",
+    "User-Agent": version ? `@jarvis/${version}` : "jarvis",
   };
 }
 
@@ -137,7 +137,7 @@ export async function resolveRemoteEmbeddingBearerClient(params: {
   }
   entries.push(...headerOverrides.values());
   if (isNativeOpenAIEmbeddingRoute(params.provider, baseUrl)) {
-    entries.push(...Object.entries(resolveOpenClawAttributionHeaders()));
+    entries.push(...Object.entries(resolveJARVISAttributionHeaders()));
   }
   // Fetch joins duplicate names; retain only the last source, but preserve its
   // spelling so ordinary non-secret embedding cache identities stay unchanged.

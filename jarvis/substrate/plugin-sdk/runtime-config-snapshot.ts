@@ -13,4 +13,4 @@ export {
   getRuntimeConfig,
   getRuntimeConfigSourceSnapshot,
 } from "../config/io.js";
-export type { OpenClawConfig } from "../config/types.js";
+export type { JarvisConfig } from "../config/types.js";

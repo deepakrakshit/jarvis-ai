@@ -3,9 +3,9 @@
 export {
   configureSqliteConnectionPragmas,
   configureSqliteWalMaintenance,
-} from "./openclaw-runtime-io.js";
+} from "./jarvis-runtime-io.js";
 export type {
   SqliteConnectionPragmaOptions,
   SqliteWalMaintenance,
   SqliteWalMaintenanceOptions,
-} from "./openclaw-runtime-io.js";
+} from "./jarvis-runtime-io.js";

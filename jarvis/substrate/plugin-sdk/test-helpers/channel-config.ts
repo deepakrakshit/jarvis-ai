@@ -1,10 +1,10 @@
-import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { JarvisConfig } from "../../config/types.jarvis.js";
 
 /** Wrap schema-parsed channel data through the host config boundary without projecting fields. */
 export async function validateTestChannelConfig(
   channelId: string,
   channelConfig: unknown,
-): Promise<OpenClawConfig> {
+): Promise<JarvisConfig> {
   const { validateConfigObjectRaw } = await import("../../config/validation-core.js");
   const result = validateConfigObjectRaw({ channels: { [channelId]: channelConfig } });
   if (!result.ok) {

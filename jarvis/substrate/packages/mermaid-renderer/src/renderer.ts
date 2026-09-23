@@ -279,7 +279,7 @@ function createMermaidFrame(): MermaidFrame {
     loaded = true;
     // The frame has an opaque origin. Only this exact window receives the port;
     // all subsequent diagram data travels on that private channel.
-    frame.contentWindow?.postMessage({ type: "openclaw:mermaid-init" }, "*", [channel.port2]);
+    frame.contentWindow?.postMessage({ type: "jarvis:mermaid-init" }, "*", [channel.port2]);
   });
   frame.setAttribute("sandbox", "allow-scripts");
   frame.setAttribute("aria-hidden", "true");

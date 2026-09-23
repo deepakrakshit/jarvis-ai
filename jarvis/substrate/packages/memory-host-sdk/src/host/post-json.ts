@@ -1,4 +1,4 @@
-import { createProviderHttpError, type SsrFPolicy } from "./openclaw-runtime-network.js";
+import { createProviderHttpError, type SsrFPolicy } from "./jarvis-runtime-network.js";
 import { withRemoteHttpResponse } from "./remote-http.js";
 import { readResponseJsonWithLimit } from "./response-snippet.js";
 

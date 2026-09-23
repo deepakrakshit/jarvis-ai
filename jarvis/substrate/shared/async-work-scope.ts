@@ -4,12 +4,12 @@ import { resolveGlobalSingleton } from "./global-singleton.js";
 
 // Lazy runtime chunks share the context carrier, never the lifetime of its owners.
 const currentWorkScope = resolveGlobalSingleton(
-  Symbol.for("openclaw.asyncWorkScope"),
+  Symbol.for("jarvis.asyncWorkScope"),
   () => new AsyncLocalStorage<AsyncWorkScope>(),
 );
 const detachedAsyncContext = resolveGlobalSingleton(
-  Symbol.for("openclaw.detachedAsyncContext"),
-  () => new AsyncResource("openclaw.detached-async-context"),
+  Symbol.for("jarvis.detachedAsyncContext"),
+  () => new AsyncResource("jarvis.detached-async-context"),
 );
 
 /** Joins cooperating descendants even when their caller returns a cached value first. */

@@ -8,7 +8,7 @@ export {
   supportsNodeSqliteExtensionLoading,
 } from "../infra/node-sqlite.js";
 
-export { openOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly-open.js";
+export { openJARVISAgentDatabaseReadOnly } from "../state/jarvis-agent-db-readonly-open.js";
 export {
   cosineSimilarity,
   parseEmbedding,

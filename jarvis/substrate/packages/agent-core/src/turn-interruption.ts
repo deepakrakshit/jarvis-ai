@@ -54,7 +54,7 @@ export function isTurnHandoffAbort(signal: AbortSignal | undefined): boolean {
 export function createInterruptedTurnMessage(): AgentMessage {
   return {
     role: "custom",
-    customType: "openclaw:turn-aborted",
+    customType: "jarvis:turn-aborted",
     content: INTERRUPTED_TURN_GUIDANCE,
     display: false,
     timestamp: Date.now(),
@@ -73,7 +73,7 @@ export async function appendInterruptedTurnMessage(
 
 export function normalizeCoreContextMessages(messages: AgentMessage[]): AgentMessage[] {
   return messages.map((message) => {
-    if (message.role !== "custom" || message.customType !== "openclaw:turn-aborted") {
+    if (message.role !== "custom" || message.customType !== "jarvis:turn-aborted") {
       return message;
     }
     return {

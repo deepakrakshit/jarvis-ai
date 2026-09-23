@@ -1,7 +1,7 @@
-"""JARVIS OpenClaw Substrate Bridge.
+"""JARVIS Native Substrate Bridge.
 
 Provides bidirectional IPC communication between the JARVIS Python Control Plane
-and the native OpenClaw Node.js execution substrate runner.
+and the native Node.js execution substrate runner.
 """
 
 from __future__ import annotations
@@ -20,11 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class SubstrateBridgeError(RuntimeError):
-    """Raised when an interaction with the OpenClaw execution substrate fails."""
+    """Raised when an interaction with the execution substrate fails."""
 
 
 class SubstrateBridge:
-    """Manages the OpenClaw execution substrate runner process and provides IPC execution."""
+    """Manages the execution substrate runner process and provides IPC execution."""
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class SubstrateBridge:
                 self._runner_path = Path(env_runner)
             else:
                 self._runner_path = (
-                    self._workspace_dir / "substrate" / "runner" / "openclaw_substrate_runner.ts"
+                    self._workspace_dir / "substrate" / "runner" / "jarvis_substrate_runner.ts"
                 )
 
         self._node_binary = (
@@ -66,7 +66,7 @@ class SubstrateBridge:
         return self._process is not None and self._process.returncode is None
 
     async def start(self) -> None:
-        """Spawns the OpenClaw substrate runner daemon process with JSON-RPC IPC."""
+        """Spawns the substrate runner daemon process with JSON-RPC IPC."""
         async with self._lock:
             if self.is_running:
                 return
@@ -84,7 +84,7 @@ class SubstrateBridge:
                 "--daemon",
             ]
 
-            logger.info("Starting OpenClaw Substrate Runner daemon: %s", " ".join(cmd))
+            logger.info("Starting JARVIS Substrate Runner daemon: %s", " ".join(cmd))
             try:
                 self._process = await asyncio.create_subprocess_exec(
                     *cmd,
@@ -95,15 +95,15 @@ class SubstrateBridge:
                     limit=20 * 1024 * 1024,
                 )
             except Exception as exc:
-                logger.error("Failed to spawn OpenClaw substrate daemon: %s", exc)
+                logger.error("Failed to spawn JARVIS substrate daemon: %s", exc)
                 raise SubstrateBridgeError(f"Substrate startup failure: {exc}") from exc
 
             self._is_shutting_down = False
             self._reader_task = asyncio.create_task(self._reader_loop())
-            logger.info("OpenClaw Substrate Runner daemon started (pid=%s)", self._process.pid)
+            logger.info("JARVIS Substrate Runner daemon started (pid=%s)", self._process.pid)
 
     async def stop(self) -> None:
-        """Terminates the OpenClaw substrate runner daemon gracefully."""
+        """Terminates the substrate runner daemon gracefully."""
         async with self._lock:
             self._is_shutting_down = True
             if self._reader_task and not self._reader_task.done():
@@ -136,7 +136,7 @@ class SubstrateBridge:
                 if not future.done():
                     future.set_exception(SubstrateBridgeError("Substrate process terminated"))
             self._pending_requests.clear()
-            logger.info("OpenClaw Substrate Runner daemon stopped")
+            logger.info("JARVIS Substrate Runner daemon stopped")
 
     async def _reader_loop(self) -> None:
         """Background loop reading JSON-RPC responses from the substrate runner stdout."""
@@ -267,36 +267,36 @@ class SubstrateBridge:
             return False
 
     async def get_capabilities(self) -> dict[str, Any]:
-        """Queries the OpenClaw Computer Use capability descriptor asynchronously."""
+        """Queries the Computer Use capability descriptor asynchronously."""
         return await self.call_method("capabilities", timeout=10.0)
 
     def get_capabilities_sync(self) -> dict[str, Any]:
-        """Queries the OpenClaw Computer Use capability descriptor synchronously."""
+        """Queries the Computer Use capability descriptor synchronously."""
         return self.call_method_sync("capabilities", timeout=15.0)
 
     async def execute_act(
         self, action: str, params: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Dispatches an action through OpenClaw's CUA computer.act implementation asynchronously."""
+        """Dispatches an action through CUA computer.act implementation asynchronously."""
         payload = {"action": action}
         if params:
             payload.update(params)
         return await self.call_method("computer.act", payload, timeout=60.0)
 
     def execute_act_sync(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Dispatches an action through OpenClaw's CUA computer.act implementation synchronously."""
+        """Dispatches an action through CUA computer.act implementation synchronously."""
         payload = {"action": action}
         if params:
             payload.update(params)
         return self.call_method_sync("computer.act", payload, timeout=30.0)
 
     async def take_snapshot(self, format: str = "jpeg", max_width: int = 1280) -> dict[str, Any]:
-        """Captures a display snapshot via OpenClaw's screen.snapshot pipeline asynchronously."""
+        """Captures a display snapshot via screen.snapshot pipeline asynchronously."""
         payload = {"format": format, "maxWidth": max_width}
         return await self.call_method("screen.snapshot", payload, timeout=30.0)
 
     def take_snapshot_sync(self, format: str = "jpeg", max_width: int = 1280) -> dict[str, Any]:
-        """Captures a display snapshot via OpenClaw's screen.snapshot pipeline synchronously."""
+        """Captures a display snapshot via screen.snapshot pipeline synchronously."""
         payload = {"format": format, "maxWidth": max_width}
         return self.call_method_sync("screen.snapshot", payload, timeout=30.0)
 
@@ -309,11 +309,11 @@ class SubstrateBridge:
         return self.call_method_sync("system.run", {"command": command}, timeout=60.0)
 
     async def repair_tool_call(self, text: str) -> dict[str, Any]:
-        """Repairs and extracts plain text or malformed tool call blocks via OpenClaw substrate."""
+        """Repairs and extracts plain text or malformed tool call blocks via substrate."""
         return await self.call_method("tool.repair", {"text": text}, timeout=15.0)
 
     def repair_tool_call_sync(self, text: str) -> dict[str, Any]:
-        """Synchronously repairs and extracts plain text or malformed tool call blocks via OpenClaw substrate."""
+        """Synchronously repairs and extracts plain text or malformed tool call blocks via substrate."""
         return self.call_method_sync("tool.repair", {"text": text}, timeout=15.0)
 
 

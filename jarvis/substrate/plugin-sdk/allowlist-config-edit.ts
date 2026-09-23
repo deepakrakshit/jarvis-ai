@@ -2,7 +2,7 @@ import { normalizeUniqueStringEntries } from "@jarvis/normalization-core/string-
 import type { ConfigWriteTarget } from "../channels/plugins/config-writes.js";
 import type { ChannelAllowlistAdapter } from "../channels/plugins/types.adapters.js";
 import type { ChannelId } from "../channels/plugins/types.public.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 // Allowlist config edit helpers build safe config mutations for channel allowlists.
 import { resolveChannelAccountKey } from "../routing/account-lookup.js";
@@ -25,12 +25,12 @@ export type AllowlistNameResolution = Array<{
   name?: string | null;
 }>;
 type AllowlistNormalizer = (params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
   values: Array<string | number>;
 }) => string[];
 type AllowlistAccountResolver<ResolvedAccount> = (params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   accountId?: string | null;
 }) => ResolvedAccount;
 
@@ -152,7 +152,7 @@ export function createNestedAllowlistOverrideResolver<ResolvedAccount, Outer, In
 
 /** Build the common account-scoped token-gated allowlist name resolver. */
 export function createAccountScopedAllowlistNameResolver<ResolvedAccount>(params: {
-  resolveAccount: (params: { cfg: OpenClawConfig; accountId?: string | null }) => ResolvedAccount;
+  resolveAccount: (params: { cfg: JarvisConfig; accountId?: string | null }) => ResolvedAccount;
   resolveToken: (account: ResolvedAccount) => string | null | undefined;
   resolveNames: (params: { token: string; entries: string[] }) => Promise<AllowlistNameResolution>;
 }): NonNullable<ChannelAllowlistAdapter["resolveNames"]> {
@@ -351,7 +351,7 @@ export function buildAccountScopedAllowlistConfigEditor(params: {
   channelId: ChannelId;
   normalize: AllowlistNormalizer;
   resolveEffectiveEntries?: (params: {
-    cfg: OpenClawConfig;
+    cfg: JarvisConfig;
     accountId?: string | null;
     scope: "dm" | "group";
   }) => Array<string | number> | null | undefined;
@@ -383,12 +383,12 @@ function buildAccountAllowlistAdapter<ResolvedAccount>(params: {
   resolvePaths: (scope: "dm" | "group") => AllowlistConfigPaths | null;
   readConfig: (
     account: ResolvedAccount,
-    context: { cfg: OpenClawConfig; accountId?: string | null },
+    context: { cfg: JarvisConfig; accountId?: string | null },
   ) => Awaited<ReturnType<NonNullable<ChannelAllowlistAdapter["readConfig"]>>>;
   resolveEntries: (
     account: ResolvedAccount,
     scope: "dm" | "group",
-    context: { cfg: OpenClawConfig; accountId?: string | null },
+    context: { cfg: JarvisConfig; accountId?: string | null },
   ) => Array<string | number> | null | undefined;
 }): Pick<ChannelAllowlistAdapter, "supportsScope" | "readConfig" | "applyConfigEdit"> {
   return {
@@ -415,7 +415,7 @@ export function buildDmGroupAccountAllowlistAdapter<ResolvedAccount>(params: {
   normalize: AllowlistNormalizer;
   resolveDmAllowFrom: (
     account: ResolvedAccount,
-    context: { cfg: OpenClawConfig; accountId?: string | null },
+    context: { cfg: JarvisConfig; accountId?: string | null },
   ) => Array<string | number> | null | undefined;
   resolveGroupAllowFrom: (account: ResolvedAccount) => Array<string | number> | null | undefined;
   resolveDmPolicy?: (account: ResolvedAccount) => string | null | undefined;
@@ -449,7 +449,7 @@ export function buildLegacyDmAccountAllowlistAdapter<ResolvedAccount>(params: {
   normalize: AllowlistNormalizer;
   resolveDmAllowFrom: (
     account: ResolvedAccount,
-    context: { cfg: OpenClawConfig; accountId?: string | null },
+    context: { cfg: JarvisConfig; accountId?: string | null },
   ) => Array<string | number> | null | undefined;
   resolveGroupPolicy?: (account: ResolvedAccount) => string | null | undefined;
   resolveGroupOverrides?: (account: ResolvedAccount) => AllowlistGroupOverride[] | undefined;

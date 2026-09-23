@@ -45,7 +45,7 @@ export const DEFAULT_GATEWAY_HTTP_TOOL_DENY = [
   "computer",
   // Android AccessibilityService reads and cross-app UI control
   "mobile_ui",
-  "openclaw",
+  "jarvis",
 ] as const;
 
 /**
@@ -71,5 +71,5 @@ export const GATEWAY_OWNER_ONLY_CORE_TOOLS = [
   "nodes",
   "computer",
   "mobile_ui",
-  "openclaw",
+  "jarvis",
 ] as const;

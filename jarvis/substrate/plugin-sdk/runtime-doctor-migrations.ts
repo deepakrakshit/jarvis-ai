@@ -9,7 +9,7 @@
 import fs from "node:fs/promises";
 import { asObjectRecord } from "../config/channel-compat-normalization.js";
 import type { CompatMutationResult } from "../config/channel-compat-normalization.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import type { OpenKeyedStoreOptions } from "../plugin-state/plugin-state-store.js";
 import type { PluginDoctorStateMigration } from "../plugins/doctor-contract-module.js";
@@ -77,7 +77,7 @@ type KeyMoveChangeContext = {
 
 /** Collects a channel's root config and object-shaped account overrides in config order. */
 export function collectChannelAccountScopes(params: {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   channelId: string;
 }): Array<{
   prefix: string;
@@ -317,14 +317,14 @@ export function defineStrayPluginEntryConfigMigration(params: {
     message: string;
     match: (value: unknown) => boolean;
   };
-  normalizeConfig: (params: { cfg: OpenClawConfig }) => {
-    config: OpenClawConfig;
+  normalizeConfig: (params: { cfg: JarvisConfig }) => {
+    config: JarvisConfig;
     changes: string[];
   };
 } {
   const { pluginId, channelId } = params;
   const entryConfigPath = `plugins.entries.${pluginId}.config`;
-  const readStrayEntryConfig = (cfg: OpenClawConfig): Record<string, unknown> | null => {
+  const readStrayEntryConfig = (cfg: JarvisConfig): Record<string, unknown> | null => {
     const entries = asObjectRecord(asObjectRecord(cfg.plugins)?.entries);
     const config = asObjectRecord(asObjectRecord(entries?.[pluginId])?.config);
     return config && Object.keys(config).length > 0 ? config : null;
@@ -332,7 +332,7 @@ export function defineStrayPluginEntryConfigMigration(params: {
   return {
     legacyConfigRule: {
       path: ["plugins", "entries", pluginId, "config"],
-      message: `${entryConfigPath} is not read by the ${channelId} channel; run "openclaw doctor --fix" to move its keys to channels.${channelId}.`,
+      message: `${entryConfigPath} is not read by the ${channelId} channel; run "jarvis doctor --fix" to move its keys to channels.${channelId}.`,
       match: (value) => {
         const record = asObjectRecord(value);
         return Boolean(record && Object.keys(record).length > 0);

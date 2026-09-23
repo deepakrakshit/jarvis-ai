@@ -26,9 +26,9 @@ import type {
 import { createCachedLazyValueGetter } from "./lazy-value.js";
 
 export type AnyAgentTool = import("../plugins/types.js").AnyAgentTool;
-export type OpenClawPluginApi = import("../plugins/types.js").OpenClawPluginApi;
-export type OpenClawPluginCommandDefinition =
-  import("../plugins/types.js").OpenClawPluginCommandDefinition;
+export type JarvisPluginApi = import("../plugins/types.js").JarvisPluginApi;
+export type JARVISPluginCommandDefinition =
+  import("../plugins/types.js").JARVISPluginCommandDefinition;
 export type PluginCommandContext = import("../plugins/types.js").PluginCommandContext;
 
 export type {
@@ -61,9 +61,9 @@ type DefineBundledChannelEntryOptions<TPlugin = ChannelPlugin> = {
   runtime?: BundledEntryModuleRef;
   accountInspect?: BundledEntryModuleRef;
   features?: BundledChannelEntryFeatures;
-  registerCliMetadata?: (api: OpenClawPluginApi) => void;
-  registerFull?: (api: OpenClawPluginApi) => void;
-  registerCapabilities?: (api: OpenClawPluginApi) => void;
+  registerCliMetadata?: (api: JarvisPluginApi) => void;
+  registerFull?: (api: JarvisPluginApi) => void;
+  registerCapabilities?: (api: JarvisPluginApi) => void;
 };
 
 type DefineBundledChannelSetupEntryOptions = {
@@ -77,14 +77,14 @@ type DefineBundledChannelSetupEntryOptions = {
    */
   legacyStateMigrations?: BundledEntryModuleRef;
   legacySessionSurface?: BundledEntryModuleRef;
-  registerSetupRuntime?: (api: OpenClawPluginApi) => void;
+  registerSetupRuntime?: (api: JarvisPluginApi) => void;
   features?: BundledChannelSetupEntryFeatures;
 };
 
 /** Feature flags exposed by bundled setup entries for optional migration/session surfaces. */
 export type BundledChannelSetupEntryFeatures = {
   /**
-   * @deprecated Declare doctorContract.stateMigrations in openclaw.plugin.json instead.
+   * @deprecated Declare doctorContract.stateMigrations in jarvis.plugin.json instead.
    * Removal plan: remove the setup-entry adapter after the 2027.1 external-plugin migration window.
    */
   legacyStateMigrations?: boolean;
@@ -104,7 +104,7 @@ export type BundledChannelEntryContract<TPlugin = ChannelPlugin> = {
   description: string;
   configSchema: ChannelConfigSchema;
   features?: BundledChannelEntryFeatures;
-  register: (api: OpenClawPluginApi) => void;
+  register: (api: JarvisPluginApi) => void;
   loadChannelPlugin: (options?: BundledEntryModuleLoadOptions) => TPlugin;
   loadChannelOutbound?: (
     options?: BundledEntryModuleLoadOptions,
@@ -132,11 +132,11 @@ export type BundledChannelSetupEntryContract<TPlugin = ChannelPlugin> = {
     options?: BundledEntryModuleLoadOptions,
   ) => BundledChannelLegacySessionSurface;
   setChannelRuntime?: (runtime: BundledChannelRuntime) => void;
-  registerSetupRuntime?: (api: OpenClawPluginApi) => void;
+  registerSetupRuntime?: (api: JarvisPluginApi) => void;
   features?: BundledChannelSetupEntryFeatures;
 };
 
-const disableBundledEntrySourceFallbackEnv = "OPENCLAW_DISABLE_BUNDLED_ENTRY_SOURCE_FALLBACK";
+const disableBundledEntrySourceFallbackEnv = "JARVIS_DISABLE_BUNDLED_ENTRY_SOURCE_FALLBACK";
 
 function isBundledEntrySourceFallbackDisabled(value: string | undefined): boolean {
   // Presence-based disable is a shipped operator contract; canonical opt-in
@@ -384,13 +384,13 @@ function resolveBundledEntryModulePath(importMetaUrl: string, specifier: string)
 function getSourceModuleLoader(
   modulePath: string,
   options: BundledEntryModuleLoadOptions,
-  transformOpenClawDependencies = false,
+  transformJARVISDependencies = false,
 ) {
   return getCachedPluginModuleLoader({
     modulePath,
     importerUrl: import.meta.url,
     loaderFilename: import.meta.url,
-    transformOpenClawDependencies,
+    transformJARVISDependencies,
     ...(options.createLoaderForTest ? { createLoader: options.createLoaderForTest } : {}),
     tryNative: false,
   });
@@ -562,7 +562,7 @@ export function defineBundledChannelEntry<TPlugin = ChannelPlugin>({
     ...(features || accountInspect
       ? { features: { ...features, ...(accountInspect ? { accountInspect: true } : {}) } }
       : {}),
-    register(api: OpenClawPluginApi) {
+    register(api: JarvisPluginApi) {
       if (api.registrationMode === "cli-metadata") {
         registerCliMetadata?.(api);
         return;

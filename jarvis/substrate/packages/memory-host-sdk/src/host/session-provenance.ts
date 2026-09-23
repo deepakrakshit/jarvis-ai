@@ -9,8 +9,8 @@ export function classifySessionMessageOrigin(
   turnOrigin: MemoryOriginClass,
 ): MemoryOriginClass {
   if (message.role === "assistant") {
-    const openClawMetadata = asOptionalRecord(message["__openclaw"]);
-    if (openClawMetadata?.turnTainted === true) {
+    const jarvisMetadata = asOptionalRecord(message["__jarvis"]);
+    if (jarvisMetadata?.turnTainted === true) {
       return "untrusted";
     }
     return turnOrigin === "owner" ? "agent" : turnOrigin;
@@ -19,6 +19,6 @@ export function classifySessionMessageOrigin(
   if (provenance?.kind === "internal_system") {
     return "system";
   }
-  const metadata = asOptionalRecord(message["__openclaw"]);
+  const metadata = asOptionalRecord(message["__jarvis"]);
   return metadata?.senderIsOwner === true ? "owner" : "untrusted";
 }

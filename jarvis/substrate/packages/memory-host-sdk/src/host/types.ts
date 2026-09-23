@@ -68,7 +68,7 @@ export type MemorySyncProgressUpdate = {
 };
 
 export type MemorySessionSyncTarget = {
-  /** Owning OpenClaw agent. Omit only when the active manager scope already supplies it. */
+  /** Owning JARVIS agent. Omit only when the active manager scope already supplies it. */
   agentId?: string;
   /** Storage-neutral transcript/session identity. */
   sessionId: string;
@@ -205,12 +205,12 @@ export type MemoryIndexIdentityState =
       status: "missing";
       reason: string;
       code: "metadata_missing";
-      owner: "openclaw";
+      owner: "jarvis";
     }
   | ({ status: "mismatched"; reason: string } & (
       | {
           code: "provenance_version" | "chunking_version";
-          owner: "openclaw";
+          owner: "jarvis";
         }
       | {
           code:
@@ -250,18 +250,18 @@ export function resolveMemoryIndexIdentityDiagnostic(
   if (
     identity.status === "missing" &&
     identity.code === "metadata_missing" &&
-    identity.owner === "openclaw"
+    identity.owner === "jarvis"
   ) {
-    return { status: "missing", reason, code: "metadata_missing", owner: "openclaw" };
+    return { status: "missing", reason, code: "metadata_missing", owner: "jarvis" };
   }
   if (identity.status !== "mismatched") {
     return undefined;
   }
   if (
-    identity.owner === "openclaw" &&
+    identity.owner === "jarvis" &&
     (identity.code === "provenance_version" || identity.code === "chunking_version")
   ) {
-    return { status: "mismatched", reason, code: identity.code, owner: "openclaw" };
+    return { status: "mismatched", reason, code: identity.code, owner: "jarvis" };
   }
   if (
     identity.owner === "configuration" &&
@@ -283,7 +283,7 @@ export function formatMemoryIndexRebuildGuidance(
   status: Partial<Pick<MemoryProviderStatus, "provider" | "requestedProvider">>,
   agentId?: string,
 ): string {
-  const command = `openclaw memory status --index${agentId?.trim() ? ` --agent ${agentId.trim()}` : ""}`;
+  const command = `jarvis memory status --index${agentId?.trim() ? ` --agent ${agentId.trim()}` : ""}`;
   const configuredProvider = status.requestedProvider?.trim() || status.provider?.trim();
   const disclosure =
     configuredProvider === "none"
@@ -299,15 +299,15 @@ export function resolveMemoryIndexSearchDiagnostic(
   >,
   agentId?: string,
 ) {
-  const repairFailure = diagnostic.owner === "openclaw" && status.lastSyncError?.trim();
+  const repairFailure = diagnostic.owner === "jarvis" && status.lastSyncError?.trim();
   const newerIndex =
-    diagnostic.owner === "openclaw" &&
+    diagnostic.owner === "jarvis" &&
     diagnostic.status === "mismatched" &&
     asNullableRecord(status.custom?.indexIdentity)?.versionOrder === "newer";
   if (repairFailure && !newerIndex) {
     const guidance = {
       warning: `Memory index repair failed: ${repairFailure}. The existing index was left unchanged.`,
-      action: `Run: openclaw memory status --deep${agentId?.trim() ? ` --agent ${agentId.trim()}` : ""}. Resolve the reported sync failure before retrying the search.`,
+      action: `Run: jarvis memory status --deep${agentId?.trim() ? ` --agent ${agentId.trim()}` : ""}. Resolve the reported sync failure before retrying the search.`,
     };
     return {
       error: repairFailure,
@@ -322,20 +322,20 @@ export function resolveMemoryIndexSearchDiagnostic(
         ? `the memory index metadata is missing (${diagnostic.reason}); no configuration change is needed`
         : newerIndex
           ? diagnostic.reason
-          : `this OpenClaw version changed the memory index format (${diagnostic.reason}); no configuration change is needed`;
+          : `this JARVIS version changed the memory index format (${diagnostic.reason}); no configuration change is needed`;
   const guidance = formatMemoryIndexRebuildGuidance(status, agentId);
   const priorFailure = repairFailure ? ` Previous memory sync failed: ${repairFailure}.` : "";
   return {
     error: diagnostic.reason,
     warning: `Tell the user: memory search is paused because ${cause}.${priorFailure}`,
     action: newerIndex
-      ? `Tell the user to upgrade OpenClaw or reindex explicitly: ${guidance}`
+      ? `Tell the user to upgrade JARVIS or reindex explicitly: ${guidance}`
       : `Tell the user to run: ${guidance}`,
     staleness: {
       stale: true as const,
       warning: `Memory index is stale: ${diagnostic.reason} (owner: ${diagnostic.owner}, code: ${diagnostic.code}). Search results may be incomplete.${priorFailure}`,
       action: newerIndex
-        ? `Upgrade OpenClaw or reindex explicitly: ${guidance}`
+        ? `Upgrade JARVIS or reindex explicitly: ${guidance}`
         : `Run: ${guidance}`,
     },
   };

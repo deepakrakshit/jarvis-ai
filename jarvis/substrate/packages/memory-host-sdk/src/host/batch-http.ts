@@ -1,5 +1,5 @@
 import { retryAsync } from "@jarvis/retry";
-import type { SsrFPolicy } from "./openclaw-runtime-network.js";
+import type { SsrFPolicy } from "./jarvis-runtime-network.js";
 import { postJson } from "./post-json.js";
 
 // JSON POST helper for batch APIs with provider-style transient retry.

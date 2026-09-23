@@ -40,7 +40,7 @@
       }
     }
   },
-  "openclaw": {
+  "jarvis": {
     "extensions": [
       "./index.ts"
     ]

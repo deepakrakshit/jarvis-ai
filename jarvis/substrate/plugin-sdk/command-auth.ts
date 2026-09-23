@@ -5,7 +5,7 @@
  */
 
 import type { ChannelId } from "../channels/plugins/types.public.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import {
   expandAllowFromWithAccessGroups,
   type AccessGroupMembershipResolver,
@@ -111,7 +111,7 @@ export type { StoredModelOverride } from "../sessions/stored-model-overrides.js"
  * @deprecated Use `resolveChannelMessageIngress` from `@jarvis/plugin-sdk/channel-ingress-runtime`.
  */
 export type ResolveSenderCommandAuthorizationParams = {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   rawBody: string;
   isGroup: boolean;
   dmPolicy: string;
@@ -123,7 +123,7 @@ export type ResolveSenderCommandAuthorizationParams = {
   accountId?: string;
   resolveAccessGroupMembership?: AccessGroupMembershipResolver;
   readAllowFromStore: () => Promise<string[]>;
-  shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
+  shouldComputeCommandAuthorized: (rawBody: string, cfg: JarvisConfig) => boolean;
   /** @deprecated Command authorization is resolved by channel ingress. Kept for runtime injection compatibility. */
   resolveCommandAuthorizedFromAuthorizers?: (params: {
     useAccessGroups: boolean;
@@ -137,7 +137,7 @@ export type ResolveSenderCommandAuthorizationParams = {
  * @deprecated Use `resolveChannelMessageIngress` from `@jarvis/plugin-sdk/channel-ingress-runtime`.
  */
 export type CommandAuthorizationRuntime = {
-  shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
+  shouldComputeCommandAuthorized: (rawBody: string, cfg: JarvisConfig) => boolean;
   resolveCommandAuthorizedFromAuthorizers: (params: {
     useAccessGroups: boolean;
     authorizers: Array<{ configured: boolean; allowed: boolean }>;

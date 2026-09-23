@@ -10,7 +10,7 @@ import {
   getRuntimeConfigSnapshot,
   getRuntimeConfigSourceSnapshot,
 } from "../config/runtime-snapshot.js";
-import type { OpenClawConfig } from "../config/types.js";
+import type { JarvisConfig } from "../config/types.js";
 import {
   createPluginActivationSource,
   normalizePluginsConfig,
@@ -32,11 +32,11 @@ import {
 } from "./facade-resolution-shared.js";
 
 const ALWAYS_ALLOWED_RUNTIME_DIR_NAME_SET = new Set<string>(ALWAYS_ALLOWED_RUNTIME_DIR_NAMES);
-const EMPTY_FACADE_BOUNDARY_CONFIG: OpenClawConfig = {};
+const EMPTY_FACADE_BOUNDARY_CONFIG: JarvisConfig = {};
 
 type FacadeActivationCheckParams = Parameters<typeof resolveBundledMetadataManifestRecord>[0];
 
-function readFacadeBoundaryConfigSafely(): OpenClawConfig {
+function readFacadeBoundaryConfigSafely(): JarvisConfig {
   try {
     const sourceSnapshot = getRuntimeConfigSourceSnapshot();
     if (sourceSnapshot) {
@@ -53,7 +53,7 @@ function readFacadeBoundaryConfigSafely(): OpenClawConfig {
     const raw = fs.readFileSync(configPath, "utf8");
     const parsed = parseJsonWithJson5Fallback(raw);
     return parsed && typeof parsed === "object"
-      ? (parsed as OpenClawConfig)
+      ? (parsed as JarvisConfig)
       : EMPTY_FACADE_BOUNDARY_CONFIG;
   } catch {
     return EMPTY_FACADE_BOUNDARY_CONFIG;
@@ -186,7 +186,7 @@ export function resolveBundledPluginPublicSurfaceAccess(
 export function evaluateBundledPluginPublicSurfaceAccess(params: {
   params: { dirName: string; artifactBasename: string };
   manifestRecord: FacadePluginManifestLike;
-  config: OpenClawConfig;
+  config: JarvisConfig;
   normalizedPluginsConfig: ReturnType<typeof normalizePluginsConfig>;
   activationSource: ReturnType<typeof createPluginActivationSource>;
   autoEnabledReasons: Record<string, string[]>;

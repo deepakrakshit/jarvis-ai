@@ -5,7 +5,7 @@ import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isRecord } from "@jarvis/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@jarvis/normalization-core/string-coerce";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import type { PluginIntegrationSecretProviderConfig } from "../config/types.secrets.js";
 import { sameFileIdentity } from "../infra/fs-safe-advanced.js";
 import {
@@ -173,8 +173,8 @@ function renderSecretRefApplyCommands(
   const render = (shell: CommandShell, indent = "") => {
     const quotedPlanPath = quoteSecretRefCliArg(planPath, shell);
     return [
-      `${indent}openclaw secrets apply --from ${quotedPlanPath} --dry-run --allow-exec`,
-      `${indent}openclaw secrets apply --from ${quotedPlanPath} --allow-exec`,
+      `${indent}jarvis secrets apply --from ${quotedPlanPath} --dry-run --allow-exec`,
+      `${indent}jarvis secrets apply --from ${quotedPlanPath} --allow-exec`,
     ];
   };
   if (platform !== "win32") {
@@ -192,7 +192,7 @@ function renderSecretRefApplyCommands(
 }
 
 function readSecretRefProviderStatus(
-  config: OpenClawConfig,
+  config: JarvisConfig,
   providerAlias: string,
 ): SecretRefProviderStatus {
   const provider = config.secrets?.providers?.[providerAlias];
@@ -231,7 +231,7 @@ export function createPluginSecretRefSetupCli(params: PluginSecretRefSetupCliPar
     value.pluginIntegration.pluginId === params.pluginIntegration.pluginId &&
     value.pluginIntegration.integrationId === params.pluginIntegration.integrationId;
 
-  const inspectProvider = (config: OpenClawConfig, requestedAlias?: string) => {
+  const inspectProvider = (config: JarvisConfig, requestedAlias?: string) => {
     const explicitAlias = normalizeOptionalString(requestedAlias);
     let providerAlias: string;
     if (explicitAlias) {
@@ -282,7 +282,7 @@ export function createPluginSecretRefSetupCli(params: PluginSecretRefSetupCliPar
       const separator = value.indexOf("=");
       if (separator <= 0 || separator === value.length - 1) {
         throw new Error(
-          `Invalid --target value "${value}". Use <openclaw-config-path>=<${params.secretIdPlaceholder}>.`,
+          `Invalid --target value "${value}". Use <jarvis-config-path>=<${params.secretIdPlaceholder}>.`,
         );
       }
       const target = parsePluginSecretTargetSpecifier(
@@ -386,8 +386,8 @@ export function createPluginSecretRefSetupCli(params: PluginSecretRefSetupCliPar
     for (const command of applyCommands) {
       writeSecretRefCliLine(`  ${command}`);
     }
-    writeSecretRefCliLine("  openclaw secrets audit --check --allow-exec");
-    writeSecretRefCliLine("  openclaw secrets reload");
+    writeSecretRefCliLine("  jarvis secrets audit --check --allow-exec");
+    writeSecretRefCliLine("  jarvis secrets reload");
   };
 
   const registerSetupCommand = (command: SecretRefSetupCommand): void => {

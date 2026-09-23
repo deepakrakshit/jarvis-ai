@@ -18,11 +18,11 @@ export {
   createProcessPollDeliveryContract,
   createTerminalPresentationContractTool,
   installCodexToolResultMiddleware,
-  installOpenClawOwnedToolHooks,
+  installJARVISOwnedToolHooks,
   mediaToolResult,
-  resetOpenClawOwnedToolHooks,
+  resetJARVISOwnedToolHooks,
   textToolResult,
-} from "./test-helpers/agents/openclaw-owned-tool-runtime-contract.js";
+} from "./test-helpers/agents/jarvis-owned-tool-runtime-contract.js";
 export {
   createContractFallbackConfig,
   createContractRunResult,

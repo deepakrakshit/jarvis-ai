@@ -8,7 +8,7 @@ import {
 import { normalizeConfiguredProviderCatalogModelId } from "../agents/model-ref-shared.js";
 import { resolveProviderRequestCapabilities } from "../agents/provider-attribution.js";
 import type { ModelDefinitionConfig } from "../config/types.models.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { recordLiveCatalogExpiry } from "../plugins/provider-catalog-expiry.js";
 import type { ModelProviderConfig } from "./provider-model-shared.js";
@@ -154,7 +154,7 @@ function normalizeConfiguredCatalogModelInput(
 }
 
 function resolveConfiguredProviderModels(
-  config: OpenClawConfig | undefined,
+  config: JarvisConfig | undefined,
   providerId: string,
 ): ModelDefinitionConfig[] {
   const providers = config?.models?.providers;
@@ -177,7 +177,7 @@ function resolveConfiguredProviderModels(
  */
 export function readConfiguredProviderCatalogEntries(params: {
   /** Runtime config containing optional user-defined provider model rows. */
-  config?: OpenClawConfig;
+  config?: JarvisConfig;
   /** Provider id used to locate configured model rows. */
   providerId: string;
   /** Provider id to publish on emitted catalog entries when it differs from lookup id. */

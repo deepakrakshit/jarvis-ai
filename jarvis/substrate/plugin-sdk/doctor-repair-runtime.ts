@@ -1,6 +1,6 @@
 /**
  * Heavy doctor repair operations: plugin install-path diagnosis, plugin config
- * removal, and OpenClaw state-database schema detection/repair.
+ * removal, and JARVIS state-database schema detection/repair.
  *
  * These pull the state-database and plugin-registry graphs, so they are kept off
  * `runtime-doctor-migrations` (the dependency-light subpath doctor contract
@@ -15,7 +15,7 @@ export {
 } from "../infra/plugin-install-path-warnings.js";
 export { removePluginFromConfig } from "../plugins/uninstall-config.js";
 export {
-  detectOpenClawStateDatabaseSchemaMigrations,
-  repairOpenClawStateDatabaseSchema,
-} from "../state/openclaw-state-db.js";
-export type { OpenClawStateDatabaseSchemaMigration } from "../state/openclaw-state-db.js";
+  detectJARVISStateDatabaseSchemaMigrations,
+  repairJARVISStateDatabaseSchema,
+} from "../state/jarvis-state-db.js";
+export type { JARVISStateDatabaseSchemaMigration } from "../state/jarvis-state-db.js";

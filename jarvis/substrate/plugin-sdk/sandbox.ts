@@ -28,7 +28,7 @@ export type {
   SshSandboxSession,
   SshSandboxSettings,
 } from "../agents/sandbox.js";
-export type { OpenClawConfig } from "../config/config.js";
+export type { JarvisConfig } from "../config/config.js";
 export type { DirectoryEntry } from "../infra/directory-entries.js";
 export { resolveReadOnlyWorkspaceSkillMounts } from "../agents/sandbox/workspace-mounts.js";
 
@@ -64,7 +64,7 @@ export {
   type PluginCommandRunOptions,
   type PluginCommandRunResult,
 } from "./run-command.js";
-export { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
+export { resolvePreferredJARVISTmpDir } from "../infra/tmp-jarvis-dir.js";
 export {
   tempWorkspace,
   tempWorkspaceSync,

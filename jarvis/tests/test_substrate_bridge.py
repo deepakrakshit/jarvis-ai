@@ -1,9 +1,9 @@
-"""Automated Test Suite for JARVIS OpenClaw Substrate Bridge.
+"""Automated Test Suite for JARVIS Native Substrate Bridge.
 
 Verifies:
 - SubstrateBridge initialization and dynamic runtime resolution
 - Synchronous and asynchronous capability descriptor retrieval
-- OpenClaw CUA computer.act dispatch via Node runner
+- CUA computer.act dispatch via Node runner
 - Stdin/stdout JSON-RPC daemon lifecycle
 - Error isolation and protocol validation
 """
@@ -22,12 +22,12 @@ def test_substrate_bridge_initialization() -> None:
     bridge = SubstrateBridge()
     assert bridge._workspace_dir.exists()
     assert bridge._runner_path.exists()
-    assert "openclaw_substrate_runner.ts" in str(bridge._runner_path)
+    assert "jarvis_substrate_runner.ts" in str(bridge._runner_path)
     assert not bridge.is_running
 
 
 def test_substrate_bridge_capabilities_sync() -> None:
-    """Verify synchronous capability discovery matches OpenClaw CUA contract."""
+    """Verify synchronous capability discovery matches CUA contract."""
     caps = substrate_bridge.get_capabilities_sync()
     assert isinstance(caps, dict)
     assert caps.get("contractVersion") == 2
@@ -52,7 +52,7 @@ def test_substrate_bridge_health_sync() -> None:
 
 
 def test_substrate_bridge_act_list_windows_sync() -> None:
-    """Verify computer.act list_windows dispatches through OpenClaw runner."""
+    """Verify computer.act list_windows dispatches through JARVIS runner."""
     res = substrate_bridge.execute_act_sync("list_windows")
     assert isinstance(res, dict)
     assert res.get("ok") is True
@@ -81,7 +81,7 @@ def test_substrate_bridge_act_unsupported_action() -> None:
 
 
 def test_substrate_bridge_tool_repair_sync() -> None:
-    """Verify tool repair capability dispatches to OpenClaw runner."""
+    """Verify tool repair capability dispatches to JARVIS runner."""
     sample = 'Click on the start menu.\n[call:computer_action{"action":"left_click"}]\n'
     res = substrate_bridge.repair_tool_call_sync(sample)
     assert isinstance(res, dict)

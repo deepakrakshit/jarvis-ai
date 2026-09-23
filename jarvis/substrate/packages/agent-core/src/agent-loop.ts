@@ -1,4 +1,4 @@
-// Keep the runtime class on the public package specifier so OpenClaw and
+// Keep the runtime class on the public package specifier so JARVIS and
 // external consumers share one constructor identity.
 import { EventStream as LlmEventStream } from "@jarvis/ai/event-stream";
 import type {
@@ -58,7 +58,7 @@ export type { AgentEventSink } from "./agent-stream-response.js";
 const EventStreamConstructor: typeof SourceEventStream = LlmEventStream;
 
 const TOOL_LOOP_RECOVERY_TERMINATED_MESSAGE =
-  "OpenClaw stopped this run because tool-loop recovery encountered another critical loop. No blocked tool action was executed.";
+  "JARVIS stopped this run because tool-loop recovery encountered another critical loop. No blocked tool action was executed.";
 const STEERING_TOOL_SKIP_MESSAGE = "Skipped to process an incoming message.";
 const TOOL_ADMISSION_FAILURE_MESSAGE = "Tool execution was blocked before launch.";
 const TOOL_ADMISSION_FAILURE_DETAILS = {
@@ -1641,7 +1641,7 @@ type TurnTaintMetadata = {
 };
 
 function readTurnTaintMetadata(message: AgentMessage): TurnTaintMetadata | undefined {
-  const metadata = Reflect.get(message, "__openclaw");
+  const metadata = Reflect.get(message, "__jarvis");
   const record = asOptionalRecord(metadata);
   if (!record) {
     return undefined;
@@ -1677,8 +1677,8 @@ function withAssistantTurnTaint(message: AssistantMessage, tainted: boolean): As
   }
   const taintedMessage = {
     ...message,
-    __openclaw: { ...readTurnTaintMetadata(message), turnTainted: true },
-  } satisfies AssistantMessage & { __openclaw: TurnTaintMetadata };
+    __jarvis: { ...readTurnTaintMetadata(message), turnTainted: true },
+  } satisfies AssistantMessage & { __jarvis: TurnTaintMetadata };
   return taintedMessage;
 }
 
@@ -1691,7 +1691,7 @@ function withToolResultContentSource(
   }
   return {
     ...message,
-    __openclaw: { ...readTurnTaintMetadata(message), resultContentSource: source },
+    __jarvis: { ...readTurnTaintMetadata(message), resultContentSource: source },
   } as ToolResultMessage;
 }
 

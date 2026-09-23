@@ -1,7 +1,7 @@
 import {
   hasConfiguredSecretInput,
   normalizeResolvedSecretInputString,
-} from "./openclaw-runtime-config.js";
+} from "./jarvis-runtime-config.js";
 
 // Memory-specific facade for consuming gateway-resolved provider secret input.
 

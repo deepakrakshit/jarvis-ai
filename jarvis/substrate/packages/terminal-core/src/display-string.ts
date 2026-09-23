@@ -15,8 +15,8 @@ function resolveHomeDisplayPrefix(): { home: string; prefix: string } | undefine
   if (!home) {
     return undefined;
   }
-  const explicitHome = normalizeHomeDirValue(process.env.OPENCLAW_HOME);
-  return explicitHome ? { home, prefix: "$OPENCLAW_HOME" } : { home, prefix: "~" };
+  const explicitHome = normalizeHomeDirValue(process.env.JARVIS_HOME);
+  return explicitHome ? { home, prefix: "$JARVIS_HOME" } : { home, prefix: "~" };
 }
 
 /** Find a case-insensitive Windows path without changing offsets in the original string. */

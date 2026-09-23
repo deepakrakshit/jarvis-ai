@@ -14,7 +14,7 @@ export default defineConfig({
     assetsInlineLimit: 0,
     lib: {
       entry: fileURLToPath(new URL("./src/native.ts", import.meta.url)),
-      name: "OpenClawMermaid",
+      name: "JARVISMermaid",
       formats: ["iife"],
       fileName: () => "native.js",
     },

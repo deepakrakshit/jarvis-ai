@@ -366,7 +366,7 @@ export async function copyMemoryMigrationFileItem(
         symlinks: "reject",
       });
       backupPath = await backupMemoryMigrationTarget(item.target, existing.buffer, reportDir);
-      stagingDir = path.join(".openclaw-memory-import-staging", crypto.randomUUID());
+      stagingDir = path.join(".jarvis-memory-import-staging", crypto.randomUUID());
       stagedRelative = path.join(stagingDir, path.basename(relativeTarget));
       const plannedRecoveryPath = path.join(safeRoot.rootReal, stagedRelative);
       journalRecoveryPath = plannedRecoveryPath;
@@ -416,7 +416,7 @@ export async function copyMemoryMigrationFileItem(
     }
     if (stagingDir) {
       await safeRoot.remove(stagingDir);
-      await safeRoot.remove(".openclaw-memory-import-staging").catch(() => undefined);
+      await safeRoot.remove(".jarvis-memory-import-staging").catch(() => undefined);
     }
     if (recoveryRecordPath) {
       try {

@@ -51,8 +51,8 @@ export type GatewayEvent = {
   stateVersion?: unknown;
 };
 
-/** Minimal transport interface consumed by the OpenClaw SDK client. */
-export type OpenClawTransport = {
+/** Minimal transport interface consumed by the JARVIS SDK client. */
+export type JARVISTransport = {
   request<T = unknown>(
     method: string,
     params?: unknown,
@@ -63,14 +63,14 @@ export type OpenClawTransport = {
 };
 
 /** Transport variant that requires an explicit connection step. */
-export type ConnectableOpenClawTransport = OpenClawTransport & {
+export type ConnectableJARVISTransport = JARVISTransport & {
   connect(): Promise<void>;
 };
 
 /** Desired runtime/harness selection for future per-run execution routing. */
 export type RuntimeSelection =
   | "auto"
-  | { type: "embedded"; id: "openclaw" | "codex" | (string & {}) }
+  | { type: "embedded"; id: "jarvis" | "codex" | (string & {}) }
   | { type: "cli"; id: "claude-cli" | (string & {}) }
   | { type: "acp"; harness: "claude" | "cursor" | "gemini" | "opencode" | (string & {}) }
   | { type: "managed"; provider: "local" | "node" | "testbox" | "cloud" | (string & {}) };
@@ -272,7 +272,7 @@ export type RunResult = {
 };
 
 /** Stable SDK event type taxonomy derived from raw Gateway events. */
-export type OpenClawEventType =
+export type JARVISEventType =
   | "run.created"
   | "run.queued"
   | "run.started"
@@ -303,11 +303,11 @@ export type OpenClawEventType =
   | "raw";
 
 /** Normalized SDK event with common run/session/task metadata. */
-export type OpenClawEvent<TData = unknown> = {
+export type JARVISEvent<TData = unknown> = {
   version: 1;
   id: string;
   ts: number;
-  type: OpenClawEventType;
+  type: JARVISEventType;
   runId?: string;
   sessionId?: string;
   sessionKey?: string;

@@ -1,4 +1,4 @@
-// OpenClaw-owned tool runtime contract helpers mock agent tool runtimes in SDK tests.
+// JARVIS-owned tool runtime contract helpers mock agent tool runtimes in SDK tests.
 import { vi } from "vitest";
 import { resetAdjustedParamsByToolCallIdForTests } from "../../../agents/agent-tools.before-tool-call.state.js";
 import {
@@ -155,7 +155,7 @@ export function buildContractReplyPayloads(params: {
   });
 }
 
-export function installOpenClawOwnedToolHooks(params?: {
+export function installJARVISOwnedToolHooks(params?: {
   adjustedParams?: Record<string, unknown>;
   blockReason?: string;
 }) {
@@ -180,7 +180,7 @@ export function installOpenClawOwnedToolHooks(params?: {
 
 /**
  * Installs only the Codex app-server `tool_result` middleware fixture.
- * Pair with `installOpenClawOwnedToolHooks()` when a test asserts before/after hook behavior.
+ * Pair with `installJARVISOwnedToolHooks()` when a test asserts before/after hook behavior.
  */
 export function installCodexToolResultMiddleware(
   handler: (event: AgentToolResultMiddlewareEvent) => AgentToolResult<unknown>,
@@ -201,7 +201,7 @@ export function installCodexToolResultMiddleware(
   return { middleware };
 }
 
-export function resetOpenClawOwnedToolHooks(): void {
+export function resetJARVISOwnedToolHooks(): void {
   resetGlobalHookRunner();
   resetPluginRuntimeStateForTest();
   resetAdjustedParamsByToolCallIdForTests();

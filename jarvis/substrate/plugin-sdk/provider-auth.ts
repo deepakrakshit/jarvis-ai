@@ -10,7 +10,7 @@ import {
   buildCopilotIdeHeaders,
 } from "../agents/copilot-dynamic-headers.js";
 import { readProviderJsonResponse } from "../agents/provider-http-errors.js";
-import type { OpenClawConfig } from "../config/config.js";
+import type { JarvisConfig } from "../config/config.js";
 import { cancelUnreadResponseBody } from "../infra/http-body.js";
 import { logWarn } from "../logger.js";
 import {
@@ -26,7 +26,7 @@ import {
 } from "./provider-auth-copilot-cache.js";
 
 export { resolveNonEnvSecretRefApiKeyMarker } from "../secrets/provider-credential-values.js";
-export type { OpenClawConfig } from "../config/config.js";
+export type { JarvisConfig } from "../config/config.js";
 export type { CachedCopilotToken } from "./provider-auth-copilot-cache.js";
 export type { SecretInput } from "../config/types.secrets.js";
 export type { SecretInputMode } from "../plugins/provider-auth-types.js";
@@ -138,7 +138,7 @@ const COPILOT_PROVIDER_ID = "github-copilot";
 
 const COPILOT_TOKEN_EXCHANGE_TIMEOUT_MS = 30_000;
 
-function readGithubCopilotDomainFromConfig(config?: OpenClawConfig): string | undefined {
+function readGithubCopilotDomainFromConfig(config?: JarvisConfig): string | undefined {
   const params = config?.models?.providers?.[COPILOT_PROVIDER_ID]?.params;
   const value = params && typeof params === "object" ? params.githubDomain : undefined;
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -177,7 +177,7 @@ function warnOnceOnRejectedConfigDomain(configured: string): void {
 function resolveGithubCopilotDomain(params?: {
   env?: NodeJS.ProcessEnv;
   explicit?: string;
-  config?: OpenClawConfig;
+  config?: JarvisConfig;
 }): string {
   const env = params?.env ?? process.env;
   const fromEnv = env.COPILOT_GITHUB_DOMAIN?.trim();
@@ -280,11 +280,11 @@ export async function resolveCopilotApiToken(params: {
    */
   githubDomain?: string;
   /**
-   * OpenClaw config used to resolve the persisted `githubDomain` provider
+   * JARVIS config used to resolve the persisted `githubDomain` provider
    * param when an explicit `githubDomain` is not supplied. Precedence is
    * `COPILOT_GITHUB_DOMAIN` env > explicit `githubDomain` > config.
    */
-  config?: OpenClawConfig;
+  config?: JarvisConfig;
 }): Promise<{
   /** Copilot API token, from cache or fresh exchange. */
   token: string;

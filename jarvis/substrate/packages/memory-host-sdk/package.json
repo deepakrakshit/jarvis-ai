@@ -9,7 +9,7 @@
     "p-map": "7.0.7"
   },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "jarvis": "workspace:*"
   },
   "exports": {
     "./runtime-core": "./src/runtime-core.ts",

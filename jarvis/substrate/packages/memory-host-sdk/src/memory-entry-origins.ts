@@ -3,7 +3,7 @@ import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
   prepareSqliteQuerySync,
-} from "./host/openclaw-runtime-kysely.js";
+} from "./host/jarvis-runtime-kysely.js";
 
 export type MemoryEntryOrigin = {
   entryKey: string;

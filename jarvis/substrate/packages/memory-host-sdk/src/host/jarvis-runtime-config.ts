@@ -1,6 +1,6 @@
 // Pure config values for memory host packages. Runtime config reads belong to
 // the session facade so embedding metadata does not import config IO.
-export type { OpenClawConfig } from "../../../../src/config/types.openclaw.js";
+export type { JarvisConfig } from "../../../../src/config/types.jarvis.js";
 export {
   hasConfiguredSecretInput,
   normalizeResolvedSecretInputString,

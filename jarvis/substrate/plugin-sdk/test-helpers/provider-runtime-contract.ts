@@ -232,7 +232,7 @@ export function describeAnthropicProviderRuntimeContract(
       });
 
       expect(hint).toContain("suggested profile: anthropic:oauth-user@example.com");
-      expect(hint).toContain("openclaw doctor --yes");
+      expect(hint).toContain("jarvis doctor --yes");
     });
 
     it("owns usage snapshot fetching", async () => {
@@ -307,7 +307,7 @@ export function describeGithubCopilotProviderRuntimeContract(
                 hooks: [],
                 rootDir: "/fixtures/github-copilot",
                 source: "/fixtures/github-copilot/index.js",
-                manifestPath: "/fixtures/github-copilot/openclaw.plugin.json",
+                manifestPath: "/fixtures/github-copilot/jarvis.plugin.json",
                 modelCatalog: normalizeModelCatalog(
                   {
                     providers: { "github-copilot": manifestCatalog },
@@ -710,7 +710,7 @@ export function describeOpenAIProviderRuntimeContract(
       });
     });
 
-    it("keeps OpenClaw cost metadata but applies Codex context metadata for gpt-5.5 models", () => {
+    it("keeps JARVIS cost metadata but applies Codex context metadata for gpt-5.5 models", () => {
       const provider = requireProviderContractProvider("openai");
       const manifestModel = createManifestModel("gpt-5.5", {
         api: "openai-chatgpt-responses",

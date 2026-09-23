@@ -10,7 +10,7 @@
  * provider request bodies and stays invisible to model-facing surfaces.
  */
 export const MEMORY_SEARCH_DEADLINE_CONTROL: unique symbol = Symbol(
-  "openclaw.memory-search-deadline-control",
+  "jarvis.memory-search-deadline-control",
 );
 
 export type MemorySearchDeadlineControlAction = "pause" | "resume";

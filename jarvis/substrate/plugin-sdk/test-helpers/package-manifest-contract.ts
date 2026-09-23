@@ -4,13 +4,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { compareOpenClawVersions } from "../../config/version.js";
+import { compareJARVISVersions } from "../../config/version.js";
 import { parseMinHostVersionRequirement } from "../../plugins/min-host-version.js";
 
 type PackageManifest = {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
-  openclaw?: {
+  jarvis?: {
     install?: {
       minHostVersion?: string;
     };
@@ -60,18 +60,18 @@ export function describePackageManifestContract(params: PackageManifestContractP
       it("declares a parseable minHostVersion floor at or above the baseline", () => {
         const manifest = readPackageManifest(packagePath);
         const requirement = parseMinHostVersionRequirement(
-          manifest.openclaw?.install?.minHostVersion ?? null,
+          manifest.jarvis?.install?.minHostVersion ?? null,
         );
 
         expect(
           requirement,
-          `${packagePath} should declare openclaw.install.minHostVersion`,
+          `${packagePath} should declare jarvis.install.minHostVersion`,
         ).not.toBeNull();
         if (!requirement) {
           return;
         }
 
-        const comparison = compareOpenClawVersions(
+        const comparison = compareJARVISVersions(
           requirement.minimumLabel,
           minHostVersionBaseline,
         );
@@ -82,7 +82,7 @@ export function describePackageManifestContract(params: PackageManifestContractP
 
         expect(
           comparison,
-          `${packagePath} should require at least OpenClaw ${minHostVersionBaseline}`,
+          `${packagePath} should require at least JARVIS ${minHostVersionBaseline}`,
         ).toBeGreaterThanOrEqual(0);
       });
     }

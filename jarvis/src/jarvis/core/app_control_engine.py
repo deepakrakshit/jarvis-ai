@@ -4,7 +4,7 @@ Orchestrates multi-provider hierarchy:
 1. Native Application / URI / Programmatic protocol
 2. Microsoft Windows UI Automation (UIA) with control patterns
 3. Browser DOM subsystem (Playwright)
-4. Computer-Use coordinate and visual fallback (OpenClaw CUA)
+4. Computer-Use coordinate and visual fallback (JARVIS CUA Substrate)
 
 Executes closed-loop automation: Observe -> Act -> Verify.
 """
@@ -106,13 +106,13 @@ class AppControlEngine:
     def delegate_to_substrate(
         self, action: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Directly delegate computer action to OpenClaw Node.js execution substrate."""
+        """Directly delegate computer action to JARVIS Node.js execution substrate."""
         return self.substrate_bridge.execute_act_sync(action, params)
 
     async def delegate_to_substrate_async(
         self, action: str, params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Asynchronously delegate computer action to OpenClaw Node.js execution substrate."""
+        """Asynchronously delegate computer action to JARVIS Node.js execution substrate."""
         return await self.substrate_bridge.execute_act(action, params)
 
     def launch_application(
@@ -462,7 +462,7 @@ class AppControlEngine:
         if not success or action_err:
             logger.info(
                 f"UIA action '{action_normalized}' unsuccessful (err={action_err}); "
-                f"attempting coordinate fallback via OpenClaw substrate..."
+                f"attempting coordinate fallback via JARVIS substrate..."
             )
             return self._fallback_computer_interaction(
                 win=win,
@@ -533,7 +533,7 @@ class AppControlEngine:
         value: Optional[str] = None,
         target_element: Optional[UIElementInfo] = None,
     ) -> AppActionResult:
-        """Provider 4 fallback: Use coordinate mouse and keyboard automation via OpenClaw substrate."""
+        """Provider 4 fallback: Use coordinate mouse and keyboard automation via JARVIS substrate."""
         logger.info(f"Executing computer coordinate fallback for '{query}' in '{win.title}'")
 
         # Focus window
@@ -607,7 +607,7 @@ class AppControlEngine:
         )
 
     def execute_computer_action(self, params: ComputerActParams) -> ComputerActResult:
-        """Execute canonical OpenClaw CUA computer action."""
+        """Execute canonical CUA computer action."""
         action_name = params.action.lower()
         logger.info(f"AppControlEngine: Executing computer action '{action_name}'...")
 
@@ -617,7 +617,7 @@ class AppControlEngine:
             obs.active_window_title = active_win.title
             obs.active_window_hwnd = active_win.hwnd
 
-        # Primary route: delegate to OpenClaw Node.js execution substrate
+        # Primary route: delegate to JARVIS Node.js execution substrate
         try:
             substrate_res = self.delegate_to_substrate(action_name, asdict(params))
             if substrate_res and substrate_res.get("ok"):

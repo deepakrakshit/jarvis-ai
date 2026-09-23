@@ -41,7 +41,7 @@ type ActiveStoreWriter = {
 // Queue maps are often global singletons shared by separately bundled runtime
 // chunks. Their reentrancy context must cross the same module boundary.
 const activeStoreWriters = resolveGlobalSingleton(
-  Symbol.for("openclaw.activeStoreWriters"),
+  Symbol.for("jarvis.activeStoreWriters"),
   () => new AsyncLocalStorage<ActiveStoreWriter>(),
 );
 

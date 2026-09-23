@@ -6,8 +6,8 @@
 **Project:** JARVIS — Stateful Personal AI Operating System
 **Primary runtime:** Python + LangGraph / Deep Agents
 **Primary realtime interaction model:** Gemini 3.8 Live
-**OpenClaw strategy:** Full-source fork + selective ownership transfer + compatibility adapters
-**Repository basis:** TREE.md directory-level inventory supplied for the current OpenClaw monorepo
+**JARVIS strategy:** Full-source fork + selective ownership transfer + compatibility adapters
+**Repository basis:** TREE.md directory-level inventory supplied for the current JARVIS monorepo
 
 ---
 
@@ -19,9 +19,9 @@ The core architectural decision is that **the model is not the trust boundary**.
 
 JARVIS treats exactly six approved model families as interchangeable cognitive components: Gemini 3.8 Live, GPT-OSS 120B, Qwen 3.8 27B, Gemini 3.1 Flash-Lite, Gemini 3.5 Flash-Lite, and Gemma 4 31B. The models can propose plans and actions, but they do not own authorization, secrets, execution privileges, persistent identity, or security policy.
 
-The second major decision is that JARVIS will **start from OpenClaw's source code rather than recreate its infrastructure from zero**. OpenClaw already provides mature implementations and contracts for many difficult systems: a long-lived Gateway, typed WebSocket protocol, sessions, agent runtime, model/provider infrastructure, channels, routing, tools, browser automation, skills, plugins, memory/context, automation, sub-agents, ACP/external agent integration, approvals, sandboxing, secrets, artifacts, nodes, and Windows-native integration.
+The second major decision is that JARVIS will **start from JARVIS's source code rather than recreate its infrastructure from zero**. JARVIS already provides mature implementations and contracts for many difficult systems: a long-lived Gateway, typed WebSocket protocol, sessions, agent runtime, model/provider infrastructure, channels, routing, tools, browser automation, skills, plugins, memory/context, automation, sub-agents, ACP/external agent integration, approvals, sandboxing, secrets, artifacts, nodes, and Windows-native integration.
 
-OpenClaw is MIT licensed. Its license permits reuse and modification subject to the license terms, while the repository separately records third-party incorporated/adapted code. JARVIS therefore retains the relevant license notices and maintains an explicit provenance ledger for reused code.
+JARVIS is MIT licensed. Its license permits reuse and modification subject to the license terms, while the repository separately records third-party incorporated/adapted code. JARVIS therefore retains the relevant license notices and maintains an explicit provenance ledger for reused code.
 
 The resulting architecture is:
 
@@ -76,7 +76,7 @@ The resulting architecture is:
           └──────────────┘          └──────────────┘          └──────────────┘
 ```
 
-This document is the target architecture, the OpenClaw extraction strategy, and the implementation contract for turning a large OpenClaw codebase into a JARVIS-owned system.
+This document is the target architecture, the JARVIS extraction strategy, and the implementation contract for turning a large JARVIS codebase into a JARVIS-owned system.
 
 ---
 
@@ -101,7 +101,7 @@ JARVIS SHALL:
 13. Maintain inspectable, provenance-aware memory.
 14. Support automation, schedules, events, and notifications.
 15. Be extensible through plugins, skills, providers, and nodes.
-16. Allow OpenClaw-derived infrastructure to be replaced progressively without rewriting JARVIS as a whole.
+16. Allow JARVIS-derived infrastructure to be replaced progressively without rewriting JARVIS as a whole.
 17. Remain useful even if an individual model/provider is unavailable.
 
 ## 1.2 Non-goals
@@ -110,7 +110,7 @@ JARVIS SHALL NOT initially attempt to:
 
 - Become a general multi-tenant SaaS platform.
 - Give every model unrestricted host access.
-- Reimplement every OpenClaw subsystem immediately.
+- Reimplement every JARVIS subsystem immediately.
 - Depend on one provider, one LLM, or one computer-use technology.
 - Treat browser pages, emails, documents, webhooks, plugins, or model output as trusted instructions.
 
@@ -143,7 +143,7 @@ Models can recommend or request actions. They cannot grant themselves permission
 
 ## P2 — JARVIS owns authority
 
-OpenClaw-derived code may perform infrastructure work, but JARVIS owns:
+JARVIS-derived code may perform infrastructure work, but JARVIS owns:
 
 - identity
 - authorization
@@ -197,9 +197,9 @@ PLAN → AUTHORIZE → ACT → OBSERVE → VERIFY → COMMIT RESULT
 
 A Gemini Live WebSocket session is transport/runtime state. A JARVIS session is durable product state.
 
-## P7 — Dependency inversion around OpenClaw
+## P7 — Dependency inversion around JARVIS
 
-JARVIS code calls stable JARVIS interfaces. OpenClaw-derived implementations sit behind adapters where ownership is expected to change.
+JARVIS code calls stable JARVIS interfaces. JARVIS-derived implementations sit behind adapters where ownership is expected to change.
 
 ## P8 — Fail closed for privileged actions
 
@@ -228,14 +228,14 @@ Model routing is constrained by live rate limits, quotas, latency, cost, context
 - Vector / hybrid retrieval backend
 - Docker/Podman for isolated workloads
 
-## 3.2 OpenClaw-derived foundation
+## 3.2 JARVIS-derived foundation
 
 - TypeScript/Node runtime for reused Gateway/agent infrastructure
-- OpenClaw Gateway protocol and client machinery
-- OpenClaw agent-core/runtime components
-- OpenClaw browser and tool infrastructure where retained
-- OpenClaw node protocols and Windows-native companion components
-- OpenClaw plugin/skill/automation components where retained
+- JARVIS Gateway protocol and client machinery
+- JARVIS agent-core/runtime components
+- JARVIS browser and tool infrastructure where retained
+- JARVIS node protocols and Windows-native companion components
+- JARVIS plugin/skill/automation components where retained
 
 ## 3.3 Realtime interaction
 
@@ -295,14 +295,14 @@ Provider quotas are configuration/runtime data, not compile-time assumptions.
 
 ---
 
-# 4. OpenClaw as the Base System
+# 4. JARVIS as the Base System
 
 ## 4.1 What we are doing
 
-We are creating a **full-source fork** of OpenClaw and progressively changing ownership.
+We are creating a **full-source fork** of JARVIS and progressively changing ownership.
 
 ```text
-                         OPENCLAW MAIN
+                         JARVIS MAIN
                               │
              ┌────────────────┼────────────────┐
              ▼                ▼                ▼
@@ -321,14 +321,14 @@ We are creating a **full-source fork** of OpenClaw and progressively changing ow
                        JARVIS PLATFORM
 ```
 
-The goal is not to preserve the OpenClaw product identity forever. The goal is to use a mature implementation as the starting substrate while moving authority into JARVIS.
+The goal is not to preserve the JARVIS product identity forever. The goal is to use a mature implementation as the starting substrate while moving authority into JARVIS.
 
 
-# 4A. TREE-Informed OpenClaw Platform Inventory
+# 4A. TREE-Informed JARVIS Platform Inventory
 
-The supplied repository TREE changes the implementation assumption materially. OpenClaw is not merely an agent runtime with a browser and a Gateway. It is a **large monorepo containing an application platform, protocol stack, plugin ecosystem, native clients, UI, QA system, deployment tooling, Rust sidecars, skills, security rules, documentation, CI/CD, and a very large test corpus**.
+The supplied repository TREE changes the implementation assumption materially. JARVIS is not merely an agent runtime with a browser and a Gateway. It is a **large monorepo containing an application platform, protocol stack, plugin ecosystem, native clients, UI, QA system, deployment tooling, Rust sidecars, skills, security rules, documentation, CI/CD, and a very large test corpus**.
 
-The user's live directory counts supplied for the current OpenClaw tree are approximately:
+The user's live directory counts supplied for the current JARVIS tree are approximately:
 
 | Root area | Approx. files | Architectural interpretation | Initial JARVIS disposition |
 |---|---:|---|---|
@@ -356,7 +356,7 @@ The user's live directory counts supplied for the current OpenClaw tree are appr
 The extraction plan is therefore **platform migration**, not file copying.
 
 ```text
-                   OPENCLAW MONOREPO
+                   JARVIS MONOREPO
                            │
         ┌──────────────────┼──────────────────┐
         │                  │                  │
@@ -417,9 +417,9 @@ PR
 
 JARVIS should add security invariants to this pipeline rather than replacing the existing automation.
 
-### `.openclaw/`
+### `.jarvis/`
 
-Treat as upstream/local worktree tooling unless a specific runtime contract depends on it. Do not let local OpenClaw worktree state become JARVIS persistent user state.
+Treat as upstream/local worktree tooling unless a specific runtime contract depends on it. Do not let local JARVIS worktree state become JARVIS persistent user state.
 
 ### `.vscode/`
 
@@ -474,11 +474,11 @@ Keep deployment manifests as implementation references and adapt them to JARVIS 
 
 ### `docs/`
 
-Treat the OpenClaw documentation corpus as **architecture knowledge**. It should be retained in the engineering source tree, with provenance, while user-facing JARVIS docs are rewritten around JARVIS semantics.
+Treat the JARVIS documentation corpus as **architecture knowledge**. It should be retained in the engineering source tree, with provenance, while user-facing JARVIS docs are rewritten around JARVIS semantics.
 
 ### `extensions/`
 
-This is one of the largest and most valuable OpenClaw assets. With 157 plugin directories, it represents an ecosystem rather than a few add-ons.
+This is one of the largest and most valuable JARVIS assets. With 157 plugin directories, it represents an ecosystem rather than a few add-ons.
 
 The extraction strategy is:
 
@@ -515,7 +515,7 @@ Keep and adapt. This becomes an important local prevention layer for secret leak
 
 ### `packages/`
 
-This is the **contract spine** of the OpenClaw source base. It should be retained intact initially.
+This is the **contract spine** of the JARVIS source base. It should be retained intact initially.
 
 ```text
 packages/
@@ -593,7 +593,7 @@ six-model failover
 
 ### `scripts/`
 
-Keep as much as possible initially. The 1,436-file script estate is evidence that OpenClaw has significant operational maturity.
+Keep as much as possible initially. The 1,436-file script estate is evidence that JARVIS has significant operational maturity.
 
 Especially preserve the ideas around:
 
@@ -642,7 +642,7 @@ pnpm-lock.yaml
 tsconfig*.json
 tsdown.config.ts
 tsdown.ai.config.ts
-openclaw.mjs
+jarvis.mjs
 node-runtime-*.mjs / d.mts
 node-sqlite.mjs
 node-version.mjs
@@ -655,14 +655,14 @@ AGENTS.md
 VISION.md
 ```
 
-Do not delete root files merely because JARVIS's application logic lives in Python. The retained OpenClaw surface may still need its native toolchain to build/run while migration is in progress.
+Do not delete root files merely because JARVIS's application logic lives in Python. The retained JARVIS surface may still need its native toolchain to build/run while migration is in progress.
 
 ## 4A.3 The rule for the 20k+ `src` files
 
 The file count is **not** a reason to copy 20,000 files manually and it is not a reason to delete them. Use a repeatable classification pipeline:
 
 ```text
-Pinned OpenClaw commit
+Pinned JARVIS commit
         │
         ▼
 Filesystem manifest
@@ -693,7 +693,7 @@ Build + tests + security suite
 
 ---
 
-# 4B. OpenClaw Extension Ecosystem → JARVIS Capability Ecosystem
+# 4B. JARVIS Extension Ecosystem → JARVIS Capability Ecosystem
 
 The 157 extension directories imply that the extension layer itself should become a first-class JARVIS architecture domain.
 
@@ -752,7 +752,7 @@ rate limits
 
 ## 4B.2 Provider extensions
 
-OpenClaw's broad provider ecosystem can remain in the source fork, but **JARVIS's Model Router is the runtime gatekeeper**.
+JARVIS's broad provider ecosystem can remain in the source fork, but **JARVIS's Model Router is the runtime gatekeeper**.
 
 ```text
                  EXTENSION PROVIDERS
@@ -821,7 +821,7 @@ memory core
 memory LanceDB
 memory wiki
 migration helpers
-OpenClaw-path utilities
+JARVIS-path utilities
 OnePassword
 OpenCode integration
 policy
@@ -841,11 +841,11 @@ The JARVIS implementation should retain this breadth as **available infrastructu
 
 ---
 
-# 4C. Complete OpenClaw-to-JARVIS Layer Mapping
+# 4C. Complete JARVIS-to-JARVIS Layer Mapping
 
 ```text
 ╔══════════════════════════════════════════════════════════════════╗
-║                    OPENCLAW PLATFORM                           ║
+║                    JARVIS PLATFORM                           ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║ Gateway / Protocol / Client                                    ║
 ║ Agent Runtime / Sessions / Context / Memory                    ║
@@ -894,7 +894,7 @@ The JARVIS implementation should retain this breadth as **available infrastructu
 
 ---
 
-# 4D. Which OpenClaw Areas We Copy Wholesale vs. Adapt
+# 4D. Which JARVIS Areas We Copy Wholesale vs. Adapt
 
 ### `KEEP` — high-confidence mature infrastructure
 
@@ -957,18 +957,18 @@ provider selection logic
 automation delivery rules
 ```
 
-### `WRAP` — stable JARVIS facade over OpenClaw implementation
+### `WRAP` — stable JARVIS facade over JARVIS implementation
 
 ```text
-OpenClaw Agent Runtime → JarvisAgentRuntime
-OpenClaw Gateway        → JarvisGateway
-OpenClaw Sessions       → JarvisSessionStore
-OpenClaw Browser        → JarvisBrowserManager
-OpenClaw Nodes          → JarvisNodeManager
-OpenClaw Memory         → JarvisMemoryEngine
-OpenClaw Plugins        → JarvisPluginRegistry
-OpenClaw Skills         → JarvisSkillRegistry
-OpenClaw ACP            → JarvisAgentBroker
+JARVIS Agent Runtime → JarvisAgentRuntime
+JARVIS Gateway        → JarvisGateway
+JARVIS Sessions       → JarvisSessionStore
+JARVIS Browser        → JarvisBrowserManager
+JARVIS Nodes          → JarvisNodeManager
+JARVIS Memory         → JarvisMemoryEngine
+JARVIS Plugins        → JarvisPluginRegistry
+JARVIS Skills         → JarvisSkillRegistry
+JARVIS ACP            → JarvisAgentBroker
 ```
 
 ### `EXTERNAL` — separate process / native node
@@ -1003,14 +1003,14 @@ no dependency edge
 
 ---
 
-# 4E. JARVIS Runtime Does Not Equal OpenClaw Runtime
+# 4E. JARVIS Runtime Does Not Equal JARVIS Runtime
 
 The source fork and runtime policy are deliberately different concepts.
 
 ```text
 PHYSICAL REPOSITORY
 │
-├── OpenClaw-derived code
+├── JARVIS-derived code
 ├── all retained extensions
 ├── all retained tests
 ├── native apps
@@ -1033,7 +1033,7 @@ This means JARVIS may contain code for many capabilities without automatically g
 
 ## 4.2 Why full-source is preferable to cherry-picking random files
 
-OpenClaw's current architecture has explicit workspace packages, protocol packages, runtime packages, plugins, provider interfaces, tests, and package metadata. Reusing only one or two source files while ignoring their dependency graph risks creating a brittle fork.
+JARVIS's current architecture has explicit workspace packages, protocol packages, runtime packages, plugins, provider interfaces, tests, and package metadata. Reusing only one or two source files while ignoring their dependency graph risks creating a brittle fork.
 
 The first fork should therefore preserve the source tree and package graph.
 
@@ -1041,18 +1041,18 @@ Later, we can remove components using dependency-closure analysis.
 
 ---
 
-# 5. OpenClaw Source Extraction Strategy
+# 5. JARVIS Source Extraction Strategy
 
 ## 5.1 Extraction classifications
 
-Every OpenClaw directory/file family will receive exactly one ownership classification:
+Every JARVIS directory/file family will receive exactly one ownership classification:
 
 | Tag | Meaning |
 |---|---|
 | `KEEP` | Retain with minimal changes because the subsystem is foundational and generic. |
 | `ADAPT` | Retain implementation but modify interfaces/behavior for JARVIS. |
 | `WRAP` | Keep upstream code behind a JARVIS interface so it can later be replaced. |
-| `JARVIS-OVERRIDE` | OpenClaw implementation remains present initially but JARVIS takes authoritative behavior. |
+| `JARVIS-OVERRIDE` | JARVIS implementation remains present initially but JARVIS takes authoritative behavior. |
 | `EXTERNAL` | Run as a separate process/service/node. |
 | `OPTIONAL` | Retain in source tree but disable until needed. |
 | `REMOVE` | Delete only after dependency closure proves it is unused. |
@@ -1060,10 +1060,10 @@ Every OpenClaw directory/file family will receive exactly one ownership classifi
 
 ## 5.2 Core extraction matrix
 
-| OpenClaw area | Initial action | JARVIS ownership | Long-term plan |
+| JARVIS area | Initial action | JARVIS ownership | Long-term plan |
 |---|---|---|---|
 | `src/gateway/` | `KEEP + ADAPT` | Gateway infrastructure | JARVIS Gateway facade first; native replacement later if useful |
-| `packages/gateway-protocol/` | `KEEP` | Transport contract | Can remain OpenClaw-derived indefinitely |
+| `packages/gateway-protocol/` | `KEEP` | Transport contract | Can remain JARVIS-derived indefinitely |
 | `packages/gateway-client/` | `KEEP` | Client connectivity | Keep for UI/nodes/external clients |
 | `src/agents/embedded-agent-runner/` | `KEEP + WRAP` | Agent runtime | JARVIS orchestration above it; replace later if needed |
 | `packages/agent-core/` | `KEEP` | Agent core substrate | Stable dependency if useful |
@@ -1096,13 +1096,13 @@ Every OpenClaw directory/file family will receive exactly one ownership classifi
 | `apps/` | `KEEP` as required | Client/device apps | JARVIS-branded variants |
 | Rust/native crates | `KEEP` only when consumed | Native acceleration/platform support | Do not port to Python without a reason |
 
-The exact file-level dependency closure must be computed from the actual fork before deletion. The current OpenClaw repository documentation explicitly describes the agent runtime paths above and states that plugins should use public SDK barrels rather than importing arbitrary `src/**` internals.
+The exact file-level dependency closure must be computed from the actual fork before deletion. The current JARVIS repository documentation explicitly describes the agent runtime paths above and states that plugins should use public SDK barrels rather than importing arbitrary `src/**` internals.
 
 ---
 
-# 6. OpenClaw Agent Runtime: What We Keep
+# 6. JARVIS Agent Runtime: What We Keep
 
-OpenClaw currently separates the built-in runtime into documented boundaries:
+JARVIS currently separates the built-in runtime into documented boundaries:
 
 ```text
 src/agents/embedded-agent-runner/
@@ -1127,7 +1127,7 @@ packages/agent-core/
         ▼
 src/agents/runtime/
         │
-        └── OpenClaw runtime facade
+        └── JARVIS runtime facade
 ```
 
 JARVIS will place LangGraph and the JARVIS Task State Machine above this layer:
@@ -1142,7 +1142,7 @@ JARVIS will place LangGraph and the JARVIS Task State Machine above this layer:
                  planner / delegation
                           │
                           ▼
-               OpenClaw-derived runtime
+               JARVIS-derived runtime
                           │
                  model ↔ tools ↔ loop
 ```
@@ -1284,14 +1284,14 @@ Gateway
 └── web/UI transport
 ```
 
-OpenClaw's current Gateway is a long-lived daemon owning messaging surfaces, control-plane clients, and nodes. It uses a typed WebSocket protocol with JSON request/response/event frames, and the protocol is defined from TypeBox schemas.
+JARVIS's current Gateway is a long-lived daemon owning messaging surfaces, control-plane clients, and nodes. It uses a typed WebSocket protocol with JSON request/response/event frames, and the protocol is defined from TypeBox schemas.
 
 ## 9.2 JARVIS protocol
 
 Initially:
 
 ```text
-OpenClaw Gateway Protocol
+JARVIS Gateway Protocol
            │
            ▼
 JARVIS Gateway compatibility layer
@@ -1345,7 +1345,7 @@ sequenceDiagram
 
 # 10. Channel and Routing Layer
 
-OpenClaw currently uses one Gateway to own configured messaging surfaces. JARVIS retains this general model.
+JARVIS currently uses one Gateway to own configured messaging surfaces. JARVIS retains this general model.
 
 ```text
                          Gateway
@@ -1472,7 +1472,7 @@ COMPLETED      RECOVERY
                   ↓
                RUNNING
 
-Any stage may enter:
+Any phase may enter:
 BLOCKED / FAILED / CANCELLED / EXPIRED
 ```
 
@@ -1670,7 +1670,7 @@ Execution target is selected by JARVIS policy, not by model choice.
 
 The Windows node is responsible for machine-local capabilities.
 
-OpenClaw's current Windows companion has a layered architecture with shared gateway transport/protocol/device identity, a connection layer, and a WinUI tray application; its current documented node capabilities include `screen.snapshot`, `screen.record`, `camera.list`, `camera.snap`, `camera.clip`, `system.notify`, `system.run`, `system.run.prepare`, `system.which`, `location.get`, `device.info`, `device.status`, and talk controls depending on permissions.
+JARVIS's current Windows companion has a layered architecture with shared gateway transport/protocol/device identity, a connection layer, and a WinUI tray application; its current documented node capabilities include `screen.snapshot`, `screen.record`, `camera.list`, `camera.snap`, `camera.clip`, `system.notify`, `system.run`, `system.run.prepare`, `system.which`, `location.get`, `device.info`, `device.status`, and talk controls depending on permissions.
 
 JARVIS will retain and adapt the most valuable Windows-native code rather than reimplementing OS integration in Python where C#/.NET/Win32 is a better boundary.
 
@@ -1736,7 +1736,7 @@ stdout/stderr/exit code
 Verification
 ```
 
-OpenClaw's current Windows execution path uses multiple layers for command analysis, approval, policy and sandbox/host execution. JARVIS preserves this defense-in-depth pattern and adds its own authoritative policy layer before node execution.
+JARVIS's current Windows execution path uses multiple layers for command analysis, approval, policy and sandbox/host execution. JARVIS preserves this defense-in-depth pattern and adds its own authoritative policy layer before node execution.
 
 ---
 
@@ -1780,7 +1780,7 @@ All file operations produce an audit record.
 
 # 19. Browser Architecture
 
-OpenClaw's managed browser is one of the highest-value subsystems to reuse.
+JARVIS's managed browser is one of the highest-value subsystems to reuse.
 
 ```text
                   JARVIS BROWSER MANAGER
@@ -2144,7 +2144,7 @@ Gemini Live
 
 # 26. Memory Plane
 
-OpenClaw's current memory architecture is particularly valuable because it treats memory as inspectable data rather than hidden magical state. It distinguishes instruction memory, curated core memory, episodic notes/transcripts, and prospective/scheduled state. It also treats the write path as a security boundary and tracks provenance.
+JARVIS's current memory architecture is particularly valuable because it treats memory as inspectable data rather than hidden magical state. It distinguishes instruction memory, curated core memory, episodic notes/transcripts, and prospective/scheduled state. It also treats the write path as a security boundary and tracks provenance.
 
 JARVIS expands that into:
 
@@ -2256,7 +2256,7 @@ Policy still decides whether each underlying tool is permitted.
 
 # 28. Plugin Architecture
 
-OpenClaw's plugin system is reusable as a foundation for JARVIS extensibility.
+JARVIS's plugin system is reusable as a foundation for JARVIS extensibility.
 
 ```mermaid
 flowchart LR
@@ -2324,7 +2324,7 @@ Child agents must not automatically inherit the parent's privileged authority.
 
 # 30. ACP / External Coding Agents
 
-JARVIS keeps the OpenClaw ACP concept.
+JARVIS keeps the JARVIS ACP concept.
 
 ```text
                 JARVIS Agent Broker
@@ -2502,7 +2502,7 @@ WEB / EMAIL / PDF / MESSAGE / WEBHOOK
       never grants authority automatically
 ```
 
-OpenClaw currently has explicit external-content protections and SSRF/security infrastructure; JARVIS retains those defenses and adds provenance-aware policy.
+JARVIS currently has explicit external-content protections and SSRF/security infrastructure; JARVIS retains those defenses and adds provenance-aware policy.
 
 ---
 
@@ -2770,7 +2770,7 @@ DYNAMIC UI
 └── context-aware widgets
 ```
 
-OpenClaw's current Gateway-hosted Canvas/A2UI surface is reusable as an initial implementation for dynamic, model-driven UI surfaces.
+JARVIS's current Gateway-hosted Canvas/A2UI surface is reusable as an initial implementation for dynamic, model-driven UI surfaces.
 
 ---
 
@@ -2941,13 +2941,13 @@ OpenAI-compatible endpoint
 provider-specific credential profiles
 ```
 
-OpenClaw already has mature auth-profile and model-runtime publication concepts. JARVIS should preserve them, then route access through the Secret Broker.
+JARVIS already has mature auth-profile and model-runtime publication concepts. JARVIS should preserve them, then route access through the Secret Broker.
 
 ---
 
 # 48. Model Runtime Generations
 
-OpenClaw's current runtime architecture publishes a prepared model runtime generation per configured agent so the model registry, auth template and projected catalog are treated as an atomic snapshot.
+JARVIS's current runtime architecture publishes a prepared model runtime generation per configured agent so the model registry, auth template and projected catalog are treated as an atomic snapshot.
 
 JARVIS should preserve this concept:
 
@@ -3070,7 +3070,7 @@ no automatic privilege escalation
 
 # 52. Parallelism and Concurrency
 
-OpenClaw's current agent loop uses serialized per-session execution plus global queues. JARVIS preserves the critical property that two concurrent turns cannot corrupt one session transcript.
+JARVIS's current agent loop uses serialized per-session execution plus global queues. JARVIS preserves the critical property that two concurrent turns cannot corrupt one session transcript.
 
 JARVIS concurrency model:
 
@@ -3545,7 +3545,7 @@ flowchart LR
 
 # 69. Dreaming / Background Memory Curation
 
-If the OpenClaw memory curation pattern is retained, JARVIS should run it as a low-priority background job.
+If the JARVIS memory curation pattern is retained, JARVIS should run it as a low-priority background job.
 
 ```text
 Daily activity
@@ -3740,7 +3740,7 @@ secret policy
 
 An MCP tool is not trusted solely because it speaks a known protocol.
 
-OpenClaw currently has MCP-related infrastructure and the Windows node documentation describes MCP-only operation modes; JARVIS can adopt the protocol while maintaining JARVIS-side policy.
+JARVIS currently has MCP-related infrastructure and the Windows node documentation describes MCP-only operation modes; JARVIS can adopt the protocol while maintaining JARVIS-side policy.
 
 ---
 
@@ -4289,12 +4289,12 @@ This preserves the ability to self-host one of the six approved JARVIS models la
 
 ---
 
-# 99. OpenClaw Source-to-JARVIS Migration Model
+# 99. JARVIS Source-to-JARVIS Migration Model
 
 The migration is a controlled ownership transfer.
 
 ```text
-                 OPENCLAW SOURCE
+                 JARVIS SOURCE
                         │
                  baseline fork
                         │
@@ -4313,9 +4313,9 @@ The migration is a controlled ownership transfer.
 
 ---
 
-# 100. OpenClaw Dependency Closure Rule
+# 100. JARVIS Dependency Closure Rule
 
-Never delete an OpenClaw file merely because it looks unused.
+Never delete an JARVIS file merely because it looks unused.
 
 Use:
 
@@ -4349,7 +4349,7 @@ REMOVE
 
 ```mermaid
 flowchart TB
-    OC[OpenClaw main] --> SNAP[Pin known commit]
+    OC[JARVIS main] --> SNAP[Pin known commit]
     SNAP --> BUILD[Build unmodified]
     BUILD --> TEST[Run upstream tests]
     TEST --> MAP[Generate source/dependency map]
@@ -4364,7 +4364,7 @@ flowchart TB
     VERIFY --> JARVIS[JARVIS baseline]
 ```
 
-The original OpenClaw tree must remain buildable during early migration whenever practical.
+The original JARVIS tree must remain buildable during early migration whenever practical.
 
 ---
 
@@ -4374,9 +4374,9 @@ Maintain:
 
 ```yaml
 component: packages/agent-core
-upstream: openclaw/openclaw
+upstream: jarvis/jarvis
 upstream_commit: <pinned-commit>
-source_class: openclaw-mit
+source_class: jarvis-mit
 status: adapted
 local_owner: cognition.agent_runtime
 license: MIT
@@ -4405,7 +4405,7 @@ maintain attribution
 Recommended branches:
 
 ```text
-upstream/openclaw-main
+upstream/jarvis-main
 jarvis/main
 jarvis/integration
 ```
@@ -4417,7 +4417,7 @@ The JARVIS fork should periodically be rebased/merged after review rather than d
 # 104. Upstream Sync Strategy
 
 ```text
-OpenClaw upstream
+JARVIS upstream
       ↓
 fetch
       ↓
@@ -4491,7 +4491,7 @@ Memory Governance
 Security Exit Gate
 ```
 
-OpenClaw functionality remains underneath as implementation support.
+JARVIS functionality remains underneath as implementation support.
 
 ---
 
@@ -4506,7 +4506,7 @@ external coding agents
 sandbox runtime
 remote nodes
 GPU model servers
-optional OpenClaw-compatible services
+optional JARVIS-compatible services
 ```
 
 This prevents the core process from becoming one giant trusted blob.
@@ -4535,7 +4535,7 @@ Deletion requires dependency closure.
 # 109. Full Source Map
 
 ```text
-OPENCLAW
+JARVIS
 │
 ├── src/gateway/                     → KEEP / ADAPT
 ├── src/gateway/protocol/            → KEEP
@@ -4581,7 +4581,7 @@ OPENCLAW
 
 # 110. JARVIS Repository Structure
 
-The initial repository should preserve OpenClaw's upstream structure to minimize migration risk. A JARVIS-owned structure can be introduced behind stable interfaces.
+The initial repository should preserve JARVIS's upstream structure to minimize migration risk. A JARVIS-owned structure can be introduced behind stable interfaces.
 
 Target organization:
 
@@ -4661,7 +4661,7 @@ JARVIS/
 ├── config/
 ├── migrations/
 │
-├── openclaw-derived/
+├── jarvis-derived/
 │   └── source-ledger/
 │
 ├── third-party/
@@ -4672,13 +4672,13 @@ JARVIS/
 └── ARCHITECTURE.md
 ```
 
-During the first migration, some of these directories are logical JARVIS boundaries over physically unchanged OpenClaw locations.
+During the first migration, some of these directories are logical JARVIS boundaries over physically unchanged JARVIS locations.
 
 ---
 
 # 111. Python ↔ TypeScript Boundary
 
-JARVIS does not need to translate the entire OpenClaw runtime into Python.
+JARVIS does not need to translate the entire JARVIS runtime into Python.
 
 Preferred model:
 
@@ -4689,7 +4689,7 @@ Preferred model:
                  │ typed IPC/RPC
                  ▼
           NODE / TYPESCRIPT
-        OpenClaw-derived core
+        JARVIS-derived core
                  │
                  ▼
          Windows / Browser
@@ -6001,12 +6001,12 @@ The dashboard should show actual observed/queried values rather than outdated do
 
 ---
 
-# 170. OpenClaw Upgrade Compatibility
+# 170. JARVIS Upgrade Compatibility
 
 The fork must have an upstream compatibility layer.
 
 ```text
-OpenClaw new release
+JARVIS new release
        ↓
 API/source diff
        ↓
@@ -6035,14 +6035,14 @@ If upstream changes a private internal API, JARVIS should absorb it behind its a
 │ Model selection          │ JARVIS                       │
 │ Quota management         │ JARVIS                       │
 │ Memory governance        │ JARVIS                       │
-│ Gateway transport        │ OpenClaw-derived/JARVIS wrap │
-│ Browser implementation   │ OpenClaw-derived              │
-│ Windows implementation   │ OpenClaw-derived/native       │
-│ Channels                 │ OpenClaw-derived              │
+│ Gateway transport        │ JARVIS-derived/JARVIS wrap │
+│ Browser implementation   │ JARVIS-derived              │
+│ Windows implementation   │ JARVIS-derived/native       │
+│ Channels                 │ JARVIS-derived              │
 │ Skills                   │ Shared                        │
-│ Plugins                  │ OpenClaw-derived + JARVIS     │
-│ ACP                      │ OpenClaw-derived              │
-│ Sandbox                  │ OpenClaw-derived + JARVIS     │
+│ Plugins                  │ JARVIS-derived + JARVIS     │
+│ ACP                      │ JARVIS-derived              │
+│ Sandbox                  │ JARVIS-derived + JARVIS     │
 │ Audit                    │ JARVIS                        │
 │ Verification             │ JARVIS                        │
 └──────────────────────────┴───────────────────────────────┘
@@ -6050,7 +6050,7 @@ If upstream changes a private internal API, JARVIS should absorb it behind its a
 
 ---
 
-# 172. What “Build from OpenClaw” Actually Means
+# 172. What “Build from JARVIS” Actually Means
 
 It means:
 
@@ -6076,7 +6076,7 @@ This is a **fork-and-transform strategy**, not a wrapper product.
 # 173. Migration Phase 0 — Baseline
 
 ```text
-1. Pin OpenClaw commit.
+1. Pin JARVIS commit.
 2. Clone full source tree.
 3. Preserve LICENSE / notices.
 4. Build unchanged.
@@ -6089,7 +6089,7 @@ This is a **fork-and-transform strategy**, not a wrapper product.
 Exit condition:
 
 ```text
-OpenClaw baseline builds and tests pass.
+JARVIS baseline builds and tests pass.
 ```
 
 ---
@@ -6105,14 +6105,14 @@ jarvis-policy
 jarvis-action-broker
 ```
 
-At first they can wrap OpenClaw behavior.
+At first they can wrap JARVIS behavior.
 
 ```text
 JARVIS request
  ↓
 JARVIS facade
  ↓
-OpenClaw implementation
+JARVIS implementation
 ```
 
 Exit condition:
@@ -6281,7 +6281,7 @@ User can understand what JARVIS is doing without reading source code.
 Move ownership gradually:
 
 ```text
-OpenClaw session
+JARVIS session
        ↓
 JARVIS session facade
        ↓
@@ -6291,7 +6291,7 @@ JARVIS session implementation
 Then:
 
 ```text
-OpenClaw tool policy
+JARVIS tool policy
        ↓
 JARVIS policy
 ```
@@ -6299,21 +6299,21 @@ JARVIS policy
 Then:
 
 ```text
-OpenClaw task behavior
+JARVIS task behavior
        ↓
 JARVIS task state machine
 ```
 
-The underlying OpenClaw infrastructure can remain where useful.
+The underlying JARVIS infrastructure can remain where useful.
 
 ---
 
-# 183. Migration Phase 10 — Optional De-OpenClawing
+# 183. Migration Phase 10 — Optional De-JARVISing
 
 Only when there is a technical benefit:
 
 ```text
-OpenClaw subsystem
+JARVIS subsystem
        ↓
 JARVIS-native replacement
        ↓
@@ -6654,12 +6654,12 @@ The model cannot override the policy decision.
 
 ---
 
-# 196. OpenClaw Features Reused by JARVIS
+# 196. JARVIS Features Reused by JARVIS
 
 The feature inheritance map is approximately:
 
 ```text
-OPENCLAW FEATURE                JARVIS FEATURE
+JARVIS FEATURE                JARVIS FEATURE
 ────────────────────            ─────────────────────────
 Gateway                         JARVIS Gateway
 WS protocol                     JARVIS RPC/events
@@ -6699,7 +6699,7 @@ observability                   JARVIS Observability
 
 # 197. What JARVIS Adds That Makes It Different
 
-JARVIS is not merely OpenClaw with a different name because JARVIS adds explicit ownership of:
+JARVIS is not merely JARVIS with a different name because JARVIS adds explicit ownership of:
 
 ```text
 Control Plane
@@ -6761,11 +6761,11 @@ Policy unavailable → privileged action denied.
 
 ---
 
-# 199. Architecture Decision Record: Full OpenClaw Fork
+# 199. Architecture Decision Record: Full JARVIS Fork
 
-**Decision:** Use the full OpenClaw source tree as the initial implementation substrate.
+**Decision:** Use the full JARVIS source tree as the initial implementation substrate.
 
-**Reason:** OpenClaw already implements a large amount of mature infrastructure and tests for agent operation, Gateway transport, sessions, tools, channels, nodes, browser, automation, plugin infrastructure and security.
+**Reason:** JARVIS already implements a large amount of mature infrastructure and tests for agent operation, Gateway transport, sessions, tools, channels, nodes, browser, automation, plugin infrastructure and security.
 
 **Tradeoff:** The fork becomes initially large and inherits TypeScript/Node architecture. This is accepted because rewriting the infrastructure would duplicate effort and introduce avoidable bugs.
 
@@ -6823,9 +6823,9 @@ Policy unavailable → privileged action denied.
 
 ---
 
-# 205. Architecture Decision Record: OpenClaw License
+# 205. Architecture Decision Record: JARVIS License
 
-OpenClaw's current repository contains an MIT license. The MIT license permits copying and modification subject to preserving the license/copyright notice. The repository also contains `THIRD_PARTY_NOTICES.md` for incorporated/adapted external code and dependencies.
+JARVIS's current repository contains an MIT license. The MIT license permits copying and modification subject to preserving the license/copyright notice. The repository also contains `THIRD_PARTY_NOTICES.md` for incorporated/adapted external code and dependencies.
 
 JARVIS therefore maintains:
 
@@ -6840,17 +6840,17 @@ This document is an architecture specification, not legal advice.
 
 ---
 
-# 206. Current OpenClaw Source Facts Used by This Architecture
+# 206. Current JARVIS Source Facts Used by This Architecture
 
 The current upstream documentation establishes, among other things:
 
-1. OpenClaw's built-in runtime is organized around `src/agents/embedded-agent-runner/`, `src/agents/sessions/`, `packages/agent-core/`, `src/agents/runtime/`, `src/agents/agent-tools*.ts`, `src/agents/agent-hooks/`, `src/agents/harness/`, and `src/llm/`.
+1. JARVIS's built-in runtime is organized around `src/agents/embedded-agent-runner/`, `src/agents/sessions/`, `packages/agent-core/`, `src/agents/runtime/`, `src/agents/agent-tools*.ts`, `src/agents/agent-hooks/`, `src/agents/harness/`, and `src/llm/`.
 2. The Gateway is a long-lived service owning messaging surfaces and serving a typed WebSocket control plane.
 3. The Gateway protocol uses typed request/response/event frames and node/client roles.
 4. Nodes advertise explicit capabilities and commands.
 5. Skills are discoverable workspace/resources and can be loaded into the agent runtime.
 6. The runtime manages sessions, context, tool wiring and model/provider selection.
-7. OpenClaw has explicit browser automation, sandboxing, approvals, secrets, memory/context and automation infrastructure.
+7. JARVIS has explicit browser automation, sandboxing, approvals, secrets, memory/context and automation infrastructure.
 8. The Windows node provides native capabilities including process/system/screen/camera/device/talk surfaces depending on configuration and permissions.
 
 Primary sources are listed in the References section below.
@@ -6992,11 +6992,11 @@ flowchart TB
 
 ---
 
-# 211. Reference Diagram — OpenClaw Extraction
+# 211. Reference Diagram — JARVIS Extraction
 
 ```mermaid
 flowchart LR
-    OC[OpenClaw Source Tree] --> A1[Agent Core]
+    OC[JARVIS Source Tree] --> A1[Agent Core]
     OC --> A2[Gateway]
     OC --> A3[Tools]
     OC --> A4[Browser]
@@ -7181,9 +7181,9 @@ LICENSE/PROVENANCE
 The implementation should follow this rule:
 
 ```text
-DO NOT REINVENT WHAT OPENCLAW ALREADY SOLVES WELL.
+DO NOT REINVENT WHAT JARVIS ALREADY SOLVES WELL.
 
-DO NOT GIVE OPENCLAW AUTHORITY THAT BELONGS TO JARVIS.
+DO NOT GIVE JARVIS AUTHORITY THAT BELONGS TO JARVIS.
 
 DO NOT GIVE A MODEL AUTHORITY THAT BELONGS TO POLICY.
 
@@ -7194,7 +7194,7 @@ DO NOT CALL AN ACTION SUCCESSFUL WITHOUT EVIDENCE.
 DO NOT DELETE UPSTREAM CODE WITHOUT DEPENDENCY ANALYSIS.
 ```
 
-The objective is not to create a smaller OpenClaw.
+The objective is not to create a smaller JARVIS.
 
 The objective is to create a **JARVIS operating system built on a proven agent infrastructure substrate**, with explicit control, safety, multi-model cognition, OS-wide execution, durable state, verification and extensibility.
 
@@ -7205,7 +7205,7 @@ The objective is to create a **JARVIS operating system built on a proven agent i
 The recommended order is:
 
 ```text
-0. Pin OpenClaw + preserve provenance
+0. Pin JARVIS + preserve provenance
 1. Build baseline
 2. Introduce JARVIS interfaces
 3. Control Plane
@@ -7226,7 +7226,7 @@ The recommended order is:
 18. Progressive ownership transfer
 ```
 
-At every stage:
+At every step:
 
 ```text
 build
@@ -7241,29 +7241,29 @@ build
 
 # 219. References / Research Sources
 
-## OpenClaw primary sources
+## JARVIS primary sources
 
-- OpenClaw repository: https://github.com/openclaw/openclaw
-- OpenClaw documentation: https://docs.openclaw.ai/
-- Agent runtime architecture: https://github.com/openclaw/openclaw/blob/main/docs/agent-runtime-architecture.md
-- Agent runtime contract: https://github.com/openclaw/openclaw/blob/main/docs/concepts/agent.md
-- Agent loop: https://docs.openclaw.ai/concepts/agent-loop
-- Gateway architecture: https://github.com/openclaw/openclaw/blob/main/docs/concepts/architecture.md
-- Gateway protocol: https://github.com/openclaw/openclaw/blob/main/docs/gateway/protocol.md
-- Gateway clients: https://github.com/openclaw/openclaw/blob/main/docs/gateway/clients.md
-- Browser: https://docs.openclaw.ai/tools/browser
-- Sandboxing: https://docs.openclaw.ai/gateway/sandboxing
-- Security: https://docs.openclaw.ai/gateway/security
-- Memory architecture: https://docs.openclaw.ai/concepts/memory-architecture
-- ACP agents: https://docs.openclaw.ai/tools/acp-agents
-- Plugin architecture: https://github.com/openclaw/openclaw/blob/main/docs/plugins/architecture.md
-- OpenClaw license: https://github.com/openclaw/openclaw/blob/main/LICENSE
-- Third-party notices: https://github.com/openclaw/openclaw/blob/main/THIRD_PARTY_NOTICES.md
-- OpenClaw Windows node: https://github.com/openclaw/openclaw-windows-node
-- Windows node architecture: https://github.com/openclaw/openclaw-windows-node/blob/main/docs/ARCHITECTURE.md
-- Windows connection architecture: https://github.com/openclaw/openclaw-windows-node/blob/main/docs/CONNECTION_ARCHITECTURE.md
-- Windows execution FAQ: https://github.com/openclaw/openclaw-windows-node/blob/main/docs/OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md
-- Windows platform documentation: https://github.com/openclaw/openclaw/blob/main/docs/platforms/windows.md
+- JARVIS repository: https://github.com/jarvis/jarvis
+- JARVIS documentation: https://docs.jarvis.ai/
+- Agent runtime architecture: https://github.com/jarvis/jarvis/blob/main/docs/agent-runtime-architecture.md
+- Agent runtime contract: https://github.com/jarvis/jarvis/blob/main/docs/concepts/agent.md
+- Agent loop: https://docs.jarvis.ai/concepts/agent-loop
+- Gateway architecture: https://github.com/jarvis/jarvis/blob/main/docs/concepts/architecture.md
+- Gateway protocol: https://github.com/jarvis/jarvis/blob/main/docs/gateway/protocol.md
+- Gateway clients: https://github.com/jarvis/jarvis/blob/main/docs/gateway/clients.md
+- Browser: https://docs.jarvis.ai/tools/browser
+- Sandboxing: https://docs.jarvis.ai/gateway/sandboxing
+- Security: https://docs.jarvis.ai/gateway/security
+- Memory architecture: https://docs.jarvis.ai/concepts/memory-architecture
+- ACP agents: https://docs.jarvis.ai/tools/acp-agents
+- Plugin architecture: https://github.com/jarvis/jarvis/blob/main/docs/plugins/architecture.md
+- JARVIS license: https://github.com/jarvis/jarvis/blob/main/LICENSE
+- Third-party notices: https://github.com/jarvis/jarvis/blob/main/THIRD_PARTY_NOTICES.md
+- JARVIS Windows node: https://github.com/jarvis/jarvis-windows-node
+- Windows node architecture: https://github.com/jarvis/jarvis-windows-node/blob/main/docs/ARCHITECTURE.md
+- Windows connection architecture: https://github.com/jarvis/jarvis-windows-node/blob/main/docs/CONNECTION_ARCHITECTURE.md
+- Windows execution FAQ: https://github.com/jarvis/jarvis-windows-node/blob/main/docs/JARVIS_GATEWAY_NODE_EXEC_FAQ.md
+- Windows platform documentation: https://github.com/jarvis/jarvis/blob/main/docs/platforms/windows.md
 
 ## Gemini primary sources
 
@@ -7283,12 +7283,12 @@ build
 
 # 220. Implementation Note
 
-This document is deliberately written as an **architecture baseline**, not as a promise that every named upstream file will remain at exactly the same path forever. OpenClaw is an actively developed repository. The source map therefore treats documented package/module boundaries as the stable architectural unit and requires dependency-closure inspection against the pinned upstream commit before file deletion or extraction.
+This document is deliberately written as an **architecture baseline**, not as a promise that every named upstream file will remain at exactly the same path forever. JARVIS is an actively developed repository. The source map therefore treats documented package/module boundaries as the stable architectural unit and requires dependency-closure inspection against the pinned upstream commit before file deletion or extraction.
 
 When implementation starts, the first engineering artifact after this document should be:
 
 ```text
-OPENCLAW_SOURCE_MAP.md
+JARVIS_SOURCE_MAP.md
 ```
 
 containing the exact pinned commit, every retained package/path, dependency relationships, ownership tag, provenance, third-party license status, and the first JARVIS adapter boundary for that module.
@@ -7297,7 +7297,7 @@ containing the exact pinned commit, every retained package/path, dependency rela
 
 # 221. One-Line Definition
 
-> **JARVIS is a stateful, zero-trust, multimodal personal AI operating system whose realtime human interface is Gemini Live, whose cognition is a quota-aware multi-model/agent fabric, whose authority is the JARVIS Control + Policy + Action Broker stack, and whose body is a secure execution fabric built initially from mature OpenClaw infrastructure and native Windows/device components.**
+> **JARVIS is a stateful, zero-trust, multimodal personal AI operating system whose realtime human interface is Gemini Live, whose cognition is a quota-aware multi-model/agent fabric, whose authority is the JARVIS Control + Policy + Action Broker stack, and whose body is a secure execution fabric built initially from mature JARVIS infrastructure and native Windows/device components.**
 
 ---
 

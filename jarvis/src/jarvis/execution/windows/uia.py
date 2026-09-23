@@ -371,7 +371,7 @@ class WindowsUIAutomation:
         except Exception:
             pass
 
-        # 5. Fallback to programmatic focus + simulated click via OpenClaw substrate
+        # 5. Fallback to programmatic focus + simulated click via JARVIS substrate
         try:
             element.SetFocus()
             rect = element.CurrentBoundingRectangle
@@ -383,7 +383,7 @@ class WindowsUIAutomation:
 
                 res = substrate_bridge.execute_act_sync("left_click", {"x": x, "y": y})
                 if res and res.get("ok"):
-                    logger.info(f"Fallback clicked at ({x}, {y}) via OpenClaw substrate")
+                    logger.info(f"Fallback clicked at ({x}, {y}) via JARVIS substrate")
                     return True
             except Exception as bridge_err:
                 logger.debug(f"Substrate bridge click fallback deferred: {bridge_err}")
@@ -413,7 +413,7 @@ class WindowsUIAutomation:
         except Exception:
             pass
 
-        # 2. Fallback to SetFocus + typing via OpenClaw substrate
+        # 2. Fallback to SetFocus + typing via JARVIS substrate
         try:
             element.SetFocus()
             try:
@@ -421,7 +421,7 @@ class WindowsUIAutomation:
 
                 res = substrate_bridge.execute_act_sync("type", {"text": value})
                 if res and res.get("ok"):
-                    logger.info(f"Fallback typed value via OpenClaw substrate: '{value}'")
+                    logger.info(f"Fallback typed value via JARVIS substrate: '{value}'")
                     return True
             except Exception as bridge_err:
                 logger.debug(f"Substrate bridge type fallback deferred: {bridge_err}")

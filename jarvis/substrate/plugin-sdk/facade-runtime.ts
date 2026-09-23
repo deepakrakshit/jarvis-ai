@@ -27,13 +27,13 @@ export {
   resetFacadeLoaderStateForTest as resetFacadeRuntimeStateForTest,
 } from "./facade-loader.js";
 
-const OPENCLAW_PACKAGE_ROOT =
+const JARVIS_PACKAGE_ROOT =
   resolveLoaderPackageRoot({
     modulePath: fileURLToPath(import.meta.url),
     moduleUrl: import.meta.url,
   }) ?? fileURLToPath(new URL("../..", import.meta.url));
 const CURRENT_MODULE_PATH = fileURLToPath(import.meta.url);
-const OPENCLAW_SOURCE_EXTENSIONS_ROOT = path.resolve(OPENCLAW_PACKAGE_ROOT, "extensions");
+const JARVIS_SOURCE_EXTENSIONS_ROOT = path.resolve(JARVIS_PACKAGE_ROOT, "extensions");
 function createFacadeResolutionKey(params: BundledPluginPublicSurfaceParams): string {
   return createFacadeResolutionKeyShared({
     ...params,
@@ -67,7 +67,7 @@ function resolveFacadeModuleLocation(
     return resolveFacadeModuleLocationUncached(params);
   }
   const resolutionKey = `facade-registry:${createFacadeResolutionKey(params)}`;
-  const artifacts = getPluginCacheRoot(OPENCLAW_PACKAGE_ROOT).artifacts;
+  const artifacts = getPluginCacheRoot(JARVIS_PACKAGE_ROOT).artifacts;
   const cached = artifacts.get(resolutionKey);
   if (cached !== undefined) {
     return cached;
@@ -153,7 +153,7 @@ function buildFacadeActivationCheckParams(
   return {
     ...params,
     location,
-    sourceExtensionsRoot: OPENCLAW_SOURCE_EXTENSIONS_ROOT,
+    sourceExtensionsRoot: JARVIS_SOURCE_EXTENSIONS_ROOT,
   };
 }
 

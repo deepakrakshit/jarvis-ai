@@ -1,8 +1,8 @@
 // All public plugin SDK contracts are experimental; see docs/plugins/sdk-overview.md#api-stability.
 import { emptyPluginConfigSchema } from "../plugins/config-schema.js";
 import type {
-  OpenClawPluginConfigSchema,
-  OpenClawPluginDefinition,
+  JARVISPluginConfigSchema,
+  JARVISPluginDefinition,
   ProviderBuiltInModelSuppressionContext as ProviderBuiltInModelSuppressionContextType,
 } from "../plugins/types.js";
 import { createCachedLazyValueGetter } from "./lazy-value.js";
@@ -11,7 +11,7 @@ export type {
   PluginCapabilityCatalogEntry,
 } from "../plugins/capability-catalog-context.types.js";
 export type { PluginCapabilityCatalog } from "../plugins/capability-catalog.types.js";
-export type { OpenClawConfig } from "../config/types.openclaw.js";
+export type { JarvisConfig } from "../config/types.jarvis.js";
 
 export type {
   AgentHarness,
@@ -27,25 +27,25 @@ export type {
   MigrationProviderContext,
   MigrationProviderPlugin,
   MigrationSummary,
-  OpenClawGatewayDiscoveryAdvertiseContext,
-  OpenClawGatewayDiscoveryService,
-  OpenClawPluginApi,
-  OpenClawPluginCommandDefinition,
-  OpenClawPluginConfigSchema,
-  OpenClawPluginDefinition,
-  OpenClawPluginHttpRouteHandler,
-  OpenClawPluginNodeHostCommand,
-  OpenClawPluginNodeHostCommandAvailabilityContext,
-  OpenClawPluginNodeInvokePolicy,
-  OpenClawPluginNodeInvokePolicyContext,
-  OpenClawPluginNodeInvokePolicyResult,
-  OpenClawPluginReloadRegistration,
-  OpenClawPluginSecurityAuditCollector,
-  OpenClawPluginSecurityAuditContext,
-  OpenClawPluginService,
-  OpenClawPluginServiceContext,
-  OpenClawPluginToolContext,
-  OpenClawPluginToolFactory,
+  JARVISGatewayDiscoveryAdvertiseContext,
+  JARVISGatewayDiscoveryService,
+  JarvisPluginApi,
+  JARVISPluginCommandDefinition,
+  JARVISPluginConfigSchema,
+  JARVISPluginDefinition,
+  JARVISPluginHttpRouteHandler,
+  JARVISPluginNodeHostCommand,
+  JARVISPluginNodeHostCommandAvailabilityContext,
+  JARVISPluginNodeInvokePolicy,
+  JARVISPluginNodeInvokePolicyContext,
+  JARVISPluginNodeInvokePolicyResult,
+  JARVISPluginReloadRegistration,
+  JARVISPluginSecurityAuditCollector,
+  JARVISPluginSecurityAuditContext,
+  JARVISPluginService,
+  JARVISPluginServiceContext,
+  JARVISPluginToolContext,
+  JARVISPluginToolFactory,
   PluginAgentEventEmitParams,
   PluginAgentEventEmitResult,
   PluginAgentEventSubscriptionRegistration,
@@ -154,8 +154,8 @@ export type {
 export type ProviderBuiltInModelSuppressionContext = ProviderBuiltInModelSuppressionContextType;
 
 export type {
-  OpenClawPluginGatewayEventScope,
-  OpenClawPluginGatewayEvents,
+  JARVISPluginGatewayEventScope,
+  JARVISPluginGatewayEvents,
 } from "../plugins/gateway-events.js";
 export { WorkerProviderError } from "../plugins/capability-provider.types.js";
 
@@ -205,21 +205,21 @@ type DefinePluginEntryOptions = {
   name: string;
   description: string;
   /**
-   * @deprecated Declare exclusive plugin kind in `openclaw.plugin.json` via
+   * @deprecated Declare exclusive plugin kind in `jarvis.plugin.json` via
    * manifest `kind`. Runtime-entry `kind` remains only as a compatibility
    * fallback for older plugins.
    */
-  kind?: OpenClawPluginDefinition["kind"];
-  configSchema?: OpenClawPluginConfigSchema | (() => OpenClawPluginConfigSchema);
-  reload?: OpenClawPluginDefinition["reload"];
-  nodeHostCommands?: OpenClawPluginDefinition["nodeHostCommands"];
-  securityAuditCollectors?: OpenClawPluginDefinition["securityAuditCollectors"];
-  register: NonNullable<OpenClawPluginDefinition["register"]>;
+  kind?: JARVISPluginDefinition["kind"];
+  configSchema?: JARVISPluginConfigSchema | (() => JARVISPluginConfigSchema);
+  reload?: JARVISPluginDefinition["reload"];
+  nodeHostCommands?: JARVISPluginDefinition["nodeHostCommands"];
+  securityAuditCollectors?: JARVISPluginDefinition["securityAuditCollectors"];
+  register: NonNullable<JARVISPluginDefinition["register"]>;
 };
 
-/** Normalized object shape that OpenClaw loads from a plugin entry module. */
+/** Normalized object shape that JARVIS loads from a plugin entry module. */
 type DefinedPluginEntry = Omit<DefinePluginEntryOptions, "configSchema"> & {
-  configSchema: OpenClawPluginConfigSchema;
+  configSchema: JARVISPluginConfigSchema;
 };
 
 /**
@@ -229,7 +229,7 @@ type DefinedPluginEntry = Omit<DefinePluginEntryOptions, "configSchema"> & {
  * plugins. Channel plugins should use `defineChannelPluginEntry(...)` from
  * `@jarvis/plugin-sdk/core` so they inherit the channel capability wiring.
  *
- * @experimental Pin and test OpenClaw host versions; existing compatibility windows still apply.
+ * @experimental Pin and test JARVIS host versions; existing compatibility windows still apply.
  */
 export function definePluginEntry({
   id,

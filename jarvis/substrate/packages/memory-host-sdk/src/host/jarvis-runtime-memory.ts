@@ -30,4 +30,4 @@ export type {
   MemoryPluginRuntime,
   MemoryPromptSectionBuilder,
 } from "../../../../src/plugins/memory-state.js";
-export type { OpenClawPluginApi } from "../../../../src/plugins/types.js";
+export type { JarvisPluginApi } from "../../../../src/plugins/types.js";

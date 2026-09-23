@@ -15,6 +15,6 @@ export {
   DEFAULT_ACCOUNT_ID,
 } from "./account-core.js";
 
-export type { OpenClawConfig } from "../config/types.openclaw.js";
+export type { JarvisConfig } from "../config/types.jarvis.js";
 export { resolveAccountEntry, resolveAccountKey } from "../routing/account-lookup.js";
 export type { ChannelAccountKeyPolicy } from "../routing/account-lookup.js";

@@ -2,7 +2,7 @@
 import type { TSchema } from "typebox";
 import type { AgentToolUpdateCallback } from "../agents/runtime/index.js";
 import { jsonResult } from "../agents/tools/common.js";
-import type { OpenClawPluginGatewayEvents } from "../plugins/gateway-events.js";
+import type { JARVISPluginGatewayEvents } from "../plugins/gateway-events.js";
 import {
   isPluginJsonValue,
   type PluginJsonValue,
@@ -21,16 +21,16 @@ import type {
 } from "./feature-contract.js";
 import {
   definePluginEntry,
-  type OpenClawPluginApi,
-  type OpenClawPluginToolContext,
+  type JarvisPluginApi,
+  type JARVISPluginToolContext,
 } from "./plugin-entry.js";
 import { toolPluginMetadataSymbol, type ToolPluginMetadata } from "./tool-plugin.js";
 
-export type FeatureInvocationContext = { api: OpenClawPluginApi } & (
+export type FeatureInvocationContext = { api: JarvisPluginApi } & (
   | { source: "session-action"; action: PluginSessionActionContext }
   | {
       source: "tool";
-      tool: OpenClawPluginToolContext;
+      tool: JARVISPluginToolContext;
       toolCallId: string;
       signal?: AbortSignal;
       onUpdate?: AgentToolUpdateCallback;
@@ -61,7 +61,7 @@ export type DefineFeaturePluginOptions<C extends FeatureContract> = {
   name: string;
   description: string;
   /** Registration is synchronous; long-lived work belongs to api.registerService. */
-  setup: (api: OpenClawPluginApi, events: FeatureEventEmitter<C>) => FeatureHandlers<C>;
+  setup: (api: JarvisPluginApi, events: FeatureEventEmitter<C>) => FeatureHandlers<C>;
   commands?: Partial<{ [K in FeatureOperationName<C>]: FeatureCommandAdapter<C, K> }>;
 };
 
@@ -120,7 +120,7 @@ export function defineFeaturePlugin<C extends FeatureContract>(
       if (api.id !== contract.pluginId) {
         throw new Error("Feature contract must belong to the registering plugin");
       }
-      let gatewayEvents: OpenClawPluginGatewayEvents | undefined;
+      let gatewayEvents: JARVISPluginGatewayEvents | undefined;
       const events: FeatureEventEmitter<C> = {
         emit(event, payload) {
           const schema = contract.events[event];

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { JarvisConfig } from "../../config/types.jarvis.js";
 import type { MeetingJoinRequest } from "../../meeting-bot/plugin-entry.js";
 import type {
   MeetingPluginSession,
@@ -28,7 +28,7 @@ export function defineMeetingSessionFlowTests(options: {
   createFixture(options?: {
     config?: unknown;
     harness?: { tabOpen?: boolean };
-    fullConfig?: OpenClawConfig;
+    fullConfig?: JarvisConfig;
   }): { harness: MeetingBrowserFixture; runtime: Runtime };
   url: string;
   tabId: string;

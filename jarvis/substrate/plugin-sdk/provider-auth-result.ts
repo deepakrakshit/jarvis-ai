@@ -9,7 +9,7 @@ import {
   normalizeAgentModelSelectionForConfig,
 } from "../config/model-input.js";
 import type { ModelProviderConfig } from "../config/types.models.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import type { ProviderAuthResult } from "../plugins/types.js";
 
 function normalizeProviderConfigModelIdsForAuthResult(
@@ -34,8 +34,8 @@ function normalizeProviderConfigModelIdsForAuthResult(
 }
 
 function normalizeProviderAuthConfigPatchModelRefs(
-  patch: Partial<OpenClawConfig>,
-): Partial<OpenClawConfig> {
+  patch: Partial<JarvisConfig>,
+): Partial<JarvisConfig> {
   let next = patch;
   const defaults = patch.agents?.defaults;
   if (defaults) {
@@ -122,7 +122,7 @@ export function buildOauthProviderAuthResult(params: {
   /** Provider-specific credential fields merged into the OAuth credential. */
   credentialExtra?: Record<string, unknown>;
   /** Explicit config patch to emit after model-ref normalization. */
-  configPatch?: Partial<OpenClawConfig>;
+  configPatch?: Partial<JarvisConfig>;
   /** Optional setup notes forwarded to provider login callers. */
   notes?: string[];
 }): ProviderAuthResult {
@@ -159,7 +159,7 @@ export function buildOauthProviderAuthResult(params: {
               },
             },
           },
-        } as Partial<OpenClawConfig>),
+        } as Partial<JarvisConfig>),
     ),
     defaultModel,
     notes: params.notes,

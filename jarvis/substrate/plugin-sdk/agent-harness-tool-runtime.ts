@@ -16,23 +16,23 @@ export {
   copyInternalToolResultState,
 } from "../agents/runtime/internal-hooks.js";
 
-type OpenClawCodingToolsOptions = NonNullable<
-  Parameters<typeof import("./agent-harness.js").createOpenClawCodingTools>[0]
+type JARVISCodingToolsOptions = NonNullable<
+  Parameters<typeof import("./agent-harness.js").createJARVISCodingTools>[0]
 >;
 
 export type AgentHarnessToolSurfaceRuntime = Omit<
   CoreAgentHarnessToolSurfaceRuntime,
   "toolSearchCatalogExecutor" | "toolSearchCatalogRef"
 > & {
-  toolSearchCatalogExecutor: OpenClawCodingToolsOptions["toolSearchCatalogExecutor"];
-  toolSearchCatalogRef: OpenClawCodingToolsOptions["toolSearchCatalogRef"];
+  toolSearchCatalogExecutor: JARVISCodingToolsOptions["toolSearchCatalogExecutor"];
+  toolSearchCatalogRef: JARVISCodingToolsOptions["toolSearchCatalogRef"];
 };
 
 export type AgentHarnessToolSurfaceRuntimeParams = Omit<
   Parameters<typeof createAgentHarnessToolSurfaceRuntimeCore>[0],
   "executeTool" | "disableToolSearch"
 > & {
-  executeTool: NonNullable<OpenClawCodingToolsOptions["toolSearchCatalogExecutor"]>;
+  executeTool: NonNullable<JARVISCodingToolsOptions["toolSearchCatalogExecutor"]>;
 };
 
 export function createAgentHarnessToolSurfaceRuntime(

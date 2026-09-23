@@ -14,7 +14,7 @@ import type { ChannelSecurityAdapter } from "../channels/plugins/types.adapters.
 import type { ChannelSecurityDmPolicy } from "../channels/plugins/types.core.js";
 import { collectProviderDangerousNameMatchingScopes } from "../config/dangerous-name-matching.js";
 import type { GroupPolicy } from "../config/types.base.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { createScopedDmSecurityResolver } from "./channel-config-helpers.js";
 /** Shared policy warnings and DM/group policy helpers for channel plugins. */
 export type {
@@ -329,7 +329,7 @@ export function createDangerousNameMatchingMutableAllowlistWarningCollector(para
     dangerousFlagPath: string;
   }) => ChannelMutableAllowlistCandidate[];
 }) {
-  return ({ cfg }: { cfg: OpenClawConfig }): string[] => {
+  return ({ cfg }: { cfg: JarvisConfig }): string[] => {
     const hits: ChannelMutableAllowlistHit[] = [];
     for (const scope of collectProviderDangerousNameMatchingScopes(cfg, params.channel)) {
       if (scope.dangerousNameMatchingEnabled) {
@@ -384,7 +384,7 @@ export function createRestrictSendersChannelSecurity<
   /** Existing channel label used by the audit and Doctor finding renderer. */
   findingTitle?: string;
   /** Override for channels whose provider presence is not the channel config key itself. */
-  providerConfigPresent?: (cfg: OpenClawConfig) => boolean;
+  providerConfigPresent?: (cfg: JarvisConfig) => boolean;
   /** Fallback account id used when scoped config inherits from another account. */
   resolveFallbackAccountId?: (account: ResolvedAccount) => string | null | undefined;
   /** Default DM policy when the account and shared defaults omit one. */

@@ -12,7 +12,7 @@ import {
 } from "../../channels/ack-reactions.js";
 import { createChannelReplyPipeline } from "../../channels/message/reply-pipeline.js";
 import { resolveSessionEntryResetFreshness } from "../../config/sessions/entry-freshness.js";
-import type { ConfigFileSnapshot } from "../../config/types.openclaw.js";
+import type { ConfigFileSnapshot } from "../../config/types.jarvis.js";
 import { createChannelRuntimeContextRegistry } from "../../plugins/runtime/channel-runtime-contexts.js";
 import { resolveAgentCatalogCreateTarget } from "../../plugins/runtime/runtime-agent-session-catalog.js";
 import type { PluginRuntime } from "../../plugins/runtime/types.js";
@@ -108,7 +108,7 @@ function resolveMockChannelStructuredContext(
 export type PluginRuntimeMediaMock = PluginRuntime["channel"]["media"];
 
 const TEST_CONFIG_SNAPSHOT = {
-  path: "/tmp/openclaw.json",
+  path: "/tmp/jarvis.json",
   exists: true,
   raw: "{}",
   parsed: {},
@@ -473,7 +473,7 @@ export function createPluginRuntimeMock(overrides: PluginRuntimeMockOverrides = 
       current: vi.fn<PluginRuntime["config"]["current"]>(() => ({})),
       mutateConfigFile: createGenericMock<PluginRuntime["config"]["mutateConfigFile"]>(
         async () => ({
-          path: "/tmp/openclaw.json",
+          path: "/tmp/jarvis.json",
           previousHash: null,
           persistedHash: null,
           snapshot: TEST_CONFIG_SNAPSHOT,
@@ -485,7 +485,7 @@ export function createPluginRuntimeMock(overrides: PluginRuntimeMockOverrides = 
       ),
       replaceConfigFile: vi.fn<PluginRuntime["config"]["replaceConfigFile"]>(
         async ({ nextConfig }) => ({
-          path: "/tmp/openclaw.json",
+          path: "/tmp/jarvis.json",
           previousHash: null,
           persistedHash: null,
           snapshot: TEST_CONFIG_SNAPSHOT,
@@ -930,7 +930,7 @@ export function createPluginRuntimeMock(overrides: PluginRuntimeMockOverrides = 
       })),
     },
     state: {
-      resolveStateDir: vi.fn(() => "/tmp/openclaw"),
+      resolveStateDir: vi.fn(() => "/tmp/jarvis"),
       openBlobStore: createGenericMock<PluginRuntime["state"]["openBlobStore"]>(() => {
         throw new Error("openBlobStore mock is not configured");
       }),

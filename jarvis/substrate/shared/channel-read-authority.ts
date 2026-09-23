@@ -14,12 +14,12 @@ type ChannelReadScope = {
   discardResource: (key: string) => Promise<boolean>;
 };
 
-const completionKey = Symbol.for("openclaw.channelReadAuthority.completion");
+const completionKey = Symbol.for("jarvis.channelReadAuthority.completion");
 type ScopedReadAuthority = (() => void) & { [completionKey]?: ChannelReadScope };
 
 // Host and installed-plugin SDK chunks must share the same invocation scope.
 const authorityScope = resolveGlobalSingleton(
-  Symbol.for("openclaw.channelReadAuthority"),
+  Symbol.for("jarvis.channelReadAuthority"),
   () => new AsyncLocalStorage<ScopedReadAuthority>(),
 );
 

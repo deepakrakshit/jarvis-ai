@@ -2,9 +2,9 @@ import { asFiniteNumber } from "@jarvis/normalization-core/number-coercion";
 import { asRecord } from "@jarvis/normalization-core/record-coerce";
 import { readNonEmptyStringPreservingWhitespace as readNonEmptyString } from "@jarvis/normalization-core/string-coerce";
 import { resolveSdkLifecycleEventType } from "./run-terminal.js";
-import type { GatewayEvent, JsonObject, OpenClawEvent, OpenClawEventType } from "./types.js";
+import type { GatewayEvent, JsonObject, JARVISEvent, JARVISEventType } from "./types.js";
 
-function normalizeAgentEventType(payload: JsonObject): OpenClawEventType {
+function normalizeAgentEventType(payload: JsonObject): JARVISEventType {
   const stream = readNonEmptyString(payload.stream);
   const data = asRecord(payload.data);
   const phase = readNonEmptyString(data.phase);
@@ -53,7 +53,7 @@ function normalizeAgentEventType(payload: JsonObject): OpenClawEventType {
   return "raw";
 }
 
-function normalizeNamedEventType(event: GatewayEvent): OpenClawEventType {
+function normalizeNamedEventType(event: GatewayEvent): JARVISEventType {
   const payload = asRecord(event.payload);
   switch (event.event) {
     case "agent":
@@ -87,7 +87,7 @@ function normalizeNamedEventType(event: GatewayEvent): OpenClawEventType {
 }
 
 /** Normalize a raw Gateway event into the public SDK event shape. */
-export function normalizeGatewayEvent(event: GatewayEvent): OpenClawEvent {
+export function normalizeGatewayEvent(event: GatewayEvent): JARVISEvent {
   const payload = asRecord(event.payload);
   const runId = readNonEmptyString(payload.runId);
   const sessionId = readNonEmptyString(payload.sessionId);

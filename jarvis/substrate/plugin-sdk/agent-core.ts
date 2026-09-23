@@ -8,8 +8,8 @@ import type { CompleteSimpleFn, StreamFn } from "../../packages/llm-core/src/ind
 import { runPluginStreamConsumer } from "../plugins/plugin-instance-scope.js";
 import { completeSimple, streamSimple } from "./llm.js";
 
-/** Runtime adapter that lets the package agent-core use OpenClaw LLM helpers. */
-export const openClawAgentCoreRuntime = {
+/** Runtime adapter that lets the package agent-core use JARVIS LLM helpers. */
+export const jarvisAgentCoreRuntime = {
   runStream: runPluginStreamConsumer,
   completeSimple: ((model, context, options) =>
     completeSimple(model, context, options)) satisfies CompleteSimpleFn,
@@ -17,14 +17,14 @@ export const openClawAgentCoreRuntime = {
     streamSimple(model, context, options)) satisfies StreamFn,
 } satisfies AgentCoreRuntimeDeps;
 
-/** Agent-core class preconfigured with OpenClaw runtime dependencies. */
+/** Agent-core class preconfigured with JARVIS runtime dependencies. */
 export class Agent extends CoreAgent {
   constructor(options: CoreAgentOptions = {}) {
-    super({ runtime: openClawAgentCoreRuntime, ...options });
+    super({ runtime: jarvisAgentCoreRuntime, ...options });
   }
 }
 
-// OpenClaw-owned reusable agent core
+// JARVIS-owned reusable agent core
 export { runAgentLoop } from "../../packages/agent-core/src/index.js";
 // Documented proxy stream API stays until this entrypoint's announced
 // public demotion window (registry: plugin-sdk-agent-core-public-demotion).

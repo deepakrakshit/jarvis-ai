@@ -1,6 +1,6 @@
 """Computer-Use Execution and Action Contract Subsystem.
 
-Adapts OpenClaw CUA contracts for coordinate, mouse, keyboard, and visual automation.
+Adapts native CUA contracts for coordinate, mouse, keyboard, and visual automation.
 """
 
 from jarvis.execution.computer.contract import (

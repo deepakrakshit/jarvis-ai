@@ -16,7 +16,7 @@ import type { ExecAutoReviewHost } from "../infra/exec-auto-review.js";
  * Facade loading or reviewer construction errors may still reject the promise.
  */
 export async function reviewExecRequestWithConfiguredModel(params: {
-  cfg?: import("../config/types.openclaw.js").OpenClawConfig;
+  cfg?: import("../config/types.jarvis.js").JarvisConfig;
   agentId?: string;
   reviewer?: unknown;
   input: import("../infra/exec-auto-review.js").ExecAutoReviewInput;

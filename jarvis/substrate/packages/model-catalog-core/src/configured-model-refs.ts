@@ -1,4 +1,4 @@
-// Collects configured model references from OpenClaw config-shaped objects.
+// Collects configured model references from JARVIS config-shaped objects.
 import { asNonArrayRecord, isRecord } from "@jarvis/normalization-core/record-coerce";
 
 /** One configured model reference plus its config path and field-owned syntax. */

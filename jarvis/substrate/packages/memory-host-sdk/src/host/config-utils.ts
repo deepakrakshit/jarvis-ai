@@ -5,11 +5,11 @@ import {
   resolveStateDir,
   resolveUserPath,
   tryResolveLegacyDataOwner,
-} from "./openclaw-runtime-paths.js";
+} from "./jarvis-runtime-paths.js";
 import type { MemoryExtraPath } from "./types.js";
 export { normalizeAgentId };
 
-// Shared OpenClaw config helpers used by memory host and agent context code.
+// Shared JARVIS config helpers used by memory host and agent context code.
 
 type DmScope = "main" | "per-peer" | "per-channel-peer" | "per-account-channel-peer";
 /** Citation injection behavior for memory search results. */
@@ -71,8 +71,8 @@ type AgentConfig = {
   contextLimits?: AgentContextLimitsConfig;
 };
 
-/** Narrow OpenClaw config shape consumed by memory host utilities. */
-export type OpenClawConfig = {
+/** Narrow JARVIS config shape consumed by memory host utilities. */
+export type JarvisConfig = {
   agents?: {
     ownership?: "explicit";
     defaults?: {
@@ -99,7 +99,7 @@ export type OpenClawConfig = {
   };
 };
 
-export function resolveRememberAcrossConversations(cfg: OpenClawConfig, agentId: string): boolean {
+export function resolveRememberAcrossConversations(cfg: JarvisConfig, agentId: string): boolean {
   const defaults = cfg.memory?.search;
   const overrides = resolveAgentConfig(cfg, agentId)?.memory?.search;
   const explicit = overrides?.rememberAcrossConversations ?? defaults?.rememberAcrossConversations;
@@ -130,7 +130,7 @@ export const MEMORY_HOST_ROOT_FILENAME = "MEMORY.md";
 const DEFAULT_AGENT_ID = "main";
 
 /** Return configured agent entries after dropping nullish placeholders. */
-function listAgentEntries(cfg: OpenClawConfig): AgentConfig[] {
+function listAgentEntries(cfg: JarvisConfig): AgentConfig[] {
   if (cfg.agents?.entries) {
     return Object.entries(cfg.agents.entries).map(([id, entry]) => Object.assign({ id }, entry));
   }
@@ -140,7 +140,7 @@ function listAgentEntries(cfg: OpenClawConfig): AgentConfig[] {
 }
 
 /** Resolve the default agent id from explicit default marker or first agent entry. */
-function resolveDefaultAgentId(cfg: OpenClawConfig): string {
+function resolveDefaultAgentId(cfg: JarvisConfig): string {
   const agents = listAgentEntries(cfg);
   if (agents.length === 0) {
     return DEFAULT_AGENT_ID;
@@ -150,7 +150,7 @@ function resolveDefaultAgentId(cfg: OpenClawConfig): string {
 }
 
 /** Find one agent config by canonical id. */
-function resolveAgentConfig(cfg: OpenClawConfig, agentId: string): AgentConfig | undefined {
+function resolveAgentConfig(cfg: JarvisConfig, agentId: string): AgentConfig | undefined {
   const id = normalizeAgentId(agentId);
   return listAgentEntries(cfg).find((entry) => normalizeAgentId(entry.id) === id);
 }
@@ -162,7 +162,7 @@ function stripNullBytes(value: string): string {
 
 /** Resolve the workspace directory for an agent id and config defaults. */
 export function resolveMemoryHostAgentWorkspaceDir(
-  cfg: OpenClawConfig,
+  cfg: JarvisConfig,
   agentId: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -191,7 +191,7 @@ export function resolveMemoryHostAgentWorkspaceDir(
 
 /** Resolve context limits for an agent with defaults fallback. */
 export function resolveMemoryHostAgentContextLimits(
-  cfg: OpenClawConfig | undefined,
+  cfg: JarvisConfig | undefined,
   agentId?: string | null,
 ): AgentContextLimitsConfig | undefined {
   const defaults = cfg?.agents?.defaults?.contextLimits;
@@ -203,7 +203,7 @@ export function resolveMemoryHostAgentContextLimits(
 
 /** Resolve enabled memory search config plus deduplicated extra paths for an agent. */
 export function resolveMemoryHostSearchPathConfig(
-  cfg: OpenClawConfig,
+  cfg: JarvisConfig,
   agentId: string,
 ): {
   enabled: boolean;

@@ -10,4 +10,4 @@ export {
   createChannelIngressQueue as createChannelIngressQueueForTests,
   listChannelIngressQueueAccountIds as listChannelIngressQueueAccountIdsForTests,
 } from "../channels/message/ingress-queue.js";
-export { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
+export { closeJARVISStateDatabaseForTest } from "../state/jarvis-state-db.js";

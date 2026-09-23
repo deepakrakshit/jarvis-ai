@@ -1,6 +1,6 @@
 import { asOptionalRecord } from "@jarvis/normalization-core/record-coerce";
 import { readEmbeddingVectors } from "./embedding-vectors.js";
-import type { SsrFPolicy } from "./openclaw-runtime-network.js";
+import type { SsrFPolicy } from "./jarvis-runtime-network.js";
 import { postJson } from "./post-json.js";
 
 // Fetches and validates OpenAI-compatible embedding responses.

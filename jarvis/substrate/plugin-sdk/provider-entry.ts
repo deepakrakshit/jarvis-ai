@@ -33,9 +33,9 @@ import {
 import { createLazyRuntimeMethod, createLazyRuntimeModule } from "./lazy-runtime.js";
 import { definePluginEntry } from "./plugin-entry.js";
 import type {
-  OpenClawPluginApi,
-  OpenClawPluginConfigSchema,
-  OpenClawPluginDefinition,
+  JarvisPluginApi,
+  JARVISPluginConfigSchema,
+  JARVISPluginDefinition,
 } from "./plugin-entry.js";
 import type { OpenAICompatibleModelDiscoveryOptions } from "./provider-catalog-live-runtime.js";
 
@@ -224,26 +224,26 @@ export type SingleProviderPluginOptions = {
    */
   manifest?: SingleProviderPluginManifest;
   /**
-   * @deprecated Declare exclusive plugin kind in `openclaw.plugin.json` via
+   * @deprecated Declare exclusive plugin kind in `jarvis.plugin.json` via
    * manifest `kind`. Runtime-entry `kind` remains only as a compatibility
    * fallback for older plugins.
    */
-  kind?: OpenClawPluginDefinition["kind"];
+  kind?: JARVISPluginDefinition["kind"];
   /**
    * Optional plugin configuration schema or lazy schema factory.
    */
-  configSchema?: OpenClawPluginConfigSchema | (() => OpenClawPluginConfigSchema);
+  configSchema?: JARVISPluginConfigSchema | (() => JARVISPluginConfigSchema);
   /**
    * Primary provider registration. Extra provider fields are forwarded after
    * the helper-owned id/auth/catalog fields are normalized.
    */
   provider?:
     | SingleProviderPluginDefinition
-    | ((api: OpenClawPluginApi) => SingleProviderPluginDefinition);
+    | ((api: JarvisPluginApi) => SingleProviderPluginDefinition);
   /**
    * Optional hook for registering companion capabilities with the same plugin entry.
    */
-  register?: (api: OpenClawPluginApi) => void;
+  register?: (api: JarvisPluginApi) => void;
 };
 
 function resolveManifestProviderAuth(params: {

@@ -22,7 +22,7 @@ import {
 } from "../shared/provider-auth-result.js";
 import { formatProviderLoginCommand } from "../shared/provider-login-command.js";
 import { buildCommandChoiceReply, createLoginChoicePrompt } from "../wizard/command-choice.js";
-import type { OpenClawConfig } from "./config-contracts.js";
+import type { JarvisConfig } from "./config-contracts.js";
 import type { ReplyPayload } from "./reply-payload.js";
 import type { RuntimeEnv } from "./runtime-env.js";
 
@@ -189,9 +189,9 @@ export async function answerProviderLoginModelAccess(params: {
   agentId: string;
   command: string;
   runtime: RuntimeEnv;
-  readConfig: () => OpenClawConfig;
+  readConfig: () => JarvisConfig;
   signal?: AbortSignal;
-  assertCurrent: (config?: OpenClawConfig) => void;
+  assertCurrent: (config?: JarvisConfig) => void;
 }): Promise<ProviderLoginReply | undefined> {
   const match = /^\/login (?:access|choice [a-f0-9]+ \d+) (\S+)$/u.exec(params.command.trim());
   const provider = match?.[1];
@@ -242,7 +242,7 @@ export async function answerProviderLoginModelAccess(params: {
       "Choose model access using your current restrictions. You do not need to sign in again.",
     );
   }
-  const assertCurrent = (config?: OpenClawConfig) => {
+  const assertCurrent = (config?: JarvisConfig) => {
     assertAuthority(config);
     if (params.flows.modelAccess.get(params.flowKey) !== record || record.expiresAt <= Date.now()) {
       throw new Error("This model access choice is no longer available.");
@@ -315,7 +315,7 @@ export async function prepareProviderChannelLogin(params: {
   commandAuthorized: boolean;
   senderIsOwner: boolean;
   isPrivateChat: boolean;
-  config: OpenClawConfig;
+  config: JarvisConfig;
   agentId: string;
   workspaceDir?: string;
   signal?: AbortSignal;
@@ -336,7 +336,7 @@ export async function prepareProviderChannelLogin(params: {
     return {
       status: "rejected",
       reply: {
-        text: "No chat owner is configured. Ask the OpenClaw owner to add your chat account to `commands.ownerAllowFrom` in the OpenClaw configuration, then send `/login` again.",
+        text: "No chat owner is configured. Ask the JARVIS owner to add your chat account to `commands.ownerAllowFrom` in the JARVIS configuration, then send `/login` again.",
       },
     };
   }
@@ -344,7 +344,7 @@ export async function prepareProviderChannelLogin(params: {
     return {
       status: "rejected",
       reply: {
-        text: "Only an OpenClaw owner can sign in here. Ask the owner to connect this provider or grant you owner access.",
+        text: "Only an JARVIS owner can sign in here. Ask the owner to connect this provider or grant you owner access.",
       },
     };
   }
@@ -352,7 +352,7 @@ export async function prepareProviderChannelLogin(params: {
     return {
       status: "reply",
       reply: {
-        text: "Provider login requires a private chat or Control UI session. Open a private chat with OpenClaw and send `/login` there.",
+        text: "Provider login requires a private chat or Control UI session. Open a private chat with JARVIS and send `/login` there.",
       },
     };
   }
@@ -513,8 +513,8 @@ function parseModelsAuthLoginFlowResult(value: unknown): ModelsAuthLoginFlowResu
 
 export async function refreshProviderLoginAuthState(params: {
   agentId: string;
-  readConfig: () => OpenClawConfig;
-  assertCurrent: (config: OpenClawConfig) => void;
+  readConfig: () => JarvisConfig;
+  assertCurrent: (config: JarvisConfig) => void;
 }): Promise<void> {
   const readConfig = () => {
     const config = params.readConfig();
@@ -531,14 +531,14 @@ export async function refreshProviderLoginAuthState(params: {
 export async function runProviderChannelLoginFlow(params: {
   choice: ProviderChannelLoginChoice;
   agentId: string;
-  config: OpenClawConfig;
+  config: JarvisConfig;
   runtime: RuntimeEnv;
   sendMessage: (message: string) => Promise<void>;
   sendReply?: (reply: ProviderLoginReply) => Promise<void> | void;
   sendDeviceCode?: NonNullable<ModelsAuthLoginFlowOptions["prompter"]["deviceCode"]>;
   signal?: AbortSignal;
-  readConfig?: () => OpenClawConfig;
-  assertCurrent?: (config: OpenClawConfig) => void;
+  readConfig?: () => JarvisConfig;
+  assertCurrent?: (config: JarvisConfig) => void;
   unsupportedPromptMessage: string;
   runLoginFlow?: (opts: ModelsAuthLoginFlowOptions) => Promise<unknown>;
   onModelAccessRequested?: ModelsAuthLoginFlowOptions["onModelAccessRequested"];

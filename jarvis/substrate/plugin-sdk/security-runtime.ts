@@ -73,7 +73,7 @@ export {
   resolveStrictExistingPathsWithinRoot,
 } from "../infra/root-paths.js";
 
-export { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
+export { resolvePreferredJARVISTmpDir } from "../infra/tmp-jarvis-dir.js";
 /**
  * Redact text with optional mode ("tools" or "off") and ordered patterns.
  * Nonempty patterns replace the default string rules; form-body, structured-auth,
@@ -88,7 +88,7 @@ export { resolvePreferredOpenClawTmpDir } from "../infra/tmp-openclaw-dir.js";
  * The last nonempty capture is the secret (its last occurrence within match);
  * with no capture, the whole match is masked. Use "" for unmatched captures.
  * Executable entries are programmatic only; logging.redactPatterns stores strings.
- * See https://docs.openclaw.ai/plugins/sdk-subpaths#sensitive-text-redaction.
+ * See https://docs.jarvis.ai/plugins/sdk-subpaths#sensitive-text-redaction.
  */
 export { redactSensitiveText } from "../logging/redact.js";
 export { safeEqualSecret } from "../security/secret-equal.js";

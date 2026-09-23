@@ -263,7 +263,7 @@ function readPersistedSender(message: PersistedSenderCarrier): PersistedSender |
   if (message.role !== "user") {
     return undefined;
   }
-  const metadata = asRecord(Reflect.get(message, "__openclaw"));
+  const metadata = asRecord(Reflect.get(message, "__jarvis"));
   if (!metadata) {
     return undefined;
   }

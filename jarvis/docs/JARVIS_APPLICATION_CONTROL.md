@@ -74,7 +74,7 @@ When executing an in-app action, JARVIS determines the most deterministic and re
 
 ### Provider 4: Computer-Use Fallback (Visual & Coordinate Actions)
 - Used when UI Automation does not expose elements (e.g., custom rendering canvas, game engines, remote desktop sessions).
-- Follows the OpenClaw CUA contract: captures desktop screenshots, calculates target positions, and sends hardware mouse/keyboard events through `pyautogui` or virtual input drivers, followed by screenshot comparison verification.
+- Follows the native CUA contract: captures desktop screenshots, calculates target positions, and sends hardware mouse/keyboard events through `pyautogui` or virtual input drivers, followed by screenshot comparison verification.
 
 ---
 

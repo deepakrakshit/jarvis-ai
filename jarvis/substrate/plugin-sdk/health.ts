@@ -3,7 +3,7 @@
  */
 export { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 export { readConfigFileSnapshot } from "../config/config.js";
-export type { OpenClawConfig } from "../config/types.openclaw.js";
+export type { JarvisConfig } from "../config/types.jarvis.js";
 export { configValidationIssuesToHealthFindings } from "../flows/doctor-config-validation-findings.js";
 export {
   exitCodeFromFindings,

@@ -1,13 +1,13 @@
 /**
- * Bundled-channel config schemas for OpenClaw-maintained plugins.
+ * Bundled-channel config schemas for JARVIS-maintained plugins.
  *
  * Third-party plugins should define plugin-local schemas and import primitives
- * from openclaw/plugin-sdk/channel-config-schema instead of depending on these
+ * from jarvis/plugin-sdk/channel-config-schema instead of depending on these
  * bundled channel schemas. Internal callers use this subpath only for the
  * bundled provider schemas; generic primitives come from channel-config-schema.
  */
 import { z, type ZodObject, type ZodOptional, type ZodType } from "zod";
-import type { OpenClawConfig } from "./config-contracts.js";
+import type { JarvisConfig } from "./config-contracts.js";
 import {
   createLazyFacadeObjectValue,
   loadBundledPluginPublicSurfaceModuleSyncCore,
@@ -50,7 +50,7 @@ export const SignalConfigSchema = createLegacyExternalChannelConfigSchema();
 /** @deprecated See SlackConfigSchema. */
 export const MSTeamsConfigSchema = createLegacyExternalChannelConfigSchema();
 
-type ChannelConfig = NonNullable<OpenClawConfig["channels"]>;
+type ChannelConfig = NonNullable<JarvisConfig["channels"]>;
 type ConfigSchemaShape<TOutput extends object> = {
   -readonly [K in keyof TOutput]-?: Pick<TOutput, K> extends Required<Pick<TOutput, K>>
     ? ZodType<TOutput[K]>

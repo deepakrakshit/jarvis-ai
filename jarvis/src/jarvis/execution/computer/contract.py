@@ -1,6 +1,6 @@
 """Computer-Use Action and Observation Contracts.
 
-Adapts OpenClaw CUA (computer-use-contract.ts) specifications into canonical Python dataclasses.
+Adapts native CUA (computer-use-contract.ts) specifications into canonical Python dataclasses.
 Provides standardized action requests, parameter envelopes, and verified observation models.
 """
 
@@ -12,7 +12,7 @@ from uuid import uuid4
 
 
 class ComputerActionName(str, Enum):
-    """Canonical computer-use action names adapted from OpenClaw v2 contract."""
+    """Canonical computer-use action names adapted from CUA v2 contract."""
 
     SCREENSHOT = "screenshot"
     LEFT_CLICK = "left_click"

@@ -10,7 +10,7 @@ import {
   createSubsystemLogger,
   getSecretRedactionRegistryRevision,
   redactSensitiveText,
-} from "./openclaw-runtime-io.js";
+} from "./jarvis-runtime-io.js";
 import {
   DREAMING_NARRATIVE_RUN_PREFIX,
   isDreamingNarrativeSessionStoreKey,
@@ -23,7 +23,7 @@ import {
   isCronRunSessionKey,
   isExecCompletionEvent,
   isHeartbeatUserMessage,
-  isIncognitoOpenClawAgentSqlitePath,
+  isIncognitoJARVISAgentSqlitePath,
   isIncognitoSessionKey,
   isSessionArchiveArtifactName,
   isSilentReplyPayloadText,
@@ -39,7 +39,7 @@ import {
   SessionTranscriptColdError,
   stripInboundMetadata,
   stripInternalRuntimeContext,
-} from "./openclaw-runtime-session.js";
+} from "./jarvis-runtime-session.js";
 import { retryTransientMemoryRead } from "./read-retry.js";
 import { classifySessionMessageOrigin } from "./session-provenance.js";
 import { resolveSessionResetRecallCutoff } from "./session-reset-recall.js";
@@ -59,7 +59,7 @@ export {
   type SessionTranscriptCorpusEntry,
   type SessionTranscriptCorpusOptions,
 } from "./session-transcript-corpus.js";
-export { readTranscriptStatsBatchReadOnlySync } from "./openclaw-runtime-session.js";
+export { readTranscriptStatsBatchReadOnlySync } from "./jarvis-runtime-session.js";
 
 // Keep the historical one-line-per-message export shape for normal turns, but
 // wrap pathological long messages so downstream indexers never ingest a single
@@ -69,7 +69,7 @@ const SESSION_EXPORT_CONTENT_WRAP_CHARS = 800;
 const SESSION_ENTRY_PARSE_YIELD_LINES = 250;
 const MAX_DATE_TIMESTAMP_MS = 8_640_000_000_000_000;
 const DIRECT_CRON_PROMPT_RE = /^\[cron:[^\]]+\]\s*/;
-const SESSION_RESET_RECALL_CUTOFF = Symbol.for("openclaw.memory.sessionResetRecallCutoff");
+const SESSION_RESET_RECALL_CUTOFF = Symbol.for("jarvis.memory.sessionResetRecallCutoff");
 type SessionResetRecallCutoff = ReturnType<typeof resolveSessionResetRecallCutoff>;
 
 export type SessionFileEntry = {
@@ -241,14 +241,14 @@ function isDreamingNarrativeGeneratedRecord(record: unknown): boolean {
   const data = asOptionalRecord(candidate.data);
   if (
     candidate.type === "custom" &&
-    candidate.customType === "openclaw:bootstrap-context:full" &&
+    candidate.customType === "jarvis:bootstrap-context:full" &&
     typeof data?.runId === "string" &&
     data.runId.startsWith(DREAMING_NARRATIVE_RUN_PREFIX)
   ) {
     return true;
   }
   const message = candidate.type === "message" ? asOptionalRecord(candidate.message) : undefined;
-  const metadata = asOptionalRecord(message?.["__openclaw"]);
+  const metadata = asOptionalRecord(message?.["__jarvis"]);
   return (
     hasDreamingNarrativeIdentity(candidate.runId) ||
     hasDreamingNarrativeIdentity(candidate.sessionKey) ||
@@ -410,7 +410,7 @@ export function sessionPathForSessionIdentity(agentId: string, sessionId: string
 
 /**
  * Parses a deprecated path-shaped memory sync hint only when it points at an
- * OpenClaw-owned usage-counted transcript in the canonical agent sessions dir.
+ * JARVIS-owned usage-counted transcript in the canonical agent sessions dir.
  */
 export function parseCanonicalSessionSyncTargetFromPath(
   sessionFile: string,
@@ -674,7 +674,7 @@ export async function buildSessionEntry(
       !opts.onTranscriptMessage &&
       opts.parseYieldEveryLines === undefined &&
       !isIncognitoSessionKey(opts.sessionKey) &&
-      !isIncognitoOpenClawAgentSqlitePath(identity.storePath, { agentId: identity.agentId })
+      !isIncognitoJARVISAgentSqlitePath(identity.storePath, { agentId: identity.agentId })
     ) {
       const options = { ...opts, ...identity };
       for (let attempt = 0; attempt < 2; attempt++) {

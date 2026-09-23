@@ -17,7 +17,7 @@ import {
 } from "../../../config/agent-limits.js";
 import { resolveSessionStorePathCore } from "../../../config/sessions.js";
 import type { SessionEntry } from "../../../config/sessions/types.js";
-import type { OpenClawConfig } from "../../../config/types.openclaw.js";
+import type { JarvisConfig } from "../../../config/types.jarvis.js";
 import {
   isAcpSessionKey,
   isSubagentSessionKey,
@@ -110,7 +110,7 @@ function isSameAgentSessionStore(leftSessionKey: string, rightSessionKey: string
 
 function resolveSessionCapabilityEntry(params: {
   sessionKey: string;
-  cfg?: OpenClawConfig;
+  cfg?: JarvisConfig;
   store?: SessionCapabilityStore;
 }): SessionCapabilityEntry | undefined {
   if (params.store) {
@@ -137,7 +137,7 @@ function resolveSessionCapabilityEntry(params: {
 export function resolveSubagentCapabilityStore(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
     agentId?: string;
   },
@@ -206,7 +206,7 @@ export function resolveSubagentCapabilities(params: { depth: number; maxSpawnDep
 function isStoredSubagentEnvelopeSession(
   params: {
     sessionKey: string;
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
     entry?: SessionCapabilityEntry;
   },
@@ -271,7 +271,7 @@ function isStoredSubagentEnvelopeSession(
 export function isSubagentEnvelopeSession(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
     entry?: SessionCapabilityEntry;
   },
@@ -306,7 +306,7 @@ export function isSubagentEnvelopeSession(
 export function resolvePersistedSubagentToolPolicyEnvelope(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
     agentId?: string;
   },
@@ -357,7 +357,7 @@ export function resolvePersistedSubagentToolPolicyEnvelope(
 export function resolveStoredSubagentCapabilities(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
     agentId?: string;
   },
@@ -405,7 +405,7 @@ export function resolveStoredSubagentCapabilities(
 export function resolveStoredSubagentInheritedToolDenylist(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
   },
 ): string[] {
@@ -429,7 +429,7 @@ export function resolveStoredSubagentInheritedToolDenylist(
 export function resolveStoredSubagentInheritedToolAllowlist(
   sessionKey: string | undefined | null,
   opts?: {
-    cfg?: OpenClawConfig;
+    cfg?: JarvisConfig;
     store?: SessionCapabilityStore;
   },
 ): string[] {

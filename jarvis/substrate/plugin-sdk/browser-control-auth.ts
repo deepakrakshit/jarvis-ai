@@ -1,5 +1,5 @@
-// Browser control auth helpers resolve plugin browser credentials from OpenClaw config.
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+// Browser control auth helpers resolve plugin browser credentials from JARVIS config.
+import type { JarvisConfig } from "../config/types.jarvis.js";
 import { loadBundledPluginPublicSurfaceModuleSyncCore } from "./facade-loader.js";
 
 /** Browser control credentials resolved from config, env, or generated setup state. */
@@ -12,7 +12,7 @@ export type BrowserControlAuth = {
 
 /** Inputs used when resolving or creating browser control auth for the active config. */
 type EnsureBrowserControlAuthParams = {
-  cfg: OpenClawConfig;
+  cfg: JarvisConfig;
   env?: NodeJS.ProcessEnv;
 };
 
@@ -23,7 +23,7 @@ type EnsureBrowserControlAuthResult = {
 };
 
 type BrowserControlAuthSurface = {
-  resolveBrowserControlAuth: (cfg?: OpenClawConfig, env?: NodeJS.ProcessEnv) => BrowserControlAuth;
+  resolveBrowserControlAuth: (cfg?: JarvisConfig, env?: NodeJS.ProcessEnv) => BrowserControlAuth;
   shouldAutoGenerateBrowserAuth: (env: NodeJS.ProcessEnv) => boolean;
   ensureBrowserControlAuth: (
     params: EnsureBrowserControlAuthParams,
@@ -41,7 +41,7 @@ function loadBrowserControlAuthSurface(): BrowserControlAuthSurface {
 
 /** Resolves browser control auth from config/env without generating new credentials. */
 export function resolveBrowserControlAuth(
-  cfg?: OpenClawConfig,
+  cfg?: JarvisConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): BrowserControlAuth {
   return loadBrowserControlAuthSurface().resolveBrowserControlAuth(cfg, env);
