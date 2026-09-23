@@ -26,7 +26,11 @@ class JarvisSettings(BaseSettings):
     """Authoritative settings for the JARVIS Personal AI Operating System."""
 
     model_config = SettingsConfigDict(
-        env_file=str(get_default_workspace_dir() / "jarvis" / ".env"),
+        env_file=(
+            str(get_default_workspace_dir() / ".env"),
+            str(get_default_workspace_dir() / "jarvis" / ".env"),
+            ".env",
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )

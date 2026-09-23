@@ -4,7 +4,6 @@ title JARVIS Personal AI Operating System
 
 :: Change directory to current script root
 cd /d "%~dp0"
-if exist "jarvis" cd "jarvis"
 
 :: Resolve Python executable (prefer virtual environments if present, else system Python)
 set PYTHON_CMD=python
