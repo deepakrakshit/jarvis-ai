@@ -14,6 +14,7 @@ Welcome to the official technical documentation for **JARVIS**, a stateful, mult
 | **[Execution Substrate & IPC](EXECUTION_SUBSTRATE_IPC.md)** | Native Node.js execution substrate daemon, JSON-RPC IPC, coordinate actions, and display pipelines. |
 | **[Gateway & Control Plane](GATEWAY_AND_CONTROL_PLANE.md)** | Typed WebSocket daemon, session state, heartbeat scheduling, tool broker, and agent delegation. |
 | **[Configuration & Security](CONFIGURATION_AND_SECURITY.md)** | Dynamic configuration, zero-hardcoding invariants, capability firewall, and credentials governance. |
+| **[Autonomous WhatsApp Telephony](WHATSAPP_VOICE_TELEPHONY.md)** | Full-duplex VoIP audio bridge, Baileys WebRTC, barge-in detection, debriefing, and grounded memory. |
 
 ---
 

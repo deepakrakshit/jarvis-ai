@@ -26,6 +26,11 @@ from .commands import (
     handle_run,
     handle_serve,
     handle_status,
+    handle_whatsapp_call,
+    handle_whatsapp_history,
+    handle_whatsapp_login,
+    handle_whatsapp_logout,
+    handle_whatsapp_status,
 )
 
 
@@ -157,11 +162,85 @@ def build_parser() -> argparse.ArgumentParser:
     )
     interact_p.add_argument("--value", type=str, default=None, help="Value for set_value action")
 
+    # 9. whatsapp
+    wa_parser = subparsers.add_parser(
+        "whatsapp", help="Autonomous WhatsApp VoIP calling operations"
+    )
+    wa_sub = wa_parser.add_subparsers(dest="whatsapp_subcommand", help="WhatsApp subcommands")
+
+    wa_call_p = wa_sub.add_parser("call", help="Place an autonomous WhatsApp voice call")
+    wa_call_p.add_argument(
+        "--target",
+        "-t",
+        type=str,
+        required=True,
+        help="Contact name or phone number with country code",
+    )
+    wa_call_p.add_argument(
+        "--objective",
+        "-o",
+        type=str,
+        required=True,
+        help="Call objective or message to deliver",
+    )
+    wa_call_p.add_argument(
+        "--mode",
+        "-m",
+        type=str,
+        default=None,
+        choices=["MESSAGE_DELIVERY", "CONVERSATIONAL", "EMERGENCY"],
+        help="Conversation mode (default: from configuration)",
+    )
+    wa_call_p.add_argument(
+        "--duration",
+        "-d",
+        type=int,
+        default=None,
+        help="Max call duration in milliseconds (default: from configuration)",
+    )
+    wa_call_p.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    wa_status_p = wa_sub.add_parser(
+        "status", help="Check WhatsApp VoIP calling engine and session status"
+    )
+    wa_status_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    wa_hist_p = wa_sub.add_parser("history", help="View recent WhatsApp call history")
+    wa_hist_p.add_argument("--limit", "-n", type=int, default=5, help="Number of records to show")
+    wa_hist_p.add_argument(
+        "--query", "-q", type=str, default=None, help="Filter calls by search query"
+    )
+    wa_hist_p.add_argument("--json", action="store_true", help="Output history as JSON")
+
+    wa_login_p = wa_sub.add_parser(
+        "login", help="Authenticate WhatsApp via interactive QR code linking"
+    )
+    wa_login_p.add_argument(
+        "--force", "-f", action="store_true", help="Force refresh existing session credentials"
+    )
+    wa_login_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    wa_logout_p = wa_sub.add_parser("logout", help="Log out and purge stored WhatsApp credentials")
+    wa_logout_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     """CLI entrypoint invoked by 'jarvis' console script."""
+    stdout_reconfig = getattr(sys.stdout, "reconfigure", None)
+    if callable(stdout_reconfig):
+        try:
+            stdout_reconfig(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    stderr_reconfig = getattr(sys.stderr, "reconfigure", None)
+    if callable(stderr_reconfig):
+        try:
+            stderr_reconfig(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -268,6 +347,95 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 parser.parse_args(["app", "--help"])
             return 0
+
+        elif args.command == "whatsapp":
+            subcmd = getattr(args, "whatsapp_subcommand", None)
+            if subcmd == "call":
+                call_res = asyncio.run(
+                    handle_whatsapp_call(
+                        target=args.target,
+                        objective=args.objective,
+                        mode=args.mode,
+                        duration_ms=args.duration,
+                    )
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(call_res, indent=2))
+                else:
+                    if call_res["success"]:
+                        print(f"Call Succeeded! Call ID: {call_res['call_id']}")
+                        print(f"Target: {call_res['target_number']}")
+                        print(f"Duration: {call_res['duration_seconds']}s")
+                        if call_res.get("summary"):
+                            print(f"Summary: {call_res['summary']}")
+                        if call_res.get("recipient_reply"):
+                            print(f"Recipient Reply: {call_res['recipient_reply']}")
+                    else:
+                        print(f"Call Failed: {call_res.get('error', 'Unknown error')}")
+                return 0 if call_res["success"] else 1
+
+            elif subcmd == "status":
+                wa_stat = handle_whatsapp_status()
+                if getattr(args, "json", False):
+                    print(json.dumps(wa_stat, indent=2))
+                else:
+                    print(f"WhatsApp Engine Available: {wa_stat['available']}")
+                    print(f"Authenticated Session: {wa_stat['authenticated']}")
+                    print(f"Default Country Code: +{wa_stat['default_country_code']}")
+                    print(f"Conversation Mode: {wa_stat['conversation_mode']}")
+                    print(f"VoIP Enabled: {wa_stat['enabled']}")
+                return 0
+
+            elif subcmd == "history":
+                records = handle_whatsapp_history(
+                    limit=getattr(args, "limit", 5),
+                    query=getattr(args, "query", None),
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(records, indent=2))
+                else:
+                    if not records:
+                        print("No call history found.")
+                    else:
+                        for idx, r in enumerate(records, 1):
+                            print(
+                                f"[{idx}] {r.get('target', 'Unknown')} "
+                                f"({r.get('status', 'N/A')}) - {r.get('timestamp', '')}"
+                            )
+                            if r.get("summary"):
+                                print(f"    Summary: {r['summary']}")
+                            if r.get("recipientReply"):
+                                print(f"    Reply: {r['recipientReply']}")
+                return 0
+
+            elif subcmd == "login":
+                res = asyncio.run(
+                    handle_whatsapp_login(force_refresh=getattr(args, "force", False))
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(res, indent=2))
+                else:
+                    if res.get("success"):
+                        print(
+                            f"WhatsApp Authentication: {res.get('message', 'Device linked successfully.')}"
+                        )
+                    else:
+                        print(
+                            f"WhatsApp Authentication Failed: {res.get('error', 'Unknown error')}"
+                        )
+                return 0 if res.get("success") else 1
+
+            elif subcmd == "logout":
+                res = handle_whatsapp_logout()
+                if getattr(args, "json", False):
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(res.get("message", "WhatsApp credentials cleared."))
+                return 0
+
+            else:
+                parser.parse_args(["whatsapp", "--help"])
+                return 0
 
         else:
             parser.print_help()

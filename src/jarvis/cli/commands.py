@@ -30,6 +30,7 @@ from jarvis.core.app_control_engine import app_control_engine
 from jarvis.core.control_plane import ControlPlane, control_plane
 from jarvis.cron import HeartbeatMonitor, heartbeat_monitor
 from jarvis.execution.browser.host import browser_node
+from jarvis.execution.whatsapp import get_whatsapp_caller, whatsapp_node
 from jarvis.execution.windows.host import windows_node
 from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
@@ -67,9 +68,10 @@ def check_for_callsign_update(user_text: str) -> Optional[str]:
 
 
 def ensure_nodes_registered() -> None:
-    """Ensure host and browser execution nodes are registered with the action broker."""
+    """Ensure host, browser, and WhatsApp execution nodes are registered with the action broker."""
     windows_node.register_capabilities()
     browser_node.register_capabilities()
+    whatsapp_node.register_capabilities()
 
 
 def handle_status(database: Optional[DatabaseEngine] = None) -> Dict[str, Any]:
@@ -538,6 +540,12 @@ async def handle_chat(
             await bridge.connect()
             voice_state_machine.transition(VoiceState.LISTENING, reason="Session connected")
 
+            # Silently warm up WhatsApp network connection in background on boot without console banners
+            if settings.WHATSAPP_VOIP_ENABLED:
+                wa_caller = get_whatsapp_caller()
+                if wa_caller.is_available and wa_caller.has_persisted_session:
+                    asyncio.create_task(wa_caller.warmup())
+
             mic_active = False
             try:
                 mic.start()
@@ -871,3 +879,70 @@ def handle_app_interact(
         value=value,
     )
     return res.to_dict()
+
+
+async def handle_whatsapp_call(
+    target: str,
+    objective: str,
+    mode: Optional[str] = None,
+    duration_ms: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Place an autonomous WhatsApp voice call."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    result = await caller.place_call(
+        target=target,
+        objective=objective,
+        conversation_mode=mode,
+        duration_ms=duration_ms,
+    )
+    return {
+        "success": result.success,
+        "call_id": result.call_id,
+        "target_number": result.target_number,
+        "duration_seconds": result.duration_seconds,
+        "summary": result.summary_text,
+        "recipient_reply": result.recipient_reply,
+        "transcript_path": result.transcript_path,
+        "error": result.error,
+    }
+
+
+def handle_whatsapp_status() -> Dict[str, Any]:
+    """Retrieve WhatsApp VoIP engine and session status."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    return {
+        "available": caller.is_available,
+        "authenticated": caller.has_persisted_session,
+        "auth_dir": str(caller._auth_dir),
+        "extension_dir": str(caller._extension_dir),
+        "default_country_code": settings.WHATSAPP_DEFAULT_COUNTRY_CODE,
+        "conversation_mode": settings.WHATSAPP_CONVERSATION_MODE,
+        "enabled": settings.WHATSAPP_VOIP_ENABLED,
+    }
+
+
+def handle_whatsapp_history(limit: int = 5, query: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve recent WhatsApp VoIP call records."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    if query:
+        return caller.search_call_history(query=query)
+    return caller.get_call_history(limit=limit)
+
+
+async def handle_whatsapp_login(
+    force_refresh: bool = False, wait_for_scan: bool = True
+) -> Dict[str, Any]:
+    """Generate and display WhatsApp login QR code, awaiting device linking."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    return await caller.login(force_refresh=force_refresh, wait_for_scan=wait_for_scan)
+
+
+def handle_whatsapp_logout() -> Dict[str, Any]:
+    """Purge persisted WhatsApp authentication session credentials."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    return caller.logout()

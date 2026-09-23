@@ -1,0 +1,31 @@
+{
+  "name": "whatsapp-gemini-voice",
+  "version": "1.0.0",
+  "description": "Full-duplex WhatsApp VoIP voice calling with Gemini 3.8 Live",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsx --test tests/**/*.test.ts",
+    "chat": "tsx src/chat/session.ts",
+    "auth": "tsx src/testing/auth-test.ts",
+    "test:transport": "tsx src/testing/transport-test.ts",
+    "test:gemini": "tsx src/testing/gemini-test.ts",
+    "test:e2e": "tsx src/testing/e2e-test.ts",
+    "call": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "@roamhq/wrtc": "^0.10.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc11",
+    "dotenv": "^16.4.7",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

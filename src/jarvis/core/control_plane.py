@@ -34,6 +34,9 @@ from jarvis.policy.firewall import (
     CAPABILITY_SHELL_EXECUTE,
     CAPABILITY_SYSTEM_INFO,
     CAPABILITY_SYSTEM_VOLUME,
+    CAPABILITY_WHATSAPP_CALL,
+    CAPABILITY_WHATSAPP_LOGIN,
+    CAPABILITY_WHATSAPP_LOGOUT,
 )
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger
@@ -279,6 +282,53 @@ class ControlPlane:
                     arguments={"command": cmd.strip()},
                     target=ExecutionTarget.WINDOWS_NODE,
                     risk_tier=RiskTier.HIGH,
+                )
+            )
+        elif "whatsapp" in intent_lower and "call" in intent_lower:
+            target = "contact"
+            objective = intent
+            if "call " in intent_lower:
+                after_call = intent.split("call ", 1)[-1]
+                parts = after_call.split(" on whatsapp", 1)[0].split(" to ", 1)
+                target = parts[0].strip()
+                if " to " in after_call:
+                    objective = after_call.split(" to ", 1)[-1].strip()
+                elif " about " in after_call:
+                    objective = after_call.split(" about ", 1)[-1].strip()
+            plan.append(
+                ActionRequest(
+                    task_id=task.task_id,
+                    session_id=task.session_id,
+                    capability=CAPABILITY_WHATSAPP_CALL,
+                    arguments={"target": target, "objective": objective},
+                    target=ExecutionTarget.WHATSAPP_NODE,
+                    risk_tier=RiskTier.MEDIUM,
+                )
+            )
+        elif "whatsapp" in intent_lower and any(
+            w in intent_lower for w in ["logout", "disconnect", "sign out", "unlink"]
+        ):
+            plan.append(
+                ActionRequest(
+                    task_id=task.task_id,
+                    session_id=task.session_id,
+                    capability=CAPABILITY_WHATSAPP_LOGOUT,
+                    arguments={},
+                    target=ExecutionTarget.WHATSAPP_NODE,
+                    risk_tier=RiskTier.MEDIUM,
+                )
+            )
+        elif "whatsapp" in intent_lower and any(
+            w in intent_lower for w in ["login", "link", "qr", "authenticate", "connect"]
+        ):
+            plan.append(
+                ActionRequest(
+                    task_id=task.task_id,
+                    session_id=task.session_id,
+                    capability=CAPABILITY_WHATSAPP_LOGIN,
+                    arguments={"force_refresh": "force" in intent_lower},
+                    target=ExecutionTarget.WHATSAPP_NODE,
+                    risk_tier=RiskTier.LOW,
                 )
             )
 

@@ -18,6 +18,9 @@ coverage.xml
 *.sqlite3
 data/
 jarvis/data/
+**/auth/
+**/recordings/
+**/call-history.json
 
 # Python
 __pycache__/

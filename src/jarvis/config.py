@@ -103,6 +103,15 @@ class JarvisSettings(BaseSettings):
     WEB_SEARCH_TIMEOUT_SECONDS: float = Field(default=10.0)
     WEB_SEARCH_MAX_RESULTS: int = Field(default=5)
 
+    # WhatsApp Autonomous VoIP Calling Settings
+    WHATSAPP_VOIP_ENABLED: bool = Field(default=True)
+    WHATSAPP_AUTH_DIR: Optional[Path] = Field(default=None)
+    WHATSAPP_CONTACTS_FILE: Optional[Path] = Field(default=None)
+    WHATSAPP_CALL_TIMEOUT_MS: int = Field(default=120000)
+    WHATSAPP_DEFAULT_COUNTRY_CODE: str = Field(default="91")
+    WHATSAPP_CALL_LANGUAGE: str = Field(default="hinglish")
+    WHATSAPP_CONVERSATION_MODE: str = Field(default="MESSAGE_DELIVERY")
+
     # Approved Runtime Models (Strict 6-Model Allowlist)
     ALLOWED_MODEL_FAMILIES: List[str] = Field(
         default_factory=lambda: [
@@ -128,6 +137,7 @@ class JarvisSettings(BaseSettings):
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+        (self.DATA_DIR / "whatsapp").mkdir(parents=True, exist_ok=True)
 
 
 # Global singleton instance resolved dynamically at runtime

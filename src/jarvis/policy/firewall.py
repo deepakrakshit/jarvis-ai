@@ -45,6 +45,12 @@ CAPABILITY_BROWSER_CLICK = "browser.click"
 CAPABILITY_BROWSER_TYPE = "browser.type"
 CAPABILITY_BROWSER_SCREENSHOT = "browser.screenshot"
 
+CAPABILITY_WHATSAPP_CALL = "whatsapp.call"
+CAPABILITY_WHATSAPP_STATUS = "whatsapp.status"
+CAPABILITY_WHATSAPP_HISTORY = "whatsapp.history"
+CAPABILITY_WHATSAPP_LOGIN = "whatsapp.login"
+CAPABILITY_WHATSAPP_LOGOUT = "whatsapp.logout"
+
 # Risk tier assignments for each capability
 CAPABILITY_RISK_MAP: Dict[str, RiskTier] = {
     CAPABILITY_FILESYSTEM_READ: RiskTier.READ_ONLY,
@@ -75,6 +81,11 @@ CAPABILITY_RISK_MAP: Dict[str, RiskTier] = {
     CAPABILITY_BROWSER_CLICK: RiskTier.MEDIUM,
     CAPABILITY_BROWSER_TYPE: RiskTier.MEDIUM,
     CAPABILITY_BROWSER_SCREENSHOT: RiskTier.READ_ONLY,
+    CAPABILITY_WHATSAPP_CALL: RiskTier.MEDIUM,
+    CAPABILITY_WHATSAPP_STATUS: RiskTier.READ_ONLY,
+    CAPABILITY_WHATSAPP_HISTORY: RiskTier.READ_ONLY,
+    CAPABILITY_WHATSAPP_LOGIN: RiskTier.LOW,
+    CAPABILITY_WHATSAPP_LOGOUT: RiskTier.MEDIUM,
 }
 
 # Blacklisted dangerous shell substrings that fail-closed immediately

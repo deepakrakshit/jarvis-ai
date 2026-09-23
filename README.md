@@ -8,6 +8,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20x64-0078D6.svg)](https://www.microsoft.com/windows)
 [![Realtime Cognitive Core](https://img.shields.io/badge/cognitive%20core-Gemini%203.8%20Live-8E75C4.svg)](https://ai.google.dev/)
 [![Execution Substrate](https://img.shields.io/badge/execution-Node.js%20%2B%20UIA%20COM-informational.svg)](https://nodejs.org/)
+[![Telephony](https://img.shields.io/badge/telephony-WhatsApp%20VoIP%20WebRTC-25D366.svg)](docs/WHATSAPP_VOICE_TELEPHONY.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Type Safety](https://img.shields.io/badge/type%20safety-mypy%20strict-brightgreen.svg)](https://mypy-lang.org/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://astral.sh/ruff)
@@ -16,6 +17,7 @@
   <strong>Voice-First Realtime Cognition</strong> • 
   <strong>Hardware Acoustic Echo Cancellation</strong> • 
   <strong>Deep In-App Windows Automation</strong> • 
+  <strong>Autonomous WhatsApp Telephony</strong> • 
   <strong>Multi-Agent Control Plane</strong>
 </p>
 
@@ -29,13 +31,14 @@
 - [2. System Architecture](#2-system-architecture)
 - [3. Audio & Acoustic Echo Cancellation (AEC)](#3-audio--acoustic-echo-cancellation-aec)
 - [4. Deep In-App & Windows Automation](#4-deep-in-app--windows-automation)
-- [5. Execution Substrate & IPC Engine](#5-execution-substrate--ipc-engine)
-- [6. Gateway Protocol & Control Plane](#6-gateway-protocol--control-plane)
-- [7. Core Capabilities Matrix](#7-core-capabilities-matrix)
-- [8. Installation & Setup Guide](#8-installation--setup-guide)
-- [9. Quickstart & Usage](#9-quickstart--usage)
-- [10. Quality Gates & Verification](#10-quality-gates--verification)
-- [11. Core Architectural Invariants](#11-core-architectural-invariants)
+- [5. Autonomous WhatsApp Voice Telephony](#5-autonomous-whatsapp-voice-telephony)
+- [6. Execution Substrate & IPC Engine](#6-execution-substrate--ipc-engine)
+- [7. Gateway Protocol & Control Plane](#7-gateway-protocol--control-plane)
+- [8. Core Capabilities Matrix](#8-core-capabilities-matrix)
+- [9. Installation & Setup Guide](#9-installation--setup-guide)
+- [10. Quickstart & Usage](#10-quickstart--usage)
+- [11. Quality Gates & Verification](#11-quality-gates--verification)
+- [12. Core Architectural Invariants](#12-core-architectural-invariants)
 
 ---
 
@@ -47,6 +50,7 @@ Unlike superficial chat overlays, JARVIS operates as an operating-system-level c
 - **Speaks and Listens Naturally:** Direct bidirectional voice and vision streaming via the **Gemini 3.8 Live API** over low-latency WebSockets.
 - **Hardware-Isolated Audio Capture:** Dedicated DSP engine with real-time **WASAPI loopback reference capture** that completely subtracts speaker output, YouTube playback, music, and system sounds from the microphone input.
 - **Deep Windows UI Automation:** Out-of-process COM integration with Microsoft UI Automation (`UIAutomationCore.dll`) invoking native control patterns (`Invoke`, `Value`, `Toggle`, `Selection`, `Scroll`) without pixel guessing or mouse hijacking.
+- **Autonomous WhatsApp VoIP Telephony:** Places full-duplex outbound voice calls over WhatsApp to deliver messages, question recipients, or conduct goal-oriented dialogues using a low-latency WebRTC and Gemini Live audio bridge with real-time barge-in and conversational memory.
 - **Resilient Multi-Provider Hierarchy:** Seamless progression from Programmatic URI schemes to COM UI Automation, Playwright browser DOM inspection, and coordinate CUA fallbacks.
 - **Model-Independent Trust Boundary:** Models propose actions; local capability firewalls evaluate policy, risk, and user authorization before side effects occur.
 
@@ -169,7 +173,36 @@ flowchart TD
 
 ---
 
-## 5. Execution Substrate & IPC Engine
+## 5. Autonomous WhatsApp Voice Telephony
+
+JARVIS features a dedicated, low-latency **Autonomous WhatsApp Voice Telephony Subsystem** capable of dialing contacts, conducting natural full-duplex conversations, and reporting verbatim outcomes back to the user without carrier fees:
+
+```mermaid
+flowchart LR
+    JARVIS["🧠 JARVIS Kernel"] -->|whatsapp_call| WANode["📞 WhatsApp Node"]
+    WANode -->|Spawn Runner| TSBridge["🔌 Telephony Substrate Bridge"]
+    TSBridge --> WACall["📱 WhatsApp 1:1 Voice Call"]
+    WACall <-->|Full-Duplex Audio| AudioBridge["🎛️ Realtime Audio Bridge"]
+    AudioBridge <-->|Bidirectional PCM| GeminiLive["⚡ Gemini 3.8 Live"]
+    
+    WACall -->|Teardown| Debrief["📝 Grounded AI Debrief"]
+    Debrief --> History[("💾 call-history.json")]
+    Debrief --> Report["📦 Outcome & Reply"]
+    Report --> JARVIS
+```
+
+- **Direct WebRTC Telephony Bridge:** Interfaces with the WhatsApp Web protocol via Baileys and native WebRTC media channels, bypassing expensive carrier trunks or Twilio.
+- **Full-Duplex Realtime Audio:** Streams 16kHz audio from the recipient directly into **Gemini 3.8 Live**, delivering natural sub-second conversational latency.
+- **Sub-Second Barge-In Discard:** Instantaneously detects when the recipient speaks and flushes queued assistant audio to prevent unnatural speech collision.
+- **Dual-Phase Farewell Gate:** Evaluates conversational farewells with a cancellable grace period that keeps the call active if the recipient re-engages.
+- **Closed-Loop Grounded Memory:** Analyzes the raw transcript after call teardown to extract the recipient's explicit response and persist facts into [`data/whatsapp/logs/call-history.json`](file:///data/whatsapp/logs/).
+- **Interactive QR Code Pairing:** Automatic browser QR code viewer (`data/whatsapp/login_qr.html`) for instant, secure mobile device authentication.
+
+For detailed documentation, see **[Autonomous WhatsApp Voice Telephony](docs/WHATSAPP_VOICE_TELEPHONY.md)**.
+
+---
+
+## 6. Execution Substrate & IPC Engine
 
 To ensure stability and isolate computer automation, JARVIS pairs its Python cognitive kernel with a high-speed **Node.js execution runner** communicating over bidirectional **JSON-RPC 2.0 stdio**:
 
@@ -198,7 +231,7 @@ flowchart LR
 
 ---
 
-## 6. Gateway Protocol & Control Plane
+## 7. Gateway Protocol & Control Plane
 
 The Gateway daemon operates a central WebSocket hub (`ws://127.0.0.1:8765`) enabling external frontends, voice companion widgets, and background daemons to communicate with the JARVIS kernel:
 
@@ -227,12 +260,13 @@ sequenceDiagram
 
 ---
 
-## 7. Core Capabilities Matrix
+## 8. Core Capabilities Matrix
 
 | Domain | Capability | Technical Provider / Subsystem |
 | :--- | :--- | :--- |
 | **Realtime Voice** | Bidirectional low-latency speech & barge-in | Gemini 3.8 Live API (`gemini_live.py`) |
 | **Audio Isolation** | Render loopback reference cancellation | WASAPI DSP Adaptive Filter (`audio_aec.py`) |
+| **Autonomous Telephony** | Outbound 1:1 voice calling, barge-in & debriefing | WhatsApp VoIP Bridge (`substrate/extensions/whatsapp-voice`) |
 | **Vision & Screen** | Full desktop & window visual perception | Screen Snapshot Pipeline & Gemini Live Vision |
 | **UI Automation** | Control-pattern in-app manipulation | Microsoft COM UI Automation (`UIAutomationCore.dll`) |
 | **Coordinate Fallback** | Sub-pixel mouse & keyboard simulation | Native Execution Substrate (`jarvis_substrate_runner.ts`) |
@@ -243,9 +277,9 @@ sequenceDiagram
 
 ---
 
-## 8. Installation & Setup Guide
+## 9. Installation & Setup Guide
 
-### 8.1 System Prerequisites
+### 9.1 System Prerequisites
 
 - **Operating System:** Windows 10 or Windows 11 (64-bit)
 - **Python:** Python 3.10 or higher
@@ -253,14 +287,14 @@ sequenceDiagram
 - **Git:** Git for Windows
 - **Audio Device:** Physical microphone and speakers or headphones
 
-### 8.2 Clone the Repository
+### 9.2 Clone the Repository
 
 ```bash
 git clone https://github.com/deepakrakshit/jarvis-ai.git
 cd jarvis-ai
 ```
 
-### 8.3 Set Up Python Environment
+### 9.3 Set Up Python Environment
 
 Create a dedicated virtual environment and install the required dependencies:
 
@@ -275,7 +309,7 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-### 8.4 Configure Environment Variables
+### 9.4 Configure Environment Variables
 
 A documented template is provided in [`.env.example`](file:///.env.example). Create your local `.env` configuration file in the project root:
 
@@ -322,13 +356,24 @@ GATEWAY_HOST=127.0.0.1
 GATEWAY_PORT=8765
 GATEWAY_PORT_AUTO_DISCOVERY=true
 GATEWAY_PORT_SEARCH_LIMIT=50
+
+# ==============================================================================
+# 5. WhatsApp Autonomous Voice Telephony
+# ==============================================================================
+WHATSAPP_VOIP_ENABLED=true
+WHATSAPP_CONVERSATION_MODE=MESSAGE_DELIVERY
+WHATSAPP_CALL_TIMEOUT_MS=120000
+WHATSAPP_DEFAULT_COUNTRY_CODE=91
+WHATSAPP_CALL_LANGUAGE=hinglish
+WHATSAPP_AUTH_DIR=data/whatsapp/auth
+WHATSAPP_CONTACTS_FILE=data/whatsapp/contacts.json
 ```
 
 ---
 
-## 9. Quickstart & Usage
+## 10. Quickstart & Usage
 
-### 9.1 One-Click Launcher (`run.bat`)
+### 10.1 One-Click Launcher (`run.bat`)
 
 Double-click `run.bat` or run it from command prompt:
 
@@ -338,7 +383,7 @@ run.bat
 
 This automatically activates `.venv`, boots the background Gateway daemon on `ws://127.0.0.1:8765`, initializes the audio AEC pipeline, and starts an interactive live voice session.
 
-### 9.2 Command-Line Interface (CLI)
+### 10.2 Command-Line Interface (CLI)
 
 ```bash
 # Boot live conversational session with daemon
@@ -352,16 +397,28 @@ python -m jarvis.cli status
 
 # Send a single autonomous instruction
 python -m jarvis.cli run "Open Notepad and type Hello World"
+
+# Inspect WhatsApp connection and authentication state
+python -m jarvis.cli whatsapp status
+
+# Generate WhatsApp login QR code in browser
+python -m jarvis.cli whatsapp login
+
+# Place an autonomous voice call on your behalf
+python -m jarvis.cli whatsapp call --target "+919876543210" --objective "Ask if they are coming to college tomorrow"
+
+# Inspect completed call history and recipient responses
+python -m jarvis.cli whatsapp history
 ```
 
 ---
 
-## 10. Quality Gates & Verification
+## 11. Quality Gates & Verification
 
 JARVIS maintains strict engineering quality gates enforced via automated test runners:
 
 ```bash
-# Run complete test suite (132 test cases)
+# Run complete test suite (153+ test cases)
 pytest
 
 # Enforce strict static type checking
@@ -374,7 +431,7 @@ python -m ruff format --check .
 
 ---
 
-## 11. Core Architectural Invariants
+## 12. Core Architectural Invariants
 
 1. **Zero Hardcoding Invariant:** Configurations, filesystem paths, credentials, and models are dynamically resolved at runtime via environment variables and settings schemas.
 2. **Model Is Not the Trust Boundary:** Cognitive models propose actions, but local validation, policy rules, and permission checks determine execution safety.

@@ -42,6 +42,11 @@ from jarvis.policy.firewall import (
     CAPABILITY_SYSTEM_VOLUME,
     CAPABILITY_UI_INSPECT,
     CAPABILITY_UI_INTERACT,
+    CAPABILITY_WHATSAPP_CALL,
+    CAPABILITY_WHATSAPP_HISTORY,
+    CAPABILITY_WHATSAPP_LOGIN,
+    CAPABILITY_WHATSAPP_LOGOUT,
+    CAPABILITY_WHATSAPP_STATUS,
     CAPABILITY_WINDOW_CLOSE,
     CAPABILITY_WINDOW_FOCUS,
     CAPABILITY_WINDOW_LIST,
@@ -388,6 +393,62 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             "required": ["action"],
         },
     },
+    {
+        "name": "whatsapp_call",
+        "description": (
+            "Initiate an autonomous full-duplex WhatsApp voice call to a contact or phone number on behalf of the user. "
+            "IMPORTANT: This tool BLOCKS until the phone call finishes and dialogue concludes. "
+            "When this tool returns, the call is ALREADY FINISHED and the result contains 'recipient_reply', 'summary', and 'outcome_message'. "
+            "IMMEDIATELY speak the recipient's reply and call outcome to the user. "
+            "Do NOT say 'I will report back later', and do NOT call whatsapp_get_latest_call unless the user asks for historical records later."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "target": {
+                    "type": "STRING",
+                    "description": "Target contact name or phone number with country code (e.g. 'John', '+919876543210').",
+                },
+                "objective": {
+                    "type": "STRING",
+                    "description": "The exact objective, message to deliver, or question to ask the recipient.",
+                },
+                "conversation_mode": {
+                    "type": "STRING",
+                    "description": "Optional conversation style: 'MESSAGE_DELIVERY' (delivers message and gets reply), 'CONVERSATIONAL' (natural interactive dialogue), or 'EMERGENCY'. Defaults to 'MESSAGE_DELIVERY'.",
+                },
+            },
+            "required": ["target", "objective"],
+        },
+    },
+    {
+        "name": "whatsapp_get_latest_call",
+        "description": "Retrieve the status, summary, recipient response, and outcome of past completed WhatsApp phone calls placed by JARVIS. Use this when the user asks what the person said in a past call.",
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
+    {
+        "name": "whatsapp_status",
+        "description": "Check WhatsApp voice calling engine status, session authentication state, and configuration.",
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
+    {
+        "name": "whatsapp_login",
+        "description": "Generate and display a WhatsApp Web QR code for device authentication/login so JARVIS can place calls.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "force_refresh": {
+                    "type": "BOOLEAN",
+                    "description": "Whether to force clear previous session and generate a new QR code (default: false).",
+                }
+            },
+        },
+    },
+    {
+        "name": "whatsapp_logout",
+        "description": "Log out and purge stored WhatsApp Web session authentication credentials.",
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
 ]
 
 TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
@@ -412,6 +473,11 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "ui_inspect": CAPABILITY_UI_INSPECT,
     "ui_interact": CAPABILITY_UI_INTERACT,
     "computer_action": CAPABILITY_COMPUTER_ACT,
+    "whatsapp_call": CAPABILITY_WHATSAPP_CALL,
+    "whatsapp_get_latest_call": CAPABILITY_WHATSAPP_HISTORY,
+    "whatsapp_status": CAPABILITY_WHATSAPP_STATUS,
+    "whatsapp_login": CAPABILITY_WHATSAPP_LOGIN,
+    "whatsapp_logout": CAPABILITY_WHATSAPP_LOGOUT,
 }
 
 
@@ -486,6 +552,15 @@ class GeminiLiveBridge:
             "To select and play a video or click a link, use browser_click(selector='a#video-title') or browser_snapshot to extract available elements. "
             "For native desktop apps (Notepad, Calculator, Paint), use app_launch, ui_inspect, ui_interact, or computer_action. "
             "When the user requests deep coding or heavy reasoning, assign the task to specialist models using delegate_task. "
+            "When the user asks to call someone on WhatsApp, deliver a message via phone call, or check up on someone, "
+            "immediately use whatsapp_call(target=..., objective=..., conversation_mode=...). "
+            "whatsapp_call waits until the call finishes and directly returns 'recipient_reply' and 'summary'. "
+            "As soon as whatsapp_call returns, immediately report the recipient's reply and summary to the user in your response. "
+            "Do NOT say you will report back later, and do NOT invoke whatsapp_get_latest_call right after whatsapp_call. "
+            "Only use whatsapp_get_latest_call if the user subsequently asks about previous calls. "
+            "To check calling engine status or session authentication, use whatsapp_status(). "
+            "When the user asks for the WhatsApp QR code, wants to login or link WhatsApp, or if WhatsApp is not authenticated, "
+            "immediately call whatsapp_login(). To log out or reset credentials, use whatsapp_logout(). "
             f"Respond directly, concisely, and efficiently, always addressing the user as {callsign}."
         )
 
@@ -514,10 +589,12 @@ class GeminiLiveBridge:
         )
 
         from jarvis.execution.browser.host import browser_node
+        from jarvis.execution.whatsapp.node import whatsapp_node
         from jarvis.execution.windows.host import windows_node
 
         windows_node.register_capabilities()
         browser_node.register_capabilities()
+        whatsapp_node.register_capabilities()
 
         # In interactive live sessions, bypass approval ticket pauses so host operations execute directly
         if hasattr(self.broker, "policy"):
@@ -879,18 +956,24 @@ class GeminiLiveBridge:
                 )
                 continue
 
-            target = (
-                ExecutionTarget.BROWSER_NODE
-                if capability
-                in (
-                    CAPABILITY_BROWSER_NAVIGATE,
-                    CAPABILITY_BROWSER_SNAPSHOT,
-                    CAPABILITY_BROWSER_CLICK,
-                    CAPABILITY_BROWSER_TYPE,
-                    CAPABILITY_BROWSER_SCREENSHOT,
-                )
-                else ExecutionTarget.WINDOWS_NODE
-            )
+            if capability in (
+                CAPABILITY_BROWSER_NAVIGATE,
+                CAPABILITY_BROWSER_SNAPSHOT,
+                CAPABILITY_BROWSER_CLICK,
+                CAPABILITY_BROWSER_TYPE,
+                CAPABILITY_BROWSER_SCREENSHOT,
+            ):
+                target = ExecutionTarget.BROWSER_NODE
+            elif capability in (
+                CAPABILITY_WHATSAPP_CALL,
+                CAPABILITY_WHATSAPP_STATUS,
+                CAPABILITY_WHATSAPP_HISTORY,
+                CAPABILITY_WHATSAPP_LOGIN,
+                CAPABILITY_WHATSAPP_LOGOUT,
+            ):
+                target = ExecutionTarget.WHATSAPP_NODE
+            else:
+                target = ExecutionTarget.WINDOWS_NODE
 
             action_req = ActionRequest(
                 task_id=f"LIVE-{call_id}",

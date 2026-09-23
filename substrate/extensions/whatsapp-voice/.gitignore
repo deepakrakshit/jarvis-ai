@@ -1,0 +1,34 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Authentication & Session data
+auth/
+sessions.json
+conversations.json
+
+# Node & Build artifacts
+node_modules/
+dist/
+build/
+vendor/
+*.tsbuildinfo
+
+# Logs & Recordings
+logs/
+recordings/
+*.log
+*.jsonl
+
+# Coverage & Testing
+coverage/
+coverage.xml
+.nyc_output/
+tests/scratch/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
