@@ -12,7 +12,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -87,6 +87,7 @@ class WhatsAppVoiceCaller:
         objective: str,
         conversation_mode: Optional[str] = None,
         duration_ms: Optional[int] = None,
+        on_status: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None,
     ) -> WhatsAppCallResult:
         """Initiate an autonomous full-duplex WhatsApp VoIP call to a target."""
         if not self.is_available:
@@ -140,6 +141,12 @@ class WhatsAppVoiceCaller:
         )
 
         try:
+            if on_status:
+                try:
+                    await on_status("DIALING")
+                except Exception as status_err:
+                    logger.debug(f"on_status initial callback error: {status_err}")
+
             process = await asyncio.create_subprocess_exec(
                 args[0],
                 *args[1:],
@@ -149,8 +156,41 @@ class WhatsAppVoiceCaller:
                 env=env,
             )
 
-            stdout_bytes, stderr_bytes = await process.communicate()
-            stdout_text = stdout_bytes.decode("utf-8", errors="replace").strip()
+            stdout_lines: List[str] = []
+            stderr_bytes = b""
+
+            if on_status and isinstance(process.stdout, asyncio.StreamReader):
+                while True:
+                    line_bytes = await process.stdout.readline()
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode("utf-8", errors="replace").strip()
+                    stdout_lines.append(line)
+                    line_lower = line.lower()
+                    try:
+                        if "remote phone is ringing" in line_lower or "ringing" in line_lower:
+                            await on_status("RINGING")
+                        elif (
+                            "answered and connected" in line_lower
+                            or "media channels open" in line_lower
+                        ):
+                            await on_status("IN_PROGRESS")
+                        elif "call finished" in line_lower or "call ended" in line_lower:
+                            await on_status("ENDED")
+                    except Exception as cb_err:
+                        logger.debug(f"Call event streaming callback error: {cb_err}")
+
+                stderr_bytes = (
+                    await process.stderr.read()
+                    if isinstance(process.stderr, asyncio.StreamReader)
+                    else b""
+                )
+                await process.wait()
+                stdout_text = "\n".join(stdout_lines).strip()
+            else:
+                stdout_raw, stderr_bytes = await process.communicate()
+                stdout_text = stdout_raw.decode("utf-8", errors="replace").strip()
+
             stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
 
             result = self._parse_json_result(stdout_text)

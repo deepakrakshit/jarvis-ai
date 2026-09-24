@@ -45,12 +45,42 @@ class WhatsAppNode:
             duration_ms = req.arguments.get("duration_ms")
             int_duration: Optional[int] = int(duration_ms) if duration_ms is not None else None
 
+            # Dispatch real-time telephony state transitions to Telegram live call card
+            async def _on_telephony_event(state: str) -> None:
+                try:
+                    from jarvis.telegram.service import telegram_service
+
+                    await telegram_service.send_call_status(
+                        target=target,
+                        call_state=state,
+                        objective=objective,
+                    )
+                except Exception as tg_err:
+                    logger.debug(f"Telegram call status hook error: {tg_err}")
+
             call_result = await self.caller.place_call(
                 target=target,
                 objective=objective,
                 conversation_mode=str(mode) if mode else None,
                 duration_ms=int_duration,
+                on_status=_on_telephony_event,
             )
+
+            # Broadcast final call summary update to the same editable card
+            try:
+                from jarvis.telegram.service import telegram_service
+
+                final_state = "COMPLETED" if call_result.success else "FAILED"
+                await telegram_service.send_call_status(
+                    target=target,
+                    call_state=final_state,
+                    duration_seconds=int(call_result.duration_seconds),
+                    objective=objective,
+                    reply_preview=call_result.recipient_reply,
+                    summary=call_result.summary_text,
+                )
+            except Exception as tg_err:
+                logger.debug(f"Telegram call status final hook error: {tg_err}")
 
             target_display = call_result.target_number or target
             outcome_msg = (

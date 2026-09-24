@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from google import genai
@@ -28,6 +28,7 @@ from jarvis.contracts.memory import MemoryRecord, MemoryType
 from jarvis.memory.manager import memory_manager
 from jarvis.policy.firewall import (
     CAPABILITY_APP_LAUNCH,
+    CAPABILITY_ARTIFACT_DELIVER,
     CAPABILITY_BROWSER_CLICK,
     CAPABILITY_BROWSER_NAVIGATE,
     CAPABILITY_BROWSER_SCREENSHOT,
@@ -94,6 +95,28 @@ TELEGRAM_LIVE_TOOLS_SPEC: List[Dict[str, Any]] = [
                     "description": "Maximum number of search results to return (default: 20).",
                 },
             },
+        },
+    },
+    {
+        "name": "deliver_artifact",
+        "description": (
+            "Deliver a file from the host filesystem directly to the user in Telegram as a document or photo attachment. "
+            "Use this whenever the user asks to send, share, download, or transfer a file (e.g. pptx, pdf, docx, image, report, notes). "
+            "Path can be a full path or a relative/known alias (e.g. 'downloads/presentation.pptx' or filename)."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "path": {
+                    "type": "STRING",
+                    "description": "Path or filename of the file to deliver to the user.",
+                },
+                "caption": {
+                    "type": "STRING",
+                    "description": "Optional caption or description to accompany the file in Telegram.",
+                },
+            },
+            "required": ["path"],
         },
     },
     {
@@ -455,6 +478,7 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "whatsapp_status": CAPABILITY_WHATSAPP_STATUS,
     "whatsapp_login": CAPABILITY_WHATSAPP_LOGIN,
     "whatsapp_logout": CAPABILITY_WHATSAPP_LOGOUT,
+    "deliver_artifact": CAPABILITY_ARTIFACT_DELIVER,
 }
 
 
@@ -513,6 +537,8 @@ class TelegramLiveSession:
             "You have direct control of the user's host Windows PC through function calling. "
             "When the user asks to find, search for, or check files (e.g. in Downloads or Documents), "
             "use filesystem_search or filesystem_list immediately. "
+            "When the user asks you to send, share, download, or deliver a file (such as a pptx, pdf, docx, report, or image), "
+            "or refers to a file you previously located or found, immediately call deliver_artifact(path=...) with the exact file path or filename. "
             "When the user asks to see what is on screen or take a screenshot, use system_screenshot. "
             "When the user asks to place a WhatsApp phone call, deliver a message, or call a contact, "
             "use whatsapp_call(target=..., objective=...). "
@@ -687,103 +713,140 @@ class TelegramLiveSession:
         }, artifact_path
 
     async def process_user_turn(
-        self, user_text: str, timeout: float = 60.0
+        self,
+        user_text: str,
+        timeout: float = 60.0,
+        on_activity: Optional[Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]] = None,
     ) -> TelegramLiveTurnResult:
         """Process an inbound Telegram user turn through the dedicated Live session."""
         async with self._lock:
             turn_result = TelegramLiveTurnResult()
 
-            # Ensure active connection
-            if not self.is_connected:
+            for attempt in range(2):
+                # Ensure active connection
+                if not self.is_connected:
+                    try:
+                        await self.connect()
+                    except Exception as conn_err:
+                        logger.error(f"Failed to connect Telegram Live session: {conn_err}")
+                        if attempt == 1:
+                            turn_result.error = f"Connection failed: {conn_err}"
+                            return turn_result
+                        await asyncio.sleep(1.0)
+                        continue
+
+                if on_activity and attempt == 0:
+                    try:
+                        await on_activity("thinking", {"intent": user_text})
+                    except Exception as act_err:
+                        logger.debug(f"Activity callback error: {act_err}")
+
                 try:
-                    await self.connect()
-                except Exception as conn_err:
-                    logger.error(f"Failed to connect Telegram Live session: {conn_err}")
-                    turn_result.error = f"Connection failed: {conn_err}"
+                    # Transmit user text turn
+                    content = types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_text)],
+                    )
+                    await self._active_session.send_client_content(
+                        turns=[content],
+                        turn_complete=True,
+                    )
+
+                    turn_finished = False
+                    in_flight_tool = False
+                    collected_text: List[str] = []
+                    max_iterations = 12
+                    iteration = 0
+
+                    while not turn_finished and iteration < max_iterations:
+                        iteration += 1
+                        async for chunk in self._active_session.receive():
+                            # Capture session resumption updates
+                            if (
+                                chunk.session_resumption_update
+                                and chunk.session_resumption_update.new_handle
+                            ):
+                                self._resumption_handle = chunk.session_resumption_update.new_handle
+
+                            # Process tool calls
+                            if chunk.tool_call:
+                                in_flight_tool = True
+                                function_responses: List[types.FunctionResponse] = []
+                                for call in chunk.tool_call.function_calls:
+                                    call_id = call.id
+                                    func_name = call.name
+                                    args = dict(call.args) if call.args else {}
+                                    turn_result.tools_called.append(func_name)
+
+                                    if on_activity:
+                                        try:
+                                            await on_activity(
+                                                "tool_start", {"tool": func_name, "args": args}
+                                            )
+                                        except Exception as act_err:
+                                            logger.debug(f"Activity callback error: {act_err}")
+
+                                    payload, artifact = await self._execute_tool(
+                                        func_name=func_name, args=args, call_id=call_id
+                                    )
+                                    if artifact:
+                                        turn_result.artifacts.append(artifact)
+                                        if on_activity:
+                                            try:
+                                                await on_activity(
+                                                    "delivering",
+                                                    {"tool": func_name, "artifact": artifact.name},
+                                                )
+                                            except Exception as act_err:
+                                                logger.debug(f"Activity callback error: {act_err}")
+
+                                    function_responses.append(
+                                        types.FunctionResponse(
+                                            id=call_id,
+                                            name=func_name,
+                                            response=payload,
+                                        )
+                                    )
+
+                                if function_responses:
+                                    await self._active_session.send_tool_response(
+                                        function_responses=function_responses
+                                    )
+
+                            # Process server conversational content
+                            if chunk.server_content:
+                                sc = chunk.server_content
+                                if sc.output_transcription and sc.output_transcription.text:
+                                    collected_text.append(sc.output_transcription.text)
+                                if sc.model_turn:
+                                    for part in sc.model_turn.parts:
+                                        if part.text:
+                                            collected_text.append(part.text)
+
+                                if sc.turn_complete:
+                                    if in_flight_tool:
+                                        # Continue receiving post-tool response
+                                        in_flight_tool = False
+                                    else:
+                                        turn_finished = True
+                                        break
+
+                    turn_result.text = "".join(collected_text).strip()
                     return turn_result
 
-            try:
-                # Transmit user text turn
-                content = types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_text)],
-                )
-                await self._active_session.send_client_content(
-                    turns=[content],
-                    turn_complete=True,
-                )
+                except Exception as turn_err:
+                    logger.warning(
+                        f"Error in Telegram Live session processing (attempt {attempt + 1}/2): {turn_err}"
+                    )
+                    await self.close()
+                    if attempt == 0:
+                        logger.info("Attempting automatic reconnection and turn recovery...")
+                        await asyncio.sleep(1.0)
+                        continue
+                    turn_result.error = str(turn_err)
+                    return turn_result
 
-                turn_finished = False
-                in_flight_tool = False
-                collected_text: List[str] = []
-                max_iterations = 12
-                iteration = 0
-
-                while not turn_finished and iteration < max_iterations:
-                    iteration += 1
-                    async for chunk in self._active_session.receive():
-                        # Capture session resumption updates
-                        if (
-                            chunk.session_resumption_update
-                            and chunk.session_resumption_update.new_handle
-                        ):
-                            self._resumption_handle = chunk.session_resumption_update.new_handle
-
-                        # Process tool calls
-                        if chunk.tool_call:
-                            in_flight_tool = True
-                            function_responses: List[types.FunctionResponse] = []
-                            for call in chunk.tool_call.function_calls:
-                                call_id = call.id
-                                func_name = call.name
-                                args = dict(call.args) if call.args else {}
-                                turn_result.tools_called.append(func_name)
-
-                                payload, artifact = await self._execute_tool(
-                                    func_name=func_name, args=args, call_id=call_id
-                                )
-                                if artifact:
-                                    turn_result.artifacts.append(artifact)
-
-                                function_responses.append(
-                                    types.FunctionResponse(
-                                        id=call_id,
-                                        name=func_name,
-                                        response=payload,
-                                    )
-                                )
-
-                            if function_responses:
-                                await self._active_session.send_tool_response(
-                                    function_responses=function_responses
-                                )
-
-                        # Process server conversational content
-                        if chunk.server_content:
-                            sc = chunk.server_content
-                            if sc.output_transcription and sc.output_transcription.text:
-                                collected_text.append(sc.output_transcription.text)
-                            if sc.model_turn:
-                                for part in sc.model_turn.parts:
-                                    if part.text:
-                                        collected_text.append(part.text)
-
-                            if sc.turn_complete:
-                                if in_flight_tool:
-                                    # Continue receiving post-tool response
-                                    in_flight_tool = False
-                                else:
-                                    turn_finished = True
-                                    break
-
-                turn_result.text = "".join(collected_text).strip()
-                return turn_result
-
-            except Exception as turn_err:
-                logger.error(f"Error in Telegram Live session processing: {turn_err}")
-                await self.close()
-                turn_result.error = str(turn_err)
-                return turn_result
+            return turn_result
 
 
 class TelegramLiveSessionManager:
@@ -800,11 +863,17 @@ class TelegramLiveSessionManager:
         return self._sessions[chat_id]
 
     async def process_message(
-        self, chat_id: int, user_text: str, timeout: float = 60.0
+        self,
+        chat_id: int,
+        user_text: str,
+        timeout: float = 60.0,
+        on_activity: Optional[Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]] = None,
     ) -> TelegramLiveTurnResult:
         """Process incoming Telegram user message through the dedicated Gemini Live session."""
         session = self.get_or_create_session(chat_id)
-        return await session.process_user_turn(user_text=user_text, timeout=timeout)
+        return await session.process_user_turn(
+            user_text=user_text, timeout=timeout, on_activity=on_activity
+        )
 
     async def close_all(self) -> None:
         """Close all active Telegram Live sessions gracefully."""

@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.types import CallbackQuery, Message, User
 
+from jarvis.execution.windows.filesystem import is_safe_artifact_path, resolve_path
 from jarvis.storage.database import DatabaseEngine
 from jarvis.telegram.authorizer import TelegramAuthorizer
 from jarvis.telegram.cards import CardManager
@@ -472,3 +474,102 @@ async def test_telegram_service_approval_callback_flow(test_db: DatabaseEngine) 
     # Verify ticket resolved in approval_manager
     assert req.status.value == "APPROVED"
     mock_cb.answer.assert_called_with("Action authorized.")
+
+
+def test_filesystem_resolve_path_aliases() -> None:
+    """Verify alias normalization for common Windows folders."""
+    home = Path.home()
+    assert resolve_path("downloads") == home / "Downloads"
+    assert resolve_path("Downloads") == home / "Downloads"
+    assert resolve_path("documents") == home / "Documents"
+    assert resolve_path("desktop") == home / "Desktop"
+    assert resolve_path("~/test.txt") == home / "test.txt"
+
+
+def test_filesystem_is_safe_artifact_path(tmp_path: Path) -> None:
+    """Verify security boundaries reject sensitive files and allow safe deliverables."""
+    # Disallowed files
+    env_file = tmp_path / ".env"
+    env_file.write_text("API_KEY=secret")
+    is_safe_env, reason_env = is_safe_artifact_path(env_file)
+    assert is_safe_env is False
+    assert "prohibited" in str(reason_env).lower()
+
+    pem_file = tmp_path / "server.pem"
+    pem_file.write_text("CERT")
+    is_safe_pem, _ = is_safe_artifact_path(pem_file)
+    assert is_safe_pem is False
+
+    key_file = tmp_path / "id_rsa"
+    key_file.write_text("KEY")
+    is_safe_key, _ = is_safe_artifact_path(key_file)
+    assert is_safe_key is False
+
+    # Allowed safe files
+    pptx_file = tmp_path / "presentation.pptx"
+    pptx_file.write_bytes(b"PK\x03\x04fake_powerpoint")
+    is_safe_pptx, _ = is_safe_artifact_path(pptx_file)
+    assert is_safe_pptx is True
+
+    pdf_file = tmp_path / "report.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4")
+    is_safe_pdf, _ = is_safe_artifact_path(pdf_file)
+    assert is_safe_pdf is True
+
+
+@pytest.mark.asyncio
+async def test_telegram_service_delivers_document_artifact(tmp_path: Path) -> None:
+    """Verify non-image artifacts (e.g. .pptx) are sent via send_document with upload_document action."""
+    mock_live_mgr = MagicMock()
+    fake_pptx = tmp_path / "JAVA_PBL.pptx"
+    fake_pptx.write_bytes(b"PK\x03\x04powerpoint_data")
+
+    from jarvis.telegram.live_session import TelegramLiveTurnResult
+
+    mock_live_mgr.process_message = AsyncMock(
+        return_value=TelegramLiveTurnResult(
+            text="Here is your presentation, Sir.",
+            artifacts=[fake_pptx],
+            tools_called=["deliver_artifact"],
+        )
+    )
+
+    mock_authorizer = AsyncMock()
+    mock_authorizer.is_authorized = AsyncMock(return_value=True)
+
+    mock_db = MagicMock()
+    mock_db.get_or_create_telegram_chat_session = MagicMock(return_value="SESS-TG-DOC")
+
+    service = TelegramService(
+        bot_token="dummy_token_pptx",
+        database=mock_db,
+        authorizer=mock_authorizer,
+        live_mgr=mock_live_mgr,
+    )
+    service._bot = MagicMock()
+    service._bot.send_chat_action = AsyncMock()
+
+    from aiogram import Dispatcher
+
+    dp = Dispatcher()
+    service._register_handlers(dp)
+
+    mock_message = MagicMock(spec=Message)
+    mock_message.text = "Send me that pptx file"
+    mock_message.chat = MagicMock(id=888)
+    mock_message.from_user = User(id=888, is_bot=False, first_name="Deepak")
+    mock_message.answer = AsyncMock()
+    mock_message.answer_document = AsyncMock()
+    mock_message.answer_photo = AsyncMock()
+
+    with patch("jarvis.config.settings.TELEGRAM_GEMINI_API_KEY", "dummy_key"):
+        for h in dp.message.handlers:
+            if "on_text_message" in getattr(h.callback, "__name__", ""):
+                await h.callback(mock_message)
+                break
+
+    # Verify upload_document action was sent
+    service._bot.send_chat_action.assert_any_call(chat_id=888, action="upload_document")
+    # Verify answer_document was called
+    mock_message.answer_document.assert_called_once()
+    mock_message.answer_photo.assert_not_called()

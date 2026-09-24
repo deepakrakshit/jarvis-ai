@@ -22,7 +22,7 @@ from jarvis.policy.firewall import (
 @pytest.fixture(autouse=True)
 def setup_windows_capabilities() -> None:
     """Ensure Windows node capabilities are registered before test runs."""
-    windows_node.register_capabilities()
+    windows_node.register_capabilities(force=True)
 
 
 @pytest.mark.asyncio

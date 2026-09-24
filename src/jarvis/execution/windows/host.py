@@ -13,6 +13,7 @@ from jarvis.execution.windows.desktop import (
 )
 from jarvis.execution.windows.filesystem import (
     delete_file,
+    deliver_file,
     list_directory,
     read_file,
     search_files,
@@ -34,6 +35,7 @@ from jarvis.execution.windows.system import (
 )
 from jarvis.policy.firewall import (
     CAPABILITY_APP_LAUNCH,
+    CAPABILITY_ARTIFACT_DELIVER,
     CAPABILITY_COMPUTER_ACT,
     CAPABILITY_COMPUTER_CLICK,
     CAPABILITY_COMPUTER_KEY,
@@ -110,6 +112,13 @@ class WindowsNode:
                 if req.arguments.get("extension")
                 else None,
                 max_results=int(req.arguments.get("max_results", 20)),
+            ),
+        )
+        capability_registry.register(
+            CAPABILITY_ARTIFACT_DELIVER,
+            lambda req: deliver_file(
+                path_str=str(req.arguments["path"]),
+                caption=req.arguments.get("caption"),
             ),
         )
 

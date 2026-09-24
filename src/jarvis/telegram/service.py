@@ -27,9 +27,12 @@ from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telegram.authorizer import TelegramAuthorizer, telegram_authorizer
 from jarvis.telegram.cards import CardManager, card_manager
 from jarvis.telegram.formatters import (
+    format_activity_card,
     format_approval_request_card,
     format_call_status_card,
+    format_help_card,
     format_system_status,
+    format_welcome_card,
 )
 from jarvis.telegram.keyboards import create_approval_keyboard
 from jarvis.telegram.live_session import TelegramLiveSessionManager, telegram_live_manager
@@ -207,18 +210,8 @@ class TelegramService:
                 return
 
             # Bare /start command
-            if await self._authorizer.is_authorized(user_id):
-                await message.answer(
-                    "🤖 <b>JARVIS ONLINE</b>\n\n"
-                    f"Good day, {callsign}. All systems are fully operational on your PC.\n"
-                    "How may I be of service?"
-                )
-            else:
-                await message.answer(
-                    "🔒 <b>ACCESS DENIED</b>\n\n"
-                    "This JARVIS instance is private and requires cryptographic pairing.\n"
-                    "If you are the owner, generate a pairing link using <code>jarvis telegram pair</code>."
-                )
+            is_auth = await self._authorizer.is_authorized(user_id)
+            await message.answer(format_welcome_card(callsign=callsign, paired=is_auth))
 
         @dp.message(Command("status"))
         async def on_command_status(message: Message) -> None:
@@ -229,10 +222,12 @@ class TelegramService:
                 return
 
             op_count = len(self._db.list_telegram_authorized_users())
+            live_model = getattr(settings, "TELEGRAM_GEMINI_MODEL", "gemini-3.8-live")
             status_text = format_system_status(
                 telegram_online=True,
                 operator_count=op_count,
                 bot_username=self.bot_username,
+                live_model=live_model,
             )
             await message.answer(status_text)
 
@@ -283,16 +278,7 @@ class TelegramService:
                 await self._send_unauthorized_reply(message)
                 return
 
-            help_text = (
-                "<b>JARVIS REMOTE CONTROL ASSISTANT</b>\n\n"
-                "• <b>Natural Language:</b> Send any instruction to execute directly on the host.\n"
-                "• <b>/screenshot:</b> Capture and receive current desktop screen.\n"
-                "• <b>/status:</b> Check daemon and connectivity status.\n"
-                "• <b>/unpair:</b> Deauthorize this device.\n"
-                "• <b>Approvals:</b> Interactive inline authorization buttons for privileged actions.\n"
-                "• <b>Files:</b> Send documents or photos to upload to JARVIS workspace."
-            )
-            await message.answer(help_text)
+            await message.answer(format_help_card())
 
         @dp.callback_query()
         async def on_callback_query(query: CallbackQuery) -> None:
@@ -391,6 +377,65 @@ class TelegramService:
                 except Exception:
                     pass
 
+            # Initial single editable task activity card
+            initial_card = format_activity_card(
+                task_id=telegram_task_id,
+                status_icon="🧠",
+                status_text="INITIALIZING",
+                intent=user_text,
+            )
+            activity_msg = await message.answer(initial_card)
+            activity_msg_id = getattr(activity_msg, "message_id", 0)
+
+            async def on_live_activity(event_type: str, data: Dict[str, Any]) -> None:
+                if not self._bot or not activity_msg_id:
+                    return
+                if event_type == "thinking":
+                    card_str = format_activity_card(
+                        task_id=telegram_task_id,
+                        status_icon="🧠",
+                        status_text="REASONING",
+                        intent=user_text,
+                        detail="Analyzing intent and planning actions...",
+                    )
+                    try:
+                        await self._bot.send_chat_action(chat_id=chat_id, action="typing")
+                    except Exception:
+                        pass
+                elif event_type == "tool_start":
+                    tool = str(data.get("tool", "action"))
+                    card_str = format_activity_card(
+                        task_id=telegram_task_id,
+                        status_icon="⚡",
+                        status_text="EXECUTING ACTION",
+                        intent=user_text,
+                        action_name=tool,
+                    )
+                    try:
+                        await self._bot.send_chat_action(chat_id=chat_id, action="typing")
+                    except Exception:
+                        pass
+                elif event_type == "delivering":
+                    tool = str(data.get("tool", "delivery"))
+                    art_name = str(data.get("artifact", "file"))
+                    card_str = format_activity_card(
+                        task_id=telegram_task_id,
+                        status_icon="📦",
+                        status_text="TRANSFERRING ARTIFACT",
+                        intent=user_text,
+                        action_name=tool,
+                        detail=f"Preparing <code>{art_name}</code> for transfer...",
+                    )
+                else:
+                    return
+
+                await self._card_mgr.edit_card(
+                    bot=self._bot,
+                    chat_id=chat_id,
+                    message_id=activity_msg_id,
+                    text=card_str,
+                )
+
             # Primary Cognitive Engine: Dedicated Gemini 3.8 Live Session
             has_live_key = bool(
                 getattr(settings, "TELEGRAM_GEMINI_API_KEY", None)
@@ -402,19 +447,36 @@ class TelegramService:
                         f"Routing intent '{user_text}' through dedicated Telegram Gemini Live session"
                     )
                     live_res = await self._live_mgr.process_message(
-                        chat_id=chat_id, user_text=user_text
+                        chat_id=chat_id, user_text=user_text, on_activity=on_live_activity
                     )
                     if not live_res.error and (live_res.text or live_res.artifacts):
-                        # Send any generated artifact images first (e.g. desktop screenshot)
+                        # Send generated artifacts (documents, presentations, reports, photos)
                         for art_path in live_res.artifacts:
                             if art_path.exists():
                                 try:
-                                    await message.answer_photo(
-                                        photo=FSInputFile(str(art_path)),
-                                        caption=f"🖥️ Desktop Capture ({art_path.name})",
+                                    suffix = art_path.suffix.lower()
+                                    if suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+                                        if self._bot:
+                                            await self._bot.send_chat_action(
+                                                chat_id=chat_id, action="upload_photo"
+                                            )
+                                        await message.answer_photo(
+                                            photo=FSInputFile(str(art_path)),
+                                            caption=f"🖼️ <b>{art_path.name}</b>",
+                                        )
+                                    else:
+                                        if self._bot:
+                                            await self._bot.send_chat_action(
+                                                chat_id=chat_id, action="upload_document"
+                                            )
+                                        await message.answer_document(
+                                            document=FSInputFile(str(art_path)),
+                                            caption=f"📄 <b>{art_path.name}</b>",
+                                        )
+                                except Exception as art_err:
+                                    logger.warning(
+                                        f"Failed to deliver artifact {art_path}: {art_err}"
                                     )
-                                except Exception as photo_err:
-                                    logger.debug(f"Could not send artifact photo: {photo_err}")
 
                         # Deliver the model conversational response
                         if live_res.text:
@@ -422,11 +484,42 @@ class TelegramService:
                                 await message.answer(live_res.text)
                             except Exception:
                                 await message.answer(live_res.text, parse_mode=None)
+
+                        # Final update to the activity card
+                        if self._bot and activity_msg_id:
+                            completed_card = format_activity_card(
+                                task_id=telegram_task_id,
+                                status_icon="✅",
+                                status_text="COMPLETED",
+                                intent=user_text,
+                                detail="Operation completed successfully.",
+                            )
+                            await self._card_mgr.edit_card(
+                                bot=self._bot,
+                                chat_id=chat_id,
+                                message_id=activity_msg_id,
+                                text=completed_card,
+                                force=True,
+                            )
                         return
                     elif live_res.error:
                         logger.warning(
                             f"Telegram Live turn failed: {live_res.error}. Falling back to Control Plane."
                         )
+                        if self._bot and activity_msg_id:
+                            fb_card = format_activity_card(
+                                task_id=telegram_task_id,
+                                status_icon="🔄",
+                                status_text="FALLBACK TO CONTROL PLANE",
+                                intent=user_text,
+                                detail=f"Live session fallback: {live_res.error}",
+                            )
+                            await self._card_mgr.edit_card(
+                                bot=self._bot,
+                                chat_id=chat_id,
+                                message_id=activity_msg_id,
+                                text=fb_card,
+                            )
                 except Exception as live_err:
                     logger.warning(
                         f"Error in Telegram Live session processing: {live_err}. Falling back to Control Plane."
@@ -444,7 +537,7 @@ class TelegramService:
                     telegram_task_id=telegram_task_id,
                     jarvis_task_id=task.task_id,
                     chat_id=chat_id,
-                    status_message_id=0,
+                    status_message_id=activity_msg_id,
                     status=task.state.value,
                 )
                 self._db.update_telegram_task_mapping_status(task.task_id, task.state.value)
@@ -452,11 +545,41 @@ class TelegramService:
                 # If execution failed, provide clean, friendly explanation
                 if task.state == TaskState.FAILED:
                     err = task.error_message or "Execution failed during processing."
+                    if self._bot and activity_msg_id:
+                        err_card = format_activity_card(
+                            task_id=telegram_task_id,
+                            status_icon="❌",
+                            status_text="FAILED",
+                            intent=user_text,
+                            detail=err,
+                        )
+                        await self._card_mgr.edit_card(
+                            bot=self._bot,
+                            chat_id=chat_id,
+                            message_id=activity_msg_id,
+                            text=err_card,
+                            force=True,
+                        )
                     await message.answer(f"⚠️ <b>Notice:</b> {err}")
                     return
 
                 # If requires approval, inform user
                 if task.state == TaskState.NEEDS_APPROVAL:
+                    if self._bot and activity_msg_id:
+                        appr_card = format_activity_card(
+                            task_id=telegram_task_id,
+                            status_icon="⚠️",
+                            status_text="APPROVAL REQUIRED",
+                            intent=user_text,
+                            detail="Privileged action requires operator authorization.",
+                        )
+                        await self._card_mgr.edit_card(
+                            bot=self._bot,
+                            chat_id=chat_id,
+                            message_id=activity_msg_id,
+                            text=appr_card,
+                            force=True,
+                        )
                     await message.answer(
                         "⚠️ <b>Approval Required:</b> A privileged action awaits your authorization."
                     )
@@ -470,11 +593,17 @@ class TelegramService:
                     await message.answer(reply_text, parse_mode=None)
 
                 # If the action produced a screenshot or image artifact, send it as a photo
-                img_match = re.search(r"([A-Za-z]:[\\/][^\s\n<>]+\.(?:png|jpg|jpeg))", reply_text)
+                img_match = re.search(
+                    r"([A-Za-z]:[\\/][^\s\n<>]+\.(?:png|jpg|jpeg|webp))", reply_text
+                )
                 if img_match:
                     img_path = Path(img_match.group(1))
                     if img_path.exists():
                         try:
+                            if self._bot:
+                                await self._bot.send_chat_action(
+                                    chat_id=chat_id, action="upload_photo"
+                                )
                             await message.answer_photo(
                                 photo=FSInputFile(str(img_path)),
                                 caption=f"🖥️ Desktop Capture ({img_path.name})",
@@ -482,8 +611,59 @@ class TelegramService:
                         except Exception as photo_err:
                             logger.debug(f"Could not send artifact photo: {photo_err}")
 
+                # Check for other document artifacts mentioned in summary
+                doc_match = re.search(
+                    r"([A-Za-z]:[\\/][^\s\n<>]+\.(?:pptx|pdf|docx|xlsx|txt))", reply_text
+                )
+                if doc_match:
+                    doc_path = Path(doc_match.group(1))
+                    if doc_path.exists():
+                        try:
+                            if self._bot:
+                                await self._bot.send_chat_action(
+                                    chat_id=chat_id, action="upload_document"
+                                )
+                            await message.answer_document(
+                                document=FSInputFile(str(doc_path)),
+                                caption=f"📄 {doc_path.name}",
+                            )
+                        except Exception as doc_err:
+                            logger.debug(f"Could not send artifact document: {doc_err}")
+
+                # Final update on activity card
+                if self._bot and activity_msg_id:
+                    fin_card = format_activity_card(
+                        task_id=telegram_task_id,
+                        status_icon="✅",
+                        status_text="COMPLETED",
+                        intent=user_text,
+                        detail="Action completed.",
+                    )
+                    await self._card_mgr.edit_card(
+                        bot=self._bot,
+                        chat_id=chat_id,
+                        message_id=activity_msg_id,
+                        text=fin_card,
+                        force=True,
+                    )
+
             except Exception as err:
                 logger.error(f"Error executing task for intent '{user_text}': {err}")
+                if self._bot and activity_msg_id:
+                    err_card = format_activity_card(
+                        task_id=telegram_task_id,
+                        status_icon="❌",
+                        status_text="ERROR",
+                        intent=user_text,
+                        detail=str(err),
+                    )
+                    await self._card_mgr.edit_card(
+                        bot=self._bot,
+                        chat_id=chat_id,
+                        message_id=activity_msg_id,
+                        text=err_card,
+                        force=True,
+                    )
                 await message.answer(f"⚠️ <b>Error:</b> Could not execute instruction: {err}")
 
         @dp.message(F.document | F.photo)

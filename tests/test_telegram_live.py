@@ -32,6 +32,7 @@ def test_telegram_live_tools_declarations() -> None:
     assert "filesystem_search" in names
     assert "filesystem_read" in names
     assert "filesystem_list" in names
+    assert "deliver_artifact" in names
     assert "system_screenshot" in names
     assert "whatsapp_call" in names
     assert "browser_navigate" in names
@@ -50,9 +51,46 @@ def test_telegram_live_capability_mapping() -> None:
     """Verify canonical mapping exists from tool names to firewall capability IDs."""
     assert TOOL_TO_CAPABILITY_MAP["filesystem_search"] == "filesystem.search"
     assert TOOL_TO_CAPABILITY_MAP["filesystem_read"] == "filesystem.read"
+    assert TOOL_TO_CAPABILITY_MAP["deliver_artifact"] == "artifact.deliver"
     assert TOOL_TO_CAPABILITY_MAP["system_screenshot"] == "computer.screenshot"
     assert TOOL_TO_CAPABILITY_MAP["whatsapp_call"] == "whatsapp.call"
     assert TOOL_TO_CAPABILITY_MAP["browser_navigate"] == "browser.navigate"
+
+
+@pytest.mark.asyncio
+async def test_telegram_live_execute_deliver_artifact(tmp_path: Path) -> None:
+    """Verify deliver_artifact executes through ActionBroker and yields an artifact."""
+    mock_broker = MagicMock()
+    fake_doc = tmp_path / "presentation.pptx"
+    fake_doc.write_bytes(b"PK\x03\x04fake_powerpoint")
+
+    mock_broker.execute = AsyncMock(
+        return_value=ActionResult(
+            action_id="ACT-DELIVER-1",
+            task_id="TG-LIVE-call-04",
+            status=ActionStatus.SUCCEEDED,
+            execution_target=ExecutionTarget.WINDOWS_NODE,
+            output={
+                "artifact_path": str(fake_doc),
+                "filename": "presentation.pptx",
+                "size_bytes": fake_doc.stat().st_size,
+            },
+            verified=True,
+        )
+    )
+
+    session = TelegramLiveSession(chat_id=12345, api_key="dummy_api_key", broker=mock_broker)
+
+    res, art = await session._execute_tool(
+        func_name="deliver_artifact",
+        args={"path": "presentation.pptx"},
+        call_id="call-04",
+    )
+
+    assert res["status"] == "success"
+    assert res["action_status"] == "SUCCEEDED"
+    assert art is not None
+    assert art.name == "presentation.pptx"
 
 
 @pytest.mark.asyncio
@@ -247,8 +285,12 @@ async def test_telegram_service_delegates_to_live_manager(tmp_path: Path) -> Non
                 await h.callback(mock_message)
                 break
 
-    mock_live_mgr.process_message.assert_called_once_with(
-        chat_id=555, user_text="Show me my screen"
-    )
+    assert mock_live_mgr.process_message.call_count == 1
+    call_kwargs = mock_live_mgr.process_message.call_args.kwargs
+    assert call_kwargs["chat_id"] == 555
+    assert call_kwargs["user_text"] == "Show me my screen"
+    assert "on_activity" in call_kwargs
+
     mock_message.answer_photo.assert_called_once()
-    mock_message.answer.assert_called_once_with("Here is your desktop screenshot, Sir.")
+    assert mock_message.answer.call_count == 2
+    assert "Here is your desktop screenshot, Sir." in mock_message.answer.call_args_list[1][0][0]

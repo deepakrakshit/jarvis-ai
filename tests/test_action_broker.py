@@ -18,21 +18,28 @@ async def test_action_broker_successful_execution() -> None:
 
     from jarvis.actions.registry import capability_registry
 
-    capability_registry.register(CAPABILITY_FILESYSTEM_READ, mock_read_handler)
+    original_handler = capability_registry._handlers.get(CAPABILITY_FILESYSTEM_READ)
+    try:
+        capability_registry.register(CAPABILITY_FILESYSTEM_READ, mock_read_handler)
 
-    req = ActionRequest(
-        task_id="TASK-EXEC-1",
-        session_id="SESS-01",
-        capability=CAPABILITY_FILESYSTEM_READ,
-        arguments={"path": "test.txt"},
-        risk_tier=RiskTier.READ_ONLY,
-    )
+        req = ActionRequest(
+            task_id="TASK-EXEC-1",
+            session_id="SESS-01",
+            capability=CAPABILITY_FILESYSTEM_READ,
+            arguments={"path": "test.txt"},
+            risk_tier=RiskTier.READ_ONLY,
+        )
 
-    result = await broker.execute(req)
-    assert result.status == ActionStatus.SUCCEEDED
-    assert result.output == "Contents of test.txt"
-    assert result.verified is True
-    assert result.duration_ms > 0.0
+        result = await broker.execute(req)
+        assert result.status == ActionStatus.SUCCEEDED
+        assert result.output == "Contents of test.txt"
+        assert result.verified is True
+        assert result.duration_ms > 0.0
+    finally:
+        if original_handler is not None:
+            capability_registry.register(CAPABILITY_FILESYSTEM_READ, original_handler)
+        else:
+            capability_registry._handlers.pop(CAPABILITY_FILESYSTEM_READ, None)
 
 
 @pytest.mark.asyncio
