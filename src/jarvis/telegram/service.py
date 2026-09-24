@@ -7,6 +7,7 @@ privileged action authorization, and multimedia file transfer.
 from __future__ import annotations
 
 import asyncio
+import html
 import re
 import secrets
 from pathlib import Path
@@ -450,11 +451,82 @@ class TelegramService:
                         chat_id=chat_id, user_text=user_text, on_activity=on_live_activity
                     )
                     if not live_res.error and (live_res.text or live_res.artifacts):
+                        # Safety net: If artifacts list is empty but file delivery was requested
+                        # or claimed by the model, auto-discover and resolve the referenced file
+                        if not live_res.artifacts:
+                            intent_lower = user_text.lower()
+                            reply_lower = (live_res.text or "").lower()
+                            delivery_keywords = (
+                                "send",
+                                "sent",
+                                "share",
+                                "give me",
+                                "deliver",
+                                "download",
+                                "transfer",
+                                "presentation",
+                                "report",
+                                "pbl",
+                            )
+                            claimed_delivery = any(
+                                phrase in reply_lower
+                                for phrase in (
+                                    "sent you",
+                                    "sending you",
+                                    "here is your",
+                                    "delivered",
+                                    "sent the",
+                                )
+                            )
+                            requested_delivery = any(kw in intent_lower for kw in delivery_keywords)
+                            if requested_delivery or claimed_delivery:
+                                from jarvis.execution.windows.filesystem import (
+                                    is_safe_artifact_path,
+                                    search_files,
+                                )
+
+                                combined = f"{user_text} {live_res.text or ''}"
+                                fn_matches = re.findall(
+                                    r"[\w\-_\.]+\.(?:pptx|ppt|pdf|docx|doc|xlsx|xls|png|jpg|jpeg|txt|zip)",
+                                    combined,
+                                    re.IGNORECASE,
+                                )
+                                for fn in fn_matches:
+                                    search_res = search_files(dir_str="downloads", query=fn)
+                                    if search_res.get("matches"):
+                                        candidate = Path(search_res["matches"][0]["path"])
+                                        is_safe, _ = is_safe_artifact_path(candidate)
+                                        if is_safe and candidate not in live_res.artifacts:
+                                            live_res.artifacts.append(candidate)
+                                            break
+
+                                if not live_res.artifacts:
+                                    topic_query = (
+                                        "java pbl"
+                                        if "pbl" in combined.lower()
+                                        else (
+                                            "presentation"
+                                            if "presentation" in combined.lower()
+                                            else ""
+                                        )
+                                    )
+                                    if topic_query:
+                                        search_res = search_files(
+                                            dir_str="downloads", query=topic_query
+                                        )
+                                        for match in search_res.get("matches", []):
+                                            candidate = Path(match["path"])
+                                            is_safe, _ = is_safe_artifact_path(candidate)
+                                            if is_safe and candidate not in live_res.artifacts:
+                                                live_res.artifacts.append(candidate)
+                                                break
+
                         # Send generated artifacts (documents, presentations, reports, photos)
                         for art_path in live_res.artifacts:
                             if art_path.exists():
                                 try:
                                     suffix = art_path.suffix.lower()
+                                    safe_name = html.escape(art_path.name)
                                     if suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
                                         if self._bot:
                                             await self._bot.send_chat_action(
@@ -462,7 +534,7 @@ class TelegramService:
                                             )
                                         await message.answer_photo(
                                             photo=FSInputFile(str(art_path)),
-                                            caption=f"🖼️ <b>{art_path.name}</b>",
+                                            caption=f"🖼️ <b>{safe_name}</b>",
                                         )
                                     else:
                                         if self._bot:
@@ -471,11 +543,14 @@ class TelegramService:
                                             )
                                         await message.answer_document(
                                             document=FSInputFile(str(art_path)),
-                                            caption=f"📄 <b>{art_path.name}</b>",
+                                            caption=f"📄 <b>{safe_name}</b>",
                                         )
                                 except Exception as art_err:
-                                    logger.warning(
+                                    logger.error(
                                         f"Failed to deliver artifact {art_path}: {art_err}"
+                                    )
+                                    await message.answer(
+                                        f"⚠️ <b>Delivery Issue:</b> Could not attach <code>{html.escape(art_path.name)}</code>: {art_err}"
                                     )
 
                         # Deliver the model conversational response
@@ -487,12 +562,20 @@ class TelegramService:
 
                         # Final update to the activity card
                         if self._bot and activity_msg_id:
+                            detail_msg = "Operation completed successfully."
+                            if live_res.artifacts:
+                                delivered_list = ", ".join(
+                                    f"<code>{html.escape(p.name)}</code>"
+                                    for p in live_res.artifacts
+                                )
+                                detail_msg = f"Delivered: {delivered_list}"
+
                             completed_card = format_activity_card(
                                 task_id=telegram_task_id,
                                 status_icon="✅",
                                 status_text="COMPLETED",
                                 intent=user_text,
-                                detail="Operation completed successfully.",
+                                detail=detail_msg,
                             )
                             await self._card_mgr.edit_card(
                                 bot=self._bot,

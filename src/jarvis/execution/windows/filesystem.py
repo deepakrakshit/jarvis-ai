@@ -282,9 +282,13 @@ def deliver_file(path_str: str, caption: Optional[str] = None) -> Dict[str, Any]
     logger.info(f"Authorized deliverable artifact created: {path} ({size_display})")
     return {
         "artifact_id": f"art-{uuid4().hex[:8]}",
+        "artifact_path": str(path),
+        "path": str(path),
+        "filepath": str(path),
+        "file_path": str(path),
         "kind": kind,
         "name": path.name,
-        "path": str(path),
+        "filename": path.name,
         "size_bytes": stat.st_size,
         "size_display": size_display,
         "mime_type": mime_type,

@@ -690,13 +690,31 @@ class TelegramLiveSession:
 
         result = await self.broker.execute(action_req)
 
-        # Check if output contains an artifact (e.g. screenshot image)
+        # Check if output contains an artifact (e.g. screenshot image, delivered file)
         if isinstance(result.output, dict):
-            for candidate_key in ("artifact_path", "filepath", "screenshot_path"):
+            for candidate_key in (
+                "artifact_path",
+                "path",
+                "filepath",
+                "file_path",
+                "screenshot_path",
+            ):
                 p_str = result.output.get(candidate_key)
-                if p_str and Path(p_str).exists():
-                    artifact_path = Path(p_str)
-                    break
+                if p_str and isinstance(p_str, (str, Path)):
+                    c_path = Path(p_str)
+                    if c_path.exists() and c_path.is_file():
+                        artifact_path = c_path
+                        break
+
+        # Explicit fallback for deliver_artifact tool
+        if func_name == "deliver_artifact" and not artifact_path:
+            p_arg = args.get("path")
+            if p_arg:
+                from jarvis.execution.windows.filesystem import resolve_path
+
+                resolved = resolve_path(str(p_arg))
+                if resolved.exists() and resolved.is_file():
+                    artifact_path = resolved
 
         if result.error:
             return {
