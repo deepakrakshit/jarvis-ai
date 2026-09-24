@@ -15,6 +15,7 @@ Welcome to the official technical documentation for **JARVIS**, a stateful, mult
 | **[Gateway & Control Plane](GATEWAY_AND_CONTROL_PLANE.md)** | Typed WebSocket daemon, session state, heartbeat scheduling, tool broker, and agent delegation. |
 | **[Configuration & Security](CONFIGURATION_AND_SECURITY.md)** | Dynamic configuration, zero-hardcoding invariants, capability firewall, and credentials governance. |
 | **[Autonomous WhatsApp Telephony](WHATSAPP_VOICE_TELEPHONY.md)** | Full-duplex VoIP audio bridge, Baileys WebRTC, barge-in detection, debriefing, and grounded memory. |
+| **[Native Telegram Remote Control](TELEGRAM_REMOTE_CONTROL.md)** | Dedicated Gemini 3.8 Live remote control, direct PC file delivery, mobile pairing, and desktop supervision. |
 
 ---
 

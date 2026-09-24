@@ -207,26 +207,30 @@ For detailed documentation, see **[Autonomous WhatsApp Voice Telephony](docs/WHA
 
 ## 6. Native Telegram Remote Control
 
-JARVIS features a native, host-resident **Telegram Remote Control Agent** that lets the operator supervise, query, and command their Windows machine remotely from any smartphone:
+JARVIS features a native, host-resident **Telegram Remote Control Agent** that lets the operator supervise, query, and command their Windows machine remotely from any smartphone, powered by its own **dedicated Gemini 3.8 Live session**:
 
 ```mermaid
 graph LR
     Phone(["📱 Phone / Telegram"]) <-->|Outbound Long Polling| HostBot["🤖 Telegram Daemon\n(aiogram 3.x)"]
-    HostBot -->|Intent Dispatch| CP["🧠 Control Plane"]
-    HostBot -->|Action Approvals| ApprovalMgr["⚖️ Approval Manager"]
-    HostBot -->|Desktop Capture| WinHost["🖥️ Screenshot Engine"]
-    CP --> Broker["🛡️ Action Broker"]
-    Broker --> Fabric["⚙️ Execution Fabric"]
+    HostBot -->|Dedicated Live Session| TGLive["⚡ Gemini 3.8 Live Session"]
+    TGLive -->|Tool Dispatch| Broker["🛡️ Action Broker & Firewall"]
+    Broker --> Filesystem["📁 File Search & Delivery"]
+    Broker --> WinHost["🖥️ Screenshot & Desktop Control"]
+    Broker --> VoIP["📞 WhatsApp Telephony"]
+    Filesystem -->|Direct File Upload| HostBot
+    WinHost -->|Direct Photo Upload| HostBot
     Broker -.->|In-Place Updates| SingleCard["🎛️ Single Editable Status Card"]
     SingleCard -.->|HTML Edit| HostBot
 ```
 
+- **Dedicated Gemini 3.8 Live Engine:** Runs an independent, parallel Gemini 3.8 Live session with isolated conversational context, memory, and tool execution—leaving the PC voice session completely undisturbed.
+- **Direct PC File Delivery:** Ask JARVIS to locate and send files directly from your host drives (*"Send me the Java presentation from my downloads"*). Files are verified for safety and uploaded straight to chat as documents.
 - **Zero Open Inbound Ports:** Communicates exclusively via outbound HTTPS long-polling (`getUpdates`). No static IP, port forwarding, reverse proxies, or cloud tunnels required.
 - **Fail-Closed Operator Boundary:** Unregistered users receive an immediate access denial. System paths, environment details, and internal diagnostics are never leaked.
 - **Cryptographic Pairing:** Device onboarding utilizes a 256-bit entropy challenge nonce generated on the host (`jarvis telegram pair`) with a configurable TTL.
 - **Interactive Inline Approvals:** High-risk actions (file deletion, shell execution) prompt inline `[ ✅ AUTHORIZE ]` / `[ ❌ DENY ]` buttons with compact opaque tokens strictly complying with Telegram's 64-byte payload limit.
 - **Single Editable Status Cards:** Task executions and VoIP phone calls update a single live status card in place, eliminating message flooding and respecting Telegram 429 rate limits.
-- **Desktop Visual Telemetry:** Issue `/screenshot` at any time to receive a high-resolution display capture directly in chat.
+- **Desktop Visual Telemetry & System Control:** Issue `/screenshot` at any time for instant desktop captures, adjust system volume, lock the workstation, or inspect running processes.
 
 For detailed documentation, see **[Native Telegram Remote Control](docs/TELEGRAM_REMOTE_CONTROL.md)**.
 
@@ -352,62 +356,37 @@ Open `.env` and fill in your desired parameters and API credentials:
 
 ```ini
 # ==============================================================================
-# 1. API Credentials & Authentication
+# 1. Core Intelligence (REQUIRED)
 # ==============================================================================
-# Google Gemini API Key (Required for Live Audio & Multimodal Cognition)
+# Google Gemini API Key: Powers Gemini 3.8 Live realtime voice and vision
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Groq API Key (Optional for ultra-fast text model routing and fallback inference)
+# ==============================================================================
+# 2. Faster Fallback & Text Routing (OPTIONAL)
+# ==============================================================================
+# Groq API Key: Enables high-speed text model fallback routing
 GROQ_API_KEY=your_groq_api_key_here
 
 # ==============================================================================
-# 2. Audio Capture & Hardware Pipeline Settings
+# 3. Telegram Remote Control (OPTIONAL)
 # ==============================================================================
-# Audio input device index (leave blank for automatic Windows default communication device)
-AUDIO_INPUT_DEVICE_INDEX=
-AUDIO_INPUT_SAMPLE_RATE=16000
-AUDIO_INPUT_CHANNELS=1
-AUDIO_OUTPUT_SAMPLE_RATE=24000
-AUDIO_VAD_ENERGY_THRESHOLD=15.0
-VOICE_DRAIN_HOLD_MS=250
+# Telegram Bot Token from @BotFather
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Dedicated Gemini API Key for Telegram (defaults to GEMINI_API_KEY if unset)
+TELEGRAM_GEMINI_API_KEY=
 
 # ==============================================================================
-# 3. Acoustic Echo Cancellation (AEC) & DSP Pipeline
-# ==============================================================================
-AUDIO_AEC_ENABLED=true
-AUDIO_AEC_PARTITIONS=6
-AUDIO_AEC_STEP_SIZE=0.25
-AUDIO_AEC_SUPPRESSION_DB=30.0
-AUDIO_AEC_DELAY_MAX_MS=250
-
-# ==============================================================================
-# 4. Gateway Daemon & Network Server
-# ==============================================================================
-GATEWAY_HOST=127.0.0.1
-GATEWAY_PORT=8765
-GATEWAY_PORT_AUTO_DISCOVERY=true
-GATEWAY_PORT_SEARCH_LIMIT=50
-
-# ==============================================================================
-# 5. WhatsApp Autonomous Voice Telephony
+# 4. WhatsApp Autonomous Telephony (OPTIONAL)
 # ==============================================================================
 WHATSAPP_VOIP_ENABLED=true
-WHATSAPP_CONVERSATION_MODE=MESSAGE_DELIVERY
-WHATSAPP_CALL_TIMEOUT_MS=120000
 WHATSAPP_DEFAULT_COUNTRY_CODE=91
 WHATSAPP_CALL_LANGUAGE=hinglish
-WHATSAPP_AUTH_DIR=data/whatsapp/auth
-WHATSAPP_CONTACTS_FILE=data/whatsapp/contacts.json
 
 # ==============================================================================
-# 6. Telegram Remote Control Bot Settings
+# 5. Assistant Persona (OPTIONAL)
 # ==============================================================================
-TELEGRAM_BOT_TOKEN=your_botfather_token_here
-TELEGRAM_BOT_ENABLED=true
-TELEGRAM_PAIRING_TTL_SECONDS=300
-TELEGRAM_APPROVAL_TTL_SECONDS=300
-TELEGRAM_RATE_LIMIT_EDIT_INTERVAL=1.0
-TELEGRAM_MAX_UPLOAD_BYTES=52428800
+USER_CALLSIGN=Sir
 ```
 
 ---
