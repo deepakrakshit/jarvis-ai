@@ -52,8 +52,9 @@ class WhatsAppNode:
                 duration_ms=int_duration,
             )
 
+            target_display = call_result.target_number or target
             outcome_msg = (
-                f"Call to {call_result.target_number} completed in {call_result.duration_seconds}s. "
+                f"Call to {target_display} completed in {call_result.duration_seconds}s. "
                 f"Recipient's reply: '{call_result.recipient_reply or 'No verbal reply detected'}'. "
                 f"Summary: {call_result.summary_text or 'Call completed.'}"
             )

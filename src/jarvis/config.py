@@ -112,6 +112,17 @@ class JarvisSettings(BaseSettings):
     WHATSAPP_CALL_LANGUAGE: str = Field(default="hinglish")
     WHATSAPP_CONVERSATION_MODE: str = Field(default="MESSAGE_DELIVERY")
 
+    # Telegram Remote Control Bot Settings
+    TELEGRAM_BOT_TOKEN: Optional[str] = Field(default=None)
+    TELEGRAM_BOT_ENABLED: bool = Field(default=True)
+    TELEGRAM_PAIRING_TTL_SECONDS: int = Field(default=300)
+    TELEGRAM_APPROVAL_TTL_SECONDS: int = Field(default=300)
+    TELEGRAM_RATE_LIMIT_EDIT_INTERVAL: float = Field(default=1.0)
+    TELEGRAM_MAX_UPLOAD_BYTES: int = Field(default=52428800)
+    TELEGRAM_GEMINI_API_KEY: Optional[str] = Field(default=None)
+    TELEGRAM_GEMINI_MODEL: str = Field(default="gemini-3.8-live")
+    TELEGRAM_SYSTEM_INSTRUCTION: Optional[str] = Field(default=None)
+
     # Approved Runtime Models (Strict 6-Model Allowlist)
     ALLOWED_MODEL_FAMILIES: List[str] = Field(
         default_factory=lambda: [

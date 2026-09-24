@@ -906,6 +906,290 @@ class DatabaseEngine:
             cursor.execute("DELETE FROM artifacts WHERE artifact_id = ?;", (artifact_id,))
             return cursor.rowcount > 0
 
+    # -------------------------------------------------------------------------
+    # Telegram Remote Control Repository
+    # -------------------------------------------------------------------------
+
+    def is_telegram_user_authorized(self, telegram_user_id: int) -> bool:
+        """Check if numeric telegram user ID is registered and active."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT is_active FROM telegram_authorized_users WHERE telegram_user_id = ?;",
+                (telegram_user_id,),
+            )
+            row = cursor.fetchone()
+            return bool(row and row["is_active"] == 1)
+
+    def add_telegram_authorized_user(
+        self, telegram_user_id: int, username: Optional[str] = None
+    ) -> None:
+        """Register or update an authorized Telegram operator."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO telegram_authorized_users (telegram_user_id, username, paired_at, is_active)
+                VALUES (?, ?, datetime('now'), 1)
+                ON CONFLICT(telegram_user_id) DO UPDATE SET
+                    username = excluded.username,
+                    paired_at = datetime('now'),
+                    is_active = 1;
+                """,
+                (telegram_user_id, username),
+            )
+
+    def revoke_telegram_user(self, telegram_user_id: int) -> None:
+        """Deactivate operator authorization for a user."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "UPDATE telegram_authorized_users SET is_active = 0 WHERE telegram_user_id = ?;",
+                (telegram_user_id,),
+            )
+
+    def list_telegram_authorized_users(self) -> List[Dict[str, Any]]:
+        """List all active authorized Telegram operators."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT telegram_user_id, username, paired_at, is_active FROM telegram_authorized_users WHERE is_active = 1;"
+            )
+            return [
+                {
+                    "telegram_user_id": row["telegram_user_id"],
+                    "username": row["username"],
+                    "paired_at": row["paired_at"],
+                    "is_active": bool(row["is_active"]),
+                }
+                for row in cursor.fetchall()
+            ]
+
+    def create_telegram_pairing_session(self, nonce: str, expires_at: str) -> None:
+        """Store a new pairing challenge nonce."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO telegram_pairing_sessions (nonce, created_at, expires_at, is_used, used_by_telegram_id)
+                VALUES (?, datetime('now'), ?, 0, NULL);
+                """,
+                (nonce, expires_at),
+            )
+
+    def consume_telegram_pairing_nonce(self, nonce: str, telegram_user_id: int) -> bool:
+        """Atomically validate and consume a pairing challenge nonce."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT expires_at, is_used FROM telegram_pairing_sessions WHERE nonce = ?;",
+                (nonce,),
+            )
+            row = cursor.fetchone()
+            if not row or row["is_used"] == 1:
+                return False
+
+            from datetime import datetime, timezone
+
+            try:
+                exp_dt = datetime.fromisoformat(row["expires_at"])
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > exp_dt:
+                    return False
+            except Exception:
+                return False
+
+            cursor.execute(
+                "UPDATE telegram_pairing_sessions SET is_used = 1, used_by_telegram_id = ? WHERE nonce = ? AND is_used = 0;",
+                (telegram_user_id, nonce),
+            )
+            return cursor.rowcount > 0
+
+    def get_or_create_telegram_chat_session(self, chat_id: int, telegram_user_id: int) -> str:
+        """Retrieve existing or generate new JARVIS session ID for a Telegram chat."""
+        from uuid import uuid4
+
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT session_id FROM telegram_chat_sessions WHERE chat_id = ?;", (chat_id,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return str(row["session_id"])
+
+            new_session_id = f"SESSION-TG-{uuid4().hex[:8].upper()}"
+            self.create_session(session_id=new_session_id, title=f"Telegram Chat {chat_id}")
+            cursor.execute(
+                """
+                INSERT INTO telegram_chat_sessions (chat_id, telegram_user_id, session_id, updated_at)
+                VALUES (?, ?, ?, datetime('now'));
+                """,
+                (chat_id, telegram_user_id, new_session_id),
+            )
+            return new_session_id
+
+    def save_telegram_task_mapping(
+        self,
+        telegram_task_id: str,
+        jarvis_task_id: str,
+        chat_id: int,
+        status_message_id: int,
+        status: str = "ACCEPTED",
+    ) -> None:
+        """Save or update task correlation mapping."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO telegram_task_mappings (telegram_task_id, jarvis_task_id, chat_id, status_message_id, created_at, status)
+                VALUES (?, ?, ?, ?, datetime('now'), ?)
+                ON CONFLICT(telegram_task_id) DO UPDATE SET
+                    jarvis_task_id = excluded.jarvis_task_id,
+                    status_message_id = excluded.status_message_id,
+                    status = excluded.status;
+                """,
+                (telegram_task_id, jarvis_task_id, chat_id, status_message_id, status),
+            )
+
+    def get_telegram_task_mapping_by_jarvis_id(
+        self, jarvis_task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Retrieve task correlation by JARVIS task ID."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT telegram_task_id, jarvis_task_id, chat_id, status_message_id, created_at, status
+                FROM telegram_task_mappings WHERE jarvis_task_id = ?;
+                """,
+                (jarvis_task_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "telegram_task_id": row["telegram_task_id"],
+                "jarvis_task_id": row["jarvis_task_id"],
+                "chat_id": row["chat_id"],
+                "status_message_id": row["status_message_id"],
+                "created_at": row["created_at"],
+                "status": row["status"],
+            }
+
+    def get_telegram_task_mapping_by_tg_id(self, telegram_task_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve task correlation by Telegram task ID."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT telegram_task_id, jarvis_task_id, chat_id, status_message_id, created_at, status
+                FROM telegram_task_mappings WHERE telegram_task_id = ?;
+                """,
+                (telegram_task_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "telegram_task_id": row["telegram_task_id"],
+                "jarvis_task_id": row["jarvis_task_id"],
+                "chat_id": row["chat_id"],
+                "status_message_id": row["status_message_id"],
+                "created_at": row["created_at"],
+                "status": row["status"],
+            }
+
+    def update_telegram_task_mapping_status(self, jarvis_task_id: str, status: str) -> None:
+        """Update status of a task mapping."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "UPDATE telegram_task_mappings SET status = ? WHERE jarvis_task_id = ?;",
+                (status, jarvis_task_id),
+            )
+
+    def create_telegram_approval_ticket(
+        self,
+        ticket_id: str,
+        opaque_token: str,
+        task_id: str,
+        telegram_user_id: int,
+        chat_id: int,
+        risk_tier: str,
+        capability: str,
+        safe_display: str,
+        expires_at: str,
+    ) -> None:
+        """Record an interactive approval ticket for Telegram."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO telegram_approval_tickets (
+                    ticket_id, opaque_token, task_id, telegram_user_id, chat_id,
+                    risk_tier, capability, safe_display, status, expires_at, decided_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, NULL);
+                """,
+                (
+                    ticket_id,
+                    opaque_token,
+                    task_id,
+                    telegram_user_id,
+                    chat_id,
+                    risk_tier,
+                    capability,
+                    safe_display,
+                    expires_at,
+                ),
+            )
+
+    def get_telegram_approval_ticket_by_opaque(self, opaque_token: str) -> Optional[Dict[str, Any]]:
+        """Lookup approval ticket by opaque token."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                SELECT ticket_id, opaque_token, task_id, telegram_user_id, chat_id,
+                       risk_tier, capability, safe_display, status, expires_at, decided_at
+                FROM telegram_approval_tickets WHERE opaque_token = ?;
+                """,
+                (opaque_token,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "ticket_id": row["ticket_id"],
+                "opaque_token": row["opaque_token"],
+                "task_id": row["task_id"],
+                "telegram_user_id": row["telegram_user_id"],
+                "chat_id": row["chat_id"],
+                "risk_tier": row["risk_tier"],
+                "capability": row["capability"],
+                "safe_display": row["safe_display"],
+                "status": row["status"],
+                "expires_at": row["expires_at"],
+                "decided_at": row["decided_at"],
+            }
+
+    def resolve_telegram_approval_ticket(self, ticket_id: str, status: str) -> bool:
+        """Atomically transition a pending ticket."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                UPDATE telegram_approval_tickets
+                SET status = ?, decided_at = datetime('now')
+                WHERE ticket_id = ? AND status = 'PENDING';
+                """,
+                (status, ticket_id),
+            )
+            return cursor.rowcount > 0
+
+    def is_telegram_update_processed(self, update_id: int) -> bool:
+        """Check idempotency of Telegram update."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM telegram_processed_updates WHERE update_id = ?;", (update_id,)
+            )
+            return cursor.fetchone() is not None
+
+    def mark_telegram_update_processed(self, update_id: int) -> None:
+        """Mark update as processed."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                "INSERT OR IGNORE INTO telegram_processed_updates (update_id, processed_at) VALUES (?, datetime('now'));",
+                (update_id,),
+            )
+
 
 # Default singleton instance
 db = DatabaseEngine()

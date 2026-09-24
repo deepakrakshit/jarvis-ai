@@ -26,6 +26,10 @@ from .commands import (
     handle_run,
     handle_serve,
     handle_status,
+    handle_telegram_daemon,
+    handle_telegram_pair,
+    handle_telegram_status,
+    handle_telegram_unpair,
     handle_whatsapp_call,
     handle_whatsapp_history,
     handle_whatsapp_login,
@@ -222,6 +226,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     wa_logout_p = wa_sub.add_parser("logout", help="Log out and purge stored WhatsApp credentials")
     wa_logout_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    # 10. telegram
+    tg_parser = subparsers.add_parser(
+        "telegram", help="Native Telegram remote control daemon and pairing"
+    )
+    tg_sub = tg_parser.add_subparsers(dest="telegram_subcommand", help="Telegram subcommands")
+
+    tg_status_p = tg_sub.add_parser("status", help="Show Telegram bot and pairing status")
+    tg_status_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    tg_pair_p = tg_sub.add_parser("pair", help="Generate a secure single-use pairing link")
+    tg_pair_p.add_argument("--ttl", type=int, default=300, help="Pairing link TTL in seconds")
+    tg_pair_p.add_argument(
+        "--no-wait",
+        action="store_true",
+        help="Print pairing link and exit without waiting for confirmation",
+    )
+
+    tg_sub.add_parser("unpair", help="Revoke all paired Telegram operators")
+    tg_sub.add_parser("daemon", help="Run standalone Telegram bot daemon")
 
     return parser
 
@@ -435,6 +459,85 @@ def main(argv: Optional[List[str]] = None) -> int:
 
             else:
                 parser.parse_args(["whatsapp", "--help"])
+                return 0
+
+        elif args.command == "telegram":
+            subcmd = getattr(args, "telegram_subcommand", None)
+            if subcmd == "status":
+                status_res = handle_telegram_status()
+                if getattr(args, "json", False):
+                    print(json.dumps(status_res, indent=2))
+                else:
+                    print(f"Telegram Remote Bot Configured: {status_res['configured']}")
+                    print(f"Telegram Bot Enabled: {status_res['enabled']}")
+                    print(f"Authorized Operators Count: {status_res['authorized_operators_count']}")
+                    if status_res["operators"]:
+                        print("Operators:")
+                        for op in status_res["operators"]:
+                            print(
+                                f"  - User ID: {op['telegram_user_id']}, Username: {op.get('username') or 'N/A'}"
+                            )
+                return 0
+
+            elif subcmd == "pair":
+                ttl = getattr(args, "ttl", 300)
+                no_wait = getattr(args, "no_wait", False)
+
+                def print_link(n: str, lk: str) -> None:
+                    print("=== JARVIS TELEGRAM PAIRING CHALLENGE ===")
+                    print(f"Pairing Code: {n}")
+                    print(f"Pairing Link: {lk}")
+                    print(f"This link expires in {ttl} seconds.")
+                    print("\n📱 Open this link on your phone in Telegram and tap 'Start'.")
+                    if not no_wait:
+                        print(
+                            "⏳ Listening for authorization from your phone... (Press Ctrl+C to cancel)\n"
+                        )
+
+                try:
+                    nonce, link, paired_user = asyncio.run(
+                        handle_telegram_pair(
+                            ttl=ttl,
+                            wait=not no_wait,
+                            on_link_ready=print_link,
+                        )
+                    )
+                    if not no_wait:
+                        if paired_user:
+                            uname = (
+                                f"@{paired_user['username']}"
+                                if paired_user.get("username")
+                                else "Operator"
+                            )
+                            print(
+                                f"🎉 Successfully paired with {uname} (ID: {paired_user['telegram_user_id']})!"
+                            )
+                            print(
+                                "You can now start JARVIS by running 'run.bat' or 'python -m jarvis.cli serve'."
+                            )
+                        else:
+                            print(
+                                "\n⚠️ Pairing challenge expired before authorization was received."
+                            )
+                    return 0
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    print("\nPairing listening cancelled.")
+                    return 0
+                except Exception as err:
+                    print(f"Pairing generation failed: {err}", file=sys.stderr)
+                    return 1
+
+            elif subcmd == "unpair":
+                count = handle_telegram_unpair()
+                print(f"Revoked authorization for {count} operator(s).")
+                return 0
+
+            elif subcmd == "daemon":
+                asyncio.run(handle_telegram_daemon())
+                return 0
+
+            else:
+                parser.parse_args(["telegram", "--help"])
                 return 0
 
         else:

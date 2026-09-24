@@ -35,6 +35,7 @@ from jarvis.policy.firewall import (
     CAPABILITY_COMPUTER_SCREENSHOT,
     CAPABILITY_FILESYSTEM_LIST,
     CAPABILITY_FILESYSTEM_READ,
+    CAPABILITY_FILESYSTEM_SEARCH,
     CAPABILITY_FILESYSTEM_WRITE,
     CAPABILITY_PROCESS_ENUMERATE,
     CAPABILITY_SHELL_EXECUTE,
@@ -143,6 +144,31 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
             "type": "OBJECT",
             "properties": {"path": {"type": "STRING", "description": "Directory path to list."}},
             "required": ["path"],
+        },
+    },
+    {
+        "name": "filesystem_search",
+        "description": "Search for files by keyword query and/or file extension in a directory (default: 'downloads'). Use this when looking for specific files like 'java pbl' or ppt files.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "path": {
+                    "type": "STRING",
+                    "description": "Directory name or path (e.g. 'downloads', 'documents', 'desktop'). Defaults to 'downloads'.",
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "Keywords or search term to match against file names (e.g. 'java pbl').",
+                },
+                "extension": {
+                    "type": "STRING",
+                    "description": "Optional file extension filter without dot (e.g. 'ppt', 'pdf', 'docx').",
+                },
+                "max_results": {
+                    "type": "INTEGER",
+                    "description": "Maximum number of search results to return (default: 20).",
+                },
+            },
         },
     },
     {
@@ -460,6 +486,7 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "filesystem_read": CAPABILITY_FILESYSTEM_READ,
     "filesystem_write": CAPABILITY_FILESYSTEM_WRITE,
     "filesystem_list": CAPABILITY_FILESYSTEM_LIST,
+    "filesystem_search": CAPABILITY_FILESYSTEM_SEARCH,
     "process_list": CAPABILITY_PROCESS_ENUMERATE,
     "browser_navigate": CAPABILITY_BROWSER_NAVIGATE,
     "browser_snapshot": CAPABILITY_BROWSER_SNAPSHOT,

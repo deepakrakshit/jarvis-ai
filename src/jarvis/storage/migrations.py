@@ -294,4 +294,64 @@ MIGRATIONS: List[str] = [
     CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type);
     """,
+    # Telegram Remote Control Integration (v6)
+    """
+    -- Telegram Authorized Operators
+    CREATE TABLE IF NOT EXISTS telegram_authorized_users (
+        telegram_user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        paired_at TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1
+    );
+
+    -- Telegram Pairing Nonces
+    CREATE TABLE IF NOT EXISTS telegram_pairing_sessions (
+        nonce TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        is_used INTEGER NOT NULL DEFAULT 0,
+        used_by_telegram_id INTEGER
+    );
+
+    -- Telegram Chat Sessions
+    CREATE TABLE IF NOT EXISTS telegram_chat_sessions (
+        chat_id INTEGER PRIMARY KEY,
+        telegram_user_id INTEGER NOT NULL,
+        session_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    -- Telegram Task Mappings
+    CREATE TABLE IF NOT EXISTS telegram_task_mappings (
+        telegram_task_id TEXT PRIMARY KEY,
+        jarvis_task_id TEXT NOT NULL,
+        chat_id INTEGER NOT NULL,
+        status_message_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tg_task_jarvis ON telegram_task_mappings(jarvis_task_id);
+
+    -- Telegram Approval Tickets
+    CREATE TABLE IF NOT EXISTS telegram_approval_tickets (
+        ticket_id TEXT PRIMARY KEY,
+        opaque_token TEXT UNIQUE NOT NULL,
+        task_id TEXT NOT NULL,
+        telegram_user_id INTEGER NOT NULL,
+        chat_id INTEGER NOT NULL,
+        risk_tier TEXT NOT NULL,
+        capability TEXT NOT NULL,
+        safe_display TEXT NOT NULL,
+        status TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        decided_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_tg_appr_opaque ON telegram_approval_tickets(opaque_token);
+
+    -- Telegram Processed Updates (Idempotency)
+    CREATE TABLE IF NOT EXISTS telegram_processed_updates (
+        update_id INTEGER PRIMARY KEY,
+        processed_at TEXT NOT NULL
+    );
+    """,
 ]

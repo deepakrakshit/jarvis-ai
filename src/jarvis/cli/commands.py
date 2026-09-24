@@ -11,8 +11,9 @@ Implements CLI commands for:
 
 import asyncio
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 from rich import box
@@ -233,7 +234,7 @@ async def handle_serve(
     port: Optional[int] = None,
     heartbeat_interval: float = 60.0,
 ) -> None:
-    """Run the unified system server daemon: Gateway + Heartbeat Monitor."""
+    """Run the unified system server daemon: Gateway + Heartbeat Monitor + Telegram."""
     ensure_nodes_registered()
     server = GatewayServer(host=host, port=port)
     await server.start()
@@ -248,6 +249,18 @@ async def handle_serve(
             await asyncio.sleep(heartbeat_interval)
 
     heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+    tg_running = False
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_ENABLED:
+        try:
+            from jarvis.telegram import telegram_service
+
+            tg_running = await telegram_service.start()
+            if tg_running:
+                logger.info("JARVIS Telegram Remote Daemon online and polling.")
+        except Exception as err:
+            logger.error(f"Failed to initialize Telegram service: {err}")
+
     try:
         while True:
             await asyncio.sleep(1.0)
@@ -255,6 +268,13 @@ async def handle_serve(
         logger.info("Shutdown signal received. Terminating unified server...")
     finally:
         heartbeat_task.cancel()
+        if tg_running:
+            try:
+                from jarvis.telegram import telegram_service
+
+                await telegram_service.stop()
+            except Exception as err:
+                logger.error(f"Error stopping Telegram service: {err}")
         await server.stop()
         logger.info("JARVIS Unified Server stopped cleanly.")
 
@@ -291,6 +311,16 @@ async def handle_chat(
                 await asyncio.sleep(60.0)
 
         daemon_tasks.append(asyncio.create_task(heartbeat_loop()))
+
+        if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_ENABLED:
+            try:
+                from jarvis.telegram import telegram_service
+
+                tg_ok = await telegram_service.start()
+                if tg_ok:
+                    logger.info("JARVIS Telegram Remote Daemon online and polling.")
+            except Exception as tg_err:
+                logger.warning(f"Notice: Telegram daemon initialization warning: {tg_err}")
 
     try:
         if live_mode:
@@ -827,6 +857,13 @@ async def handle_chat(
     finally:
         for t in daemon_tasks:
             t.cancel()
+        if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_ENABLED:
+            try:
+                from jarvis.telegram import telegram_service
+
+                await telegram_service.stop()
+            except Exception as tg_stop_err:
+                logger.debug(f"Error stopping Telegram service: {tg_stop_err}")
         if gateway_server:
             await gateway_server.stop()
 
@@ -946,3 +983,110 @@ def handle_whatsapp_logout() -> Dict[str, Any]:
     ensure_nodes_registered()
     caller = get_whatsapp_caller()
     return caller.logout()
+
+
+def handle_telegram_status() -> Dict[str, Any]:
+    """Retrieve Telegram remote control bot and operator status."""
+    from jarvis.telegram import telegram_service
+
+    operators = db.list_telegram_authorized_users()
+    return {
+        "enabled": getattr(settings, "TELEGRAM_BOT_ENABLED", False),
+        "configured": bool(settings.TELEGRAM_BOT_TOKEN),
+        "running": telegram_service.is_running,
+        "bot_username": telegram_service.bot_username,
+        "authorized_operators_count": len(operators),
+        "operators": operators,
+    }
+
+
+async def handle_telegram_pair(
+    ttl: int = 300,
+    wait: bool = True,
+    on_link_ready: Optional[Callable[[str, str], None]] = None,
+) -> tuple[str, str, Optional[Dict[str, Any]]]:
+    """Generate a single-use pairing challenge, deep link, and optionally listen for completion."""
+    from aiogram import Bot
+
+    from jarvis.telegram import telegram_pairing_manager, telegram_service
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN is not configured in environment or settings.")
+
+    bot = Bot(token=token)
+    try:
+        me = await bot.get_me()
+        bot_username = me.username or "JarvisBot"
+    finally:
+        await bot.session.close()
+
+    nonce, link = await telegram_pairing_manager.create_pairing_challenge(
+        bot_username=bot_username, ttl_seconds=ttl
+    )
+
+    if on_link_ready:
+        on_link_ready(nonce, link)
+
+    if not wait:
+        return nonce, link, None
+
+    # Start the telegram service daemon to listen for the mobile /start tap
+    started_here = False
+    if not telegram_service.is_running:
+        started_here = await telegram_service.start()
+
+    start_time = time.monotonic()
+    paired_user: Optional[Dict[str, Any]] = None
+
+    try:
+        while (time.monotonic() - start_time) < ttl:
+            with db.transaction() as cursor:
+                cursor.execute(
+                    "SELECT used_by_telegram_id FROM telegram_pairing_sessions WHERE nonce = ? AND is_used = 1",
+                    (nonce,),
+                )
+                row = cursor.fetchone()
+                if row and row["used_by_telegram_id"]:
+                    uid = row["used_by_telegram_id"]
+                    cursor.execute(
+                        "SELECT telegram_user_id, username FROM telegram_authorized_users WHERE telegram_user_id = ?",
+                        (uid,),
+                    )
+                    op_row = cursor.fetchone()
+                    paired_user = dict(op_row) if op_row else {"telegram_user_id": uid}
+                    break
+            await asyncio.sleep(0.5)
+    finally:
+        if started_here:
+            await telegram_service.stop()
+
+    return nonce, link, paired_user
+
+
+def handle_telegram_unpair() -> int:
+    """Revoke all active authorized Telegram operators."""
+    operators = db.list_telegram_authorized_users()
+    for op in operators:
+        db.revoke_telegram_user(op["telegram_user_id"])
+    return len(operators)
+
+
+async def handle_telegram_daemon() -> None:
+    """Run standalone Telegram bot daemon."""
+    from jarvis.telegram import telegram_service
+
+    ensure_nodes_registered()
+    success = await telegram_service.start()
+    if not success:
+        logger.error("Failed to start Telegram daemon. Ensure TELEGRAM_BOT_TOKEN is set.")
+        return
+
+    logger.info("JARVIS Telegram daemon running. Press Ctrl+C to terminate.")
+    try:
+        while True:
+            await asyncio.sleep(1.0)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Terminating Telegram daemon...")
+    finally:
+        await telegram_service.stop()

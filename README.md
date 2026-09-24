@@ -9,6 +9,7 @@
 [![Realtime Cognitive Core](https://img.shields.io/badge/cognitive%20core-Gemini%203.8%20Live-8E75C4.svg)](https://ai.google.dev/)
 [![Execution Substrate](https://img.shields.io/badge/execution-Node.js%20%2B%20UIA%20COM-informational.svg)](https://nodejs.org/)
 [![Telephony](https://img.shields.io/badge/telephony-WhatsApp%20VoIP%20WebRTC-25D366.svg)](docs/WHATSAPP_VOICE_TELEPHONY.md)
+[![Remote Control](https://img.shields.io/badge/remote%20control-Telegram%20Bot%20API-2CA5E0.svg)](docs/TELEGRAM_REMOTE_CONTROL.md)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Type Safety](https://img.shields.io/badge/type%20safety-mypy%20strict-brightgreen.svg)](https://mypy-lang.org/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://astral.sh/ruff)
@@ -18,6 +19,7 @@
   <strong>Hardware Acoustic Echo Cancellation</strong> • 
   <strong>Deep In-App Windows Automation</strong> • 
   <strong>Autonomous WhatsApp Telephony</strong> • 
+  <strong>Native Telegram Remote Control</strong> • 
   <strong>Multi-Agent Control Plane</strong>
 </p>
 
@@ -32,13 +34,14 @@
 - [3. Audio & Acoustic Echo Cancellation (AEC)](#3-audio--acoustic-echo-cancellation-aec)
 - [4. Deep In-App & Windows Automation](#4-deep-in-app--windows-automation)
 - [5. Autonomous WhatsApp Voice Telephony](#5-autonomous-whatsapp-voice-telephony)
-- [6. Execution Substrate & IPC Engine](#6-execution-substrate--ipc-engine)
-- [7. Gateway Protocol & Control Plane](#7-gateway-protocol--control-plane)
-- [8. Core Capabilities Matrix](#8-core-capabilities-matrix)
-- [9. Installation & Setup Guide](#9-installation--setup-guide)
-- [10. Quickstart & Usage](#10-quickstart--usage)
-- [11. Quality Gates & Verification](#11-quality-gates--verification)
-- [12. Core Architectural Invariants](#12-core-architectural-invariants)
+- [6. Native Telegram Remote Control](#6-native-telegram-remote-control)
+- [7. Execution Substrate & IPC Engine](#7-execution-substrate--ipc-engine)
+- [8. Gateway Protocol & Control Plane](#8-gateway-protocol--control-plane)
+- [9. Core Capabilities Matrix](#9-core-capabilities-matrix)
+- [10. Installation & Setup Guide](#10-installation--setup-guide)
+- [11. Quickstart & Usage](#11-quickstart--usage)
+- [12. Quality Gates & Verification](#12-quality-gates--verification)
+- [13. Core Architectural Invariants](#13-core-architectural-invariants)
 
 ---
 
@@ -202,7 +205,34 @@ For detailed documentation, see **[Autonomous WhatsApp Voice Telephony](docs/WHA
 
 ---
 
-## 6. Execution Substrate & IPC Engine
+## 6. Native Telegram Remote Control
+
+JARVIS features a native, host-resident **Telegram Remote Control Agent** that lets the operator supervise, query, and command their Windows machine remotely from any smartphone:
+
+```mermaid
+graph LR
+    Phone(["📱 Phone / Telegram"]) <-->|Outbound Long Polling| HostBot["🤖 Telegram Daemon\n(aiogram 3.x)"]
+    HostBot -->|Intent Dispatch| CP["🧠 Control Plane"]
+    HostBot -->|Action Approvals| ApprovalMgr["⚖️ Approval Manager"]
+    HostBot -->|Desktop Capture| WinHost["🖥️ Screenshot Engine"]
+    CP --> Broker["🛡️ Action Broker"]
+    Broker --> Fabric["⚙️ Execution Fabric"]
+    Broker -.->|In-Place Updates| SingleCard["🎛️ Single Editable Status Card"]
+    SingleCard -.->|HTML Edit| HostBot
+```
+
+- **Zero Open Inbound Ports:** Communicates exclusively via outbound HTTPS long-polling (`getUpdates`). No static IP, port forwarding, reverse proxies, or cloud tunnels required.
+- **Fail-Closed Operator Boundary:** Unregistered users receive an immediate access denial. System paths, environment details, and internal diagnostics are never leaked.
+- **Cryptographic Pairing:** Device onboarding utilizes a 256-bit entropy challenge nonce generated on the host (`jarvis telegram pair`) with a configurable TTL.
+- **Interactive Inline Approvals:** High-risk actions (file deletion, shell execution) prompt inline `[ ✅ AUTHORIZE ]` / `[ ❌ DENY ]` buttons with compact opaque tokens strictly complying with Telegram's 64-byte payload limit.
+- **Single Editable Status Cards:** Task executions and VoIP phone calls update a single live status card in place, eliminating message flooding and respecting Telegram 429 rate limits.
+- **Desktop Visual Telemetry:** Issue `/screenshot` at any time to receive a high-resolution display capture directly in chat.
+
+For detailed documentation, see **[Native Telegram Remote Control](docs/TELEGRAM_REMOTE_CONTROL.md)**.
+
+---
+
+## 7. Execution Substrate & IPC Engine
 
 To ensure stability and isolate computer automation, JARVIS pairs its Python cognitive kernel with a high-speed **Node.js execution runner** communicating over bidirectional **JSON-RPC 2.0 stdio**:
 
@@ -231,7 +261,7 @@ flowchart LR
 
 ---
 
-## 7. Gateway Protocol & Control Plane
+## 8. Gateway Protocol & Control Plane
 
 The Gateway daemon operates a central WebSocket hub (`ws://127.0.0.1:8765`) enabling external frontends, voice companion widgets, and background daemons to communicate with the JARVIS kernel:
 
@@ -260,13 +290,14 @@ sequenceDiagram
 
 ---
 
-## 8. Core Capabilities Matrix
+## 9. Core Capabilities Matrix
 
 | Domain | Capability | Technical Provider / Subsystem |
 | :--- | :--- | :--- |
 | **Realtime Voice** | Bidirectional low-latency speech & barge-in | Gemini 3.8 Live API (`gemini_live.py`) |
 | **Audio Isolation** | Render loopback reference cancellation | WASAPI DSP Adaptive Filter (`audio_aec.py`) |
 | **Autonomous Telephony** | Outbound 1:1 voice calling, barge-in & debriefing | WhatsApp VoIP Bridge (`substrate/extensions/whatsapp-voice`) |
+| **Remote Control** | Mobile smartphone remote supervision & approvals | Native Telegram Daemon (`telegram/service.py`) |
 | **Vision & Screen** | Full desktop & window visual perception | Screen Snapshot Pipeline & Gemini Live Vision |
 | **UI Automation** | Control-pattern in-app manipulation | Microsoft COM UI Automation (`UIAutomationCore.dll`) |
 | **Coordinate Fallback** | Sub-pixel mouse & keyboard simulation | Native Execution Substrate (`jarvis_substrate_runner.ts`) |
@@ -277,9 +308,9 @@ sequenceDiagram
 
 ---
 
-## 9. Installation & Setup Guide
+## 10. Installation & Setup Guide
 
-### 9.1 System Prerequisites
+### 10.1 System Prerequisites
 
 - **Operating System:** Windows 10 or Windows 11 (64-bit)
 - **Python:** Python 3.10 or higher
@@ -287,14 +318,14 @@ sequenceDiagram
 - **Git:** Git for Windows
 - **Audio Device:** Physical microphone and speakers or headphones
 
-### 9.2 Clone the Repository
+### 10.2 Clone the Repository
 
 ```bash
 git clone https://github.com/deepakrakshit/jarvis-ai.git
 cd jarvis-ai
 ```
 
-### 9.3 Set Up Python Environment
+### 10.3 Set Up Python Environment
 
 Create a dedicated virtual environment and install the required dependencies:
 
@@ -309,7 +340,7 @@ python -m venv .venv
 pip install -e ".[dev]"
 ```
 
-### 9.4 Configure Environment Variables
+### 10.4 Configure Environment Variables
 
 A documented template is provided in [`.env.example`](file:///.env.example). Create your local `.env` configuration file in the project root:
 
@@ -367,13 +398,23 @@ WHATSAPP_DEFAULT_COUNTRY_CODE=91
 WHATSAPP_CALL_LANGUAGE=hinglish
 WHATSAPP_AUTH_DIR=data/whatsapp/auth
 WHATSAPP_CONTACTS_FILE=data/whatsapp/contacts.json
+
+# ==============================================================================
+# 6. Telegram Remote Control Bot Settings
+# ==============================================================================
+TELEGRAM_BOT_TOKEN=your_botfather_token_here
+TELEGRAM_BOT_ENABLED=true
+TELEGRAM_PAIRING_TTL_SECONDS=300
+TELEGRAM_APPROVAL_TTL_SECONDS=300
+TELEGRAM_RATE_LIMIT_EDIT_INTERVAL=1.0
+TELEGRAM_MAX_UPLOAD_BYTES=52428800
 ```
 
 ---
 
-## 10. Quickstart & Usage
+## 11. Quickstart & Usage
 
-### 10.1 One-Click Launcher (`run.bat`)
+### 11.1 One-Click Launcher (`run.bat`)
 
 Double-click `run.bat` or run it from command prompt:
 
@@ -383,14 +424,14 @@ run.bat
 
 This automatically activates `.venv`, boots the background Gateway daemon on `ws://127.0.0.1:8765`, initializes the audio AEC pipeline, and starts an interactive live voice session.
 
-### 10.2 Command-Line Interface (CLI)
+### 11.2 Command-Line Interface (CLI)
 
 ```bash
 # Boot live conversational session with daemon
 python -m jarvis.cli chat --live --with-daemon
 
-# Run background gateway server only
-python -m jarvis.cli gateway --host 127.0.0.1 --port 8765
+# Run background unified server (Gateway + Heartbeat + Telegram)
+python -m jarvis.cli serve
 
 # Perform system health check and diagnostics
 python -m jarvis.cli status
@@ -409,16 +450,28 @@ python -m jarvis.cli whatsapp call --target "+919876543210" --objective "Ask if 
 
 # Inspect completed call history and recipient responses
 python -m jarvis.cli whatsapp history
+
+# Generate a single-use Telegram mobile pairing challenge
+python -m jarvis.cli telegram pair
+
+# Check Telegram remote control daemon and operator status
+python -m jarvis.cli telegram status
+
+# Run standalone Telegram remote control daemon
+python -m jarvis.cli telegram daemon
+
+# Revoke all paired Telegram operators
+python -m jarvis.cli telegram unpair
 ```
 
 ---
 
-## 11. Quality Gates & Verification
+## 12. Quality Gates & Verification
 
 JARVIS maintains strict engineering quality gates enforced via automated test runners:
 
 ```bash
-# Run complete test suite (153+ test cases)
+# Run complete test suite (169+ test cases)
 pytest
 
 # Enforce strict static type checking
@@ -431,7 +484,7 @@ python -m ruff format --check .
 
 ---
 
-## 12. Core Architectural Invariants
+## 13. Core Architectural Invariants
 
 1. **Zero Hardcoding Invariant:** Configurations, filesystem paths, credentials, and models are dynamically resolved at runtime via environment variables and settings schemas.
 2. **Model Is Not the Trust Boundary:** Cognitive models propose actions, but local validation, policy rules, and permission checks determine execution safety.

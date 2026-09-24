@@ -7,6 +7,7 @@ strict 6-model runtime allowlist.
 """
 
 import asyncio
+import re
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -222,14 +223,32 @@ class QuotaManager:
         async with self._lock:
             self._consecutive_errors[model_family] += 1
             err_count = self._consecutive_errors[model_family]
-            if "429" in error_message or "rate_limit" in error_message.lower():
-                # Rapid backoff on rate limit
+            if (
+                "429" in error_message
+                or "rate_limit" in error_message.lower()
+                or "resource_exhausted" in error_message.lower()
+            ):
+                # Rapid backoff on rate limit or quota exhaustion
                 self._health[model_family] = ModelHealth.DEGRADED
                 self._quotas[model_family].remaining_requests = 0
-                if self._quotas[model_family].reset_epoch_seconds <= 0:
-                    self._quotas[model_family].reset_epoch_seconds = time.time() + 5.0
+
+                # Extract explicit retry delay if reported by provider
+                retry_delay = 60.0
+                match = re.search(
+                    r"retry\s+(?:in|delay[\'\":\s]+)\s*([0-9\.]+)\s*s?",
+                    error_message,
+                    re.I,
+                )
+                if match:
+                    try:
+                        retry_delay = float(match.group(1))
+                    except ValueError:
+                        retry_delay = 60.0
+
+                effective_delay = max(30.0, retry_delay)
+                self._quotas[model_family].reset_epoch_seconds = time.time() + effective_delay
                 logger.warning(
-                    f"Rate limit detected for {model_family.value}: entered temporary backoff"
+                    f"Rate limit / Quota exhaustion detected for {model_family.value}: entered {effective_delay:.1f}s backoff"
                 )
             elif err_count >= 3:
                 self._health[model_family] = ModelHealth.DEGRADED

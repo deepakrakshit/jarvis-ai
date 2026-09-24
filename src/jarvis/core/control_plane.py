@@ -9,6 +9,8 @@ Core Invariant P5: Observe after acting.
 Core Invariant: The model is NOT the trust boundary.
 """
 
+import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict, cast
 from uuid import uuid4
 
@@ -16,6 +18,7 @@ from langgraph.graph import END, StateGraph
 
 from jarvis.actions.broker import ActionBroker, action_broker
 from jarvis.cognition.model_router import ModelRouter, TaskClass, model_router
+from jarvis.config import settings
 from jarvis.contracts.action import (
     ActionRequest,
     ActionResult,
@@ -30,6 +33,7 @@ from jarvis.policy.firewall import (
     CAPABILITY_BROWSER_NAVIGATE,
     CAPABILITY_BROWSER_SNAPSHOT,
     CAPABILITY_COMPUTER_SCREENSHOT,
+    CAPABILITY_FILESYSTEM_LIST,
     CAPABILITY_FILESYSTEM_READ,
     CAPABILITY_SHELL_EXECUTE,
     CAPABILITY_SYSTEM_INFO,
@@ -71,7 +75,23 @@ class ControlPlane:
             ActionBroker(policy=self.policy, database=self.db) if database else action_broker
         )
         self.router = router or model_router
+        self._ensure_nodes_registered()
         self._graph = self._build_graph()
+
+    def _ensure_nodes_registered(self) -> None:
+        """Register host, browser, and WhatsApp nodes with the capability registry."""
+        try:
+            from jarvis.execution.browser.host import browser_node
+            from jarvis.execution.whatsapp import whatsapp_node
+            from jarvis.execution.windows.host import windows_node
+
+            windows_node.register_capabilities()
+            browser_node.register_capabilities()
+            whatsapp_node.register_capabilities()
+        except Exception as reg_err:
+            logger.debug(
+                f"Notice: Node registration warning during ControlPlane initialization: {reg_err}"
+            )
 
     def _build_graph(self) -> Any:
         """Construct the compiled LangGraph workflow."""
@@ -170,6 +190,20 @@ class ControlPlane:
                 "file",
                 "system",
                 "hardware",
+                "folder",
+                "download",
+                "downloads",
+                "document",
+                "documents",
+                "desktop",
+                "directory",
+                "call",
+                "dial",
+                "phone",
+                "whatsapp",
+                "app",
+                "launch",
+                "open",
             ]
         ):
             task.task_type = TaskType.WINDOWS_CONTROL
@@ -238,6 +272,49 @@ class ControlPlane:
                     risk_tier=RiskTier.READ_ONLY,
                 )
             )
+        elif any(
+            w in intent_lower
+            for w in [
+                "download folder",
+                "downloads folder",
+                "downloads",
+                "my downloads",
+                "desktop folder",
+                "my desktop",
+                "documents folder",
+                "my documents",
+                "list dir",
+                "list files",
+                "show files",
+                "check folder",
+                "access folder",
+                "folder contents",
+                "in my downloads",
+                "in downloads",
+            ]
+        ):
+            target_path = Path.home() / "Downloads"
+            if "desktop" in intent_lower:
+                target_path = Path.home() / "Desktop"
+            elif "document" in intent_lower:
+                target_path = Path.home() / "Documents"
+            elif "workspace" in intent_lower:
+                target_path = settings.WORKSPACE_DIR
+
+            custom_path_match = re.search(r"(?:in|of|path|at)\s+([A-Za-z]:[\\/][^\s]+)", intent)
+            if custom_path_match:
+                target_path = Path(custom_path_match.group(1))
+
+            plan.append(
+                ActionRequest(
+                    task_id=task.task_id,
+                    session_id=task.session_id,
+                    capability=CAPABILITY_FILESYSTEM_LIST,
+                    arguments={"path": str(target_path), "max_entries": 50},
+                    target=ExecutionTarget.WINDOWS_NODE,
+                    risk_tier=RiskTier.READ_ONLY,
+                )
+            )
         elif "browse" in intent_lower or "navigate to" in intent_lower:
             parts = intent.split()
             url = next(
@@ -284,10 +361,25 @@ class ControlPlane:
                     risk_tier=RiskTier.HIGH,
                 )
             )
-        elif "whatsapp" in intent_lower and "call" in intent_lower:
+        elif re.search(
+            r"\b(?:call|dial|phone)\s+([+0-9\-\(\)\s]{5,15}|[A-Za-z0-9_\-]+)",
+            intent,
+            re.I,
+        ) or (
+            "call" in intent_lower and any(w in intent_lower for w in ["whatsapp", "phone", "dial"])
+        ):
             target = "contact"
             objective = intent
-            if "call " in intent_lower:
+            call_match = re.search(
+                r"\b(?:call|dial|phone)\s+([+0-9\-\(\)\s]{5,15}|[A-Za-z0-9_\-]+)(?:\s+(?:and|to|about)\s+(.*))?",
+                intent,
+                re.I,
+            )
+            if call_match:
+                target = call_match.group(1).strip()
+                if call_match.group(2):
+                    objective = call_match.group(2).strip()
+            elif "call " in intent_lower:
                 after_call = intent.split("call ", 1)[-1]
                 parts = after_call.split(" on whatsapp", 1)[0].split(" to ", 1)
                 target = parts[0].strip()
@@ -295,6 +387,7 @@ class ControlPlane:
                     objective = after_call.split(" to ", 1)[-1].strip()
                 elif " about " in after_call:
                     objective = after_call.split(" about ", 1)[-1].strip()
+
             plan.append(
                 ActionRequest(
                     task_id=task.task_id,
@@ -344,10 +437,11 @@ class ControlPlane:
             if task.task_type == TaskType.RESEARCH
             else TaskClass.SIMPLE_TOOL
         )
+        callsign = getattr(settings, "USER_CALLSIGN", "Sir")
         system_instruction = (
-            "You are JARVIS (version 1.0.0), a personal AI operating system. "
-            "You are polite, precise, proactive, and razor-sharp. "
-            "Address the user as Operator. Respond directly and concisely."
+            f"You are JARVIS (version {settings.APP_VERSION}), the personal AI operating system running locally on {callsign}'s Windows PC. "
+            "You have direct host access to Windows filesystem (Downloads, Desktop, Documents), native apps, process control, system volume, browser automation, screenshots, and autonomous WhatsApp VoIP calling. "
+            f"Address the user as {callsign}. Respond directly, warmly, confidently, and naturally as JARVIS."
         )
         response = await self.router.complete(
             prompt=task.raw_intent,
@@ -451,7 +545,55 @@ class ControlPlane:
 
         next_idx = idx + 1
         if next_idx >= len(state["plan"]):
-            task.result_summary = f"All {len(state['plan'])} actions succeeded."
+            callsign = getattr(settings, "USER_CALLSIGN", "Sir")
+            if len(observations) == 1:
+                obs = observations[0]
+                cap = obs.get("capability")
+                out = obs.get("output")
+                if cap == CAPABILITY_FILESYSTEM_LIST and isinstance(out, list):
+                    path_str = state["plan"][idx].arguments.get("path", "the folder")
+                    if out:
+                        names = [
+                            entry["name"]
+                            for entry in out
+                            if isinstance(entry, dict) and "name" in entry
+                        ]
+                        sample = ", ".join(names[:8])
+                        more = f" and {len(out) - 8} more items" if len(out) > 8 else ""
+                        task.result_summary = (
+                            f"Yes {callsign}, I have full access to {path_str}. "
+                            f"Found {len(out)} items: {sample}{more}."
+                        )
+                    else:
+                        task.result_summary = (
+                            f"Yes {callsign}, I accessed {path_str}. The folder is currently empty."
+                        )
+                elif cap == CAPABILITY_FILESYSTEM_READ:
+                    path_str = state["plan"][idx].arguments.get("path", "the file")
+                    snippet = str(out)[:1500] if out else "File is empty."
+                    task.result_summary = f"Content of {path_str}:\n\n{snippet}"
+                elif cap == CAPABILITY_WHATSAPP_CALL and isinstance(out, dict):
+                    task.result_summary = (
+                        out.get("outcome_message")
+                        or out.get("summary")
+                        or f"Call to {state['plan'][idx].arguments.get('target')} finished."
+                    )
+                elif cap == CAPABILITY_COMPUTER_SCREENSHOT and isinstance(out, dict):
+                    path_str = out.get("artifact_path") or out.get("path")
+                    task.result_summary = f"Screenshot captured successfully: {path_str}"
+                elif cap == CAPABILITY_SYSTEM_INFO and isinstance(out, dict):
+                    task.result_summary = (
+                        f"Host Status: OS {out.get('os', 'Windows')}, "
+                        f"CPU {out.get('cpu_percent', 'N/A')}%, "
+                        f"Memory {out.get('memory_used_gb', 'N/A')}/{out.get('memory_total_gb', 'N/A')} GB"
+                    )
+                elif cap == CAPABILITY_SYSTEM_VOLUME and isinstance(out, dict):
+                    task.result_summary = f"Master volume level is {out.get('volume', 'N/A')}%"
+                else:
+                    task.result_summary = f"Action {cap} completed successfully, {callsign}."
+            else:
+                task.result_summary = f"All {len(state['plan'])} actions succeeded, {callsign}."
+
             task.verification_passed = True
             task.transition_to(TaskState.COMPLETED, "Goal accomplished and verified")
 

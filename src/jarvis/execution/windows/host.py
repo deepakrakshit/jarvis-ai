@@ -15,6 +15,7 @@ from jarvis.execution.windows.filesystem import (
     delete_file,
     list_directory,
     read_file,
+    search_files,
     write_file,
 )
 from jarvis.execution.windows.process import (
@@ -41,6 +42,7 @@ from jarvis.policy.firewall import (
     CAPABILITY_FILESYSTEM_DELETE,
     CAPABILITY_FILESYSTEM_LIST,
     CAPABILITY_FILESYSTEM_READ,
+    CAPABILITY_FILESYSTEM_SEARCH,
     CAPABILITY_FILESYSTEM_WRITE,
     CAPABILITY_PROCESS_ENUMERATE,
     CAPABILITY_PROCESS_INSPECT,
@@ -65,9 +67,9 @@ class WindowsNode:
     def __init__(self) -> None:
         self._registered = False
 
-    def register_capabilities(self) -> None:
+    def register_capabilities(self, force: bool = False) -> None:
         """Register all native Windows handlers into the canonical capability registry."""
-        if self._registered:
+        if self._registered and not force:
             return
 
         logger.info("Registering Windows Node native execution capabilities...")
@@ -98,6 +100,17 @@ class WindowsNode:
         capability_registry.register(
             CAPABILITY_FILESYSTEM_DELETE,
             lambda req: delete_file(path_str=str(req.arguments["path"])),
+        )
+        capability_registry.register(
+            CAPABILITY_FILESYSTEM_SEARCH,
+            lambda req: search_files(
+                dir_str=str(req.arguments.get("path", "downloads")),
+                query=str(req.arguments.get("query", "")),
+                extension=str(req.arguments.get("extension"))
+                if req.arguments.get("extension")
+                else None,
+                max_results=int(req.arguments.get("max_results", 20)),
+            ),
         )
 
         # Process
