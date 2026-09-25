@@ -43,6 +43,7 @@ export interface AppConfig {
   assistantName: string;
   defaultCountryCode: string;
   whatsappAuthDir: string;
+  whatsappDbPath: string;
   callDurationMs: number;
   testWhatsAppNumber?: string;
   whatsappSampleRate: number;
@@ -61,11 +62,6 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
-  if (!geminiApiKey) {
-    throw new Error(
-      "GEMINI_API_KEY is not defined in environment or .env file. Please check configuration."
-    );
-  }
 
   const geminiModel =
     process.env.MODEL_MAP_GEMINI_LIVE?.trim() ||
@@ -122,6 +118,9 @@ export function loadConfig(): AppConfig {
     process.env.WHATSAPP_CONTACTS_FILE?.trim() || resolve(workspaceDir, "data", "whatsapp", "contacts.json")
   );
 
+  const defaultDbPath = resolve(workspaceDir, "data", "whatsapp", "whatsapp.db");
+  const whatsappDbPath = resolve(process.env.WHATSAPP_DB_PATH?.trim() || defaultDbPath);
+
   const farewellGracePeriodMs = Number(process.env.FAREWELL_GRACE_PERIOD_MS) || 2500;
   const conversationMode = process.env.CONVERSATION_MODE?.trim() || process.env.WHATSAPP_CONVERSATION_MODE?.trim() || "MESSAGE_DELIVERY";
 
@@ -137,6 +136,7 @@ export function loadConfig(): AppConfig {
     assistantName,
     defaultCountryCode,
     whatsappAuthDir,
+    whatsappDbPath,
     callDurationMs,
     testWhatsAppNumber,
     whatsappSampleRate,
@@ -164,6 +164,7 @@ export function getSafeConfigSummary(config: AppConfig): Record<string, unknown>
     voiceDefaultName: config.voiceDefaultName,
     geminiApiKeyConfigured: Boolean(config.geminiApiKey),
     whatsappAuthDir: config.whatsappAuthDir,
+    whatsappDbPath: config.whatsappDbPath,
     callDurationMs: config.callDurationMs,
     testWhatsAppNumberConfigured: Boolean(config.testWhatsAppNumber),
     whatsappSampleRate: config.whatsappSampleRate,

@@ -238,6 +238,7 @@ export class VoipClient {
       auth: state,
       emitOwnEvents: true,
       logger,
+      syncFullHistory: true,
     });
 
     // Connect with auto-reconnect on transient closes or post-QR restarts.
@@ -249,6 +250,13 @@ export class VoipClient {
       const connectSocket = () => {
         this.#sock = createSocket();
         this.#sock.ev.on("creds.update", saveCreds);
+        if (this.#config.onSocketCreated) {
+          try {
+            this.#config.onSocketCreated(this.#sock);
+          } catch (err) {
+            console.error("[VoipClient] Error in onSocketCreated:", err);
+          }
+        }
 
         process.removeAllListeners("uncaughtException");
         process.on("uncaughtException", (err: any) => {
@@ -516,4 +524,9 @@ export class VoipClient {
       this.#capturePtr = 0;
     }
   };
+
+  get socket(): any {
+    return this.#sock;
+  }
 }
+

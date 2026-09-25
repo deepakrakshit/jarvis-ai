@@ -80,7 +80,7 @@ def test_whatsapp_voice_caller_initialization() -> None:
     """Verify WhatsAppVoiceCaller resolves directories and commands dynamically."""
     caller = WhatsAppVoiceCaller()
     assert caller._workspace_dir.exists()
-    assert caller._extension_dir.name == "whatsapp-voice"
+    assert caller._extension_dir.name in ("whatsapp", "whatsapp-voice")
     cmd = caller._resolve_runner_command()
     assert len(cmd) == 3
     assert "tsx" in cmd[1]

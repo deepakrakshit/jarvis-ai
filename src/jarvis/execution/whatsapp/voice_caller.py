@@ -44,9 +44,12 @@ class WhatsAppVoiceCaller:
         auth_dir: Optional[Path] = None,
     ) -> None:
         self._workspace_dir = settings.WORKSPACE_DIR
-        self._extension_dir = (
-            extension_dir or self._workspace_dir / "substrate" / "extensions" / "whatsapp-voice"
-        )
+        if extension_dir:
+            self._extension_dir = extension_dir
+        else:
+            default_ext = self._workspace_dir / "substrate" / "extensions" / "whatsapp"
+            fallback_ext = self._workspace_dir / "substrate" / "extensions" / "whatsapp-voice"
+            self._extension_dir = default_ext if default_ext.exists() else fallback_ext
         self._auth_dir = auth_dir or settings.WHATSAPP_AUTH_DIR or self._extension_dir / "auth"
         self._warmup_process: Optional[asyncio.subprocess.Process] = None
 
@@ -127,6 +130,7 @@ class WhatsAppVoiceCaller:
             env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
         env["GEMINI_MODEL"] = settings.MODEL_MAP_GEMINI_LIVE
         env["WHATSAPP_AUTH_DIR"] = str(self._auth_dir)
+        env["WHATSAPP_DB_PATH"] = str(settings.WHATSAPP_DB_PATH)
         env["WORKSPACE_DIR"] = str(self._workspace_dir)
         env["USER_NAME"] = settings.USER_CALLSIGN
         env["USER_CALLSIGN"] = settings.USER_CALLSIGN
@@ -237,6 +241,7 @@ class WhatsAppVoiceCaller:
             env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
         env["GEMINI_MODEL"] = settings.MODEL_MAP_GEMINI_LIVE
         env["WHATSAPP_AUTH_DIR"] = str(self._auth_dir)
+        env["WHATSAPP_DB_PATH"] = str(settings.WHATSAPP_DB_PATH)
         env["WORKSPACE_DIR"] = str(self._workspace_dir)
         env["USER_NAME"] = settings.USER_CALLSIGN
         env["USER_CALLSIGN"] = settings.USER_CALLSIGN
@@ -453,6 +458,8 @@ class WhatsAppVoiceCaller:
         if settings.GEMINI_API_KEY:
             env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
         env["WHATSAPP_AUTH_DIR"] = str(self._auth_dir)
+        env["WHATSAPP_DB_PATH"] = str(settings.WHATSAPP_DB_PATH)
+        env["WORKSPACE_DIR"] = str(self._workspace_dir)
         env["USER_NAME"] = settings.USER_CALLSIGN
         env["USER_CALLSIGN"] = settings.USER_CALLSIGN
         env["APP_NAME"] = settings.APP_NAME
@@ -666,8 +673,173 @@ class WhatsAppVoiceCaller:
 
         return results
 
+    async def _execute_runner_action(self, action_args: List[str]) -> Dict[str, Any]:
+        """Execute a sub-action on the unified Node.js WhatsApp runner."""
+        if not self.is_available:
+            return {
+                "success": False,
+                "error": f"WhatsApp runner not found at {self._extension_dir}",
+            }
+
+        cmd = self._resolve_runner_command()
+        args = [*cmd, *action_args, "--json"]
+
+        env = os.environ.copy()
+        if settings.GEMINI_API_KEY:
+            env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+        env["WHATSAPP_AUTH_DIR"] = str(self._auth_dir)
+        env["WHATSAPP_DB_PATH"] = str(settings.WHATSAPP_DB_PATH)
+        env["WORKSPACE_DIR"] = str(self._workspace_dir)
+        env["DEFAULT_COUNTRY_CODE"] = settings.WHATSAPP_DEFAULT_COUNTRY_CODE
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                args[0],
+                *args[1:],
+                cwd=str(self._extension_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+            stdout_raw, stderr_raw = await process.communicate()
+            stdout_text = stdout_raw.decode("utf-8", errors="replace").strip()
+            stderr_text = stderr_raw.decode("utf-8", errors="replace").strip()
+
+            if "[CALL_RESULT_JSON]" in stdout_text and "[/CALL_RESULT_JSON]" in stdout_text:
+                start = stdout_text.index("[CALL_RESULT_JSON]") + len("[CALL_RESULT_JSON]")
+                end = stdout_text.index("[/CALL_RESULT_JSON]")
+                parsed = json.loads(stdout_text[start:end].strip())
+                if isinstance(parsed, dict):
+                    return parsed
+                return {"success": True, "data": parsed}
+
+            for line in reversed(stdout_text.splitlines()):
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        parsed_line = json.loads(line)
+                        if isinstance(parsed_line, dict):
+                            return parsed_line
+                        return {"success": True, "data": parsed_line}
+                    except Exception:
+                        pass
+
+            if process.returncode != 0:
+                return {
+                    "success": False,
+                    "error": stderr_text or f"Exited with code {process.returncode}",
+                }
+
+            return {"success": True, "raw_output": stdout_text}
+        except Exception as exc:
+            logger.exception("Error executing WhatsApp action %s: %s", action_args, exc)
+            return {"success": False, "error": str(exc)}
+
+    async def get_diagnostics(self) -> Dict[str, Any]:
+        """Fetch database stats, connection state, and event counters from unified WhatsApp runner."""
+        return await self._execute_runner_action(["--action", "diagnostics"])
+
+    async def sync(self, full: bool = False, settle_ms: int = 4000) -> Dict[str, Any]:
+        """Trigger one-shot synchronization of WhatsApp contacts, chats, and messages."""
+        cmd = ["--action", "sync", "--settle", str(settle_ms)]
+        if full:
+            cmd.append("--full")
+        return await self._execute_runner_action(cmd)
+
+    async def send_text(
+        self,
+        recipient: str = "",
+        message: str = "",
+        reply_to: Optional[str] = None,
+        target: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send a WhatsApp text message to a recipient."""
+        to_dest = recipient or target or ""
+        args = ["--action", "send-text", "--to", to_dest, "--message", message]
+        if reply_to:
+            args.extend(["--reply-to", reply_to])
+        return await self._execute_runner_action(args)
+
+    async def send_file(
+        self,
+        recipient: str = "",
+        file_path: str = "",
+        caption: Optional[str] = None,
+        file_as: Optional[str] = None,
+        target: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send a WhatsApp document or media file to a recipient."""
+        to_dest = recipient or target or ""
+        args = ["--action", "send-file", "--to", to_dest, "--file", str(file_path)]
+        if caption:
+            args.extend(["--caption", caption])
+        if file_as:
+            args.extend(["--as", file_as])
+        return await self._execute_runner_action(args)
+
+    async def send_voice(
+        self,
+        recipient: str = "",
+        audio_path: str = "",
+        file_path: Optional[str] = None,
+        target: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send a WhatsApp voice note (PTT) to a recipient."""
+        to_dest = recipient or target or ""
+        sound_path = audio_path or file_path or ""
+        return await self._execute_runner_action(
+            ["--action", "send-voice", "--to", to_dest, "--file", str(sound_path)]
+        )
+
+    async def send_reaction(
+        self,
+        chat_jid: str = "",
+        message_id: str = "",
+        reaction: str = "",
+        target: Optional[str] = None,
+        msg_id: Optional[str] = None,
+        emoji: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send an emoji reaction to a WhatsApp message."""
+        to_chat = chat_jid or target or ""
+        mid = message_id or msg_id or ""
+        react = reaction or emoji or ""
+        return await self._execute_runner_action(
+            ["--action", "send-reaction", "--to", to_chat, "--id", mid, "--emoji", react]
+        )
+
+    async def check_number(self, phone: str) -> Dict[str, Any]:
+        """Check whether a phone number is registered on WhatsApp."""
+        return await self._execute_runner_action(["--action", "check-number", "--phone", phone])
+
+    async def mark_read(self, chat_jid: str) -> Dict[str, Any]:
+        """Mark a WhatsApp conversation as read."""
+        return await self._execute_runner_action(["--action", "mark-read", "--chat", chat_jid])
+
+    async def download_media(
+        self, chat_jid: str, msg_id: str, target_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Download decrypted media for an incoming message."""
+        cmd = ["--action", "download-media", "--chat", chat_jid, "--id", msg_id]
+        if target_path:
+            cmd.extend(["--file", target_path])
+        return await self._execute_runner_action(cmd)
+
     def resolve_contact(self, name_or_number: str) -> Dict[str, Any]:
-        """Resolve a contact name or number using known contacts."""
+        """Resolve a contact name or number using JARVIS contact resolver and fallback contacts."""
+        try:
+            from jarvis.execution.whatsapp.resolver import jarvis_contact_resolver
+
+            res = jarvis_contact_resolver.resolve(name_or_number)
+            if res.resolved and res.phone:
+                return {
+                    "name": res.display_name or name_or_number,
+                    "phone_number": res.phone,
+                    "formatted": f"+{res.phone}",
+                }
+        except Exception as e:
+            logger.debug(f"JARVIS contact resolver fallback notice in caller: {e}")
+
         contacts_file = (
             settings.WHATSAPP_CONTACTS_FILE
             or self._workspace_dir / "data" / "whatsapp" / "contacts.json"

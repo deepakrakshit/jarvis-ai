@@ -10,7 +10,7 @@
  */
 
 import { loadConfig } from "../config.js";
-import { WhatsAppManager } from "../whatsapp/client.js";
+import { WhatsAppManager } from "../engine/client.js";
 
 async function runAuthSetup(): Promise<void> {
   console.log("=== WhatsApp Linked-Device Authentication Setup ===");

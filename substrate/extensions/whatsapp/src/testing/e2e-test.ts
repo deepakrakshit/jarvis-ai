@@ -22,7 +22,7 @@
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { loadConfig } from "../config.js";
-import { WhatsAppManager } from "../whatsapp/client.js";
+import { WhatsAppManager } from "../engine/client.js";
 import { GeminiLiveSession } from "../gemini/live.js";
 import { RealtimeAudioBridge } from "../bridge/realtime-audio.js";
 import {
@@ -31,7 +31,7 @@ import {
   float32ToInt16,
   int16ToFloat32,
   resample24kTo16k,
-} from "../whatsapp/audio.js";
+} from "../engine/audio.js";
 
 type TestStatus = "PASS" | "FAIL" | "SKIPPED_NO_TARGET" | "WAITING_AUTH";
 

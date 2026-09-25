@@ -11,7 +11,7 @@
 
 import { loadConfig, getSafeConfigSummary } from "../config.js";
 import { GeminiLiveSession } from "../gemini/live.js";
-import { generateTone, float32ToInt16 } from "../whatsapp/audio.js";
+import { generateTone, float32ToInt16 } from "../engine/audio.js";
 
 async function runGeminiTest(): Promise<boolean> {
   console.log("=== TEST: Gemini 3.8 Live Connection & Streaming ===");

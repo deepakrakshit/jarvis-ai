@@ -39,6 +39,8 @@ export type VoipSdkConfig = {
   onQrCode?: (qr: string) => void;
   /** Whether to suppress terminal QR output (e.g. for silent background warmup). */
   silent?: boolean;
+  /** Optional hook invoked immediately upon WASocket creation before packets/sync are processed. */
+  onSocketCreated?: (sock: any) => void;
 };
 
 /** Mirrors the WhatsApp WASM `CallState` enum. */

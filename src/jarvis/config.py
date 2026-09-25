@@ -106,6 +106,9 @@ class JarvisSettings(BaseSettings):
     # WhatsApp Autonomous VoIP Calling Settings
     WHATSAPP_VOIP_ENABLED: bool = Field(default=True)
     WHATSAPP_AUTH_DIR: Optional[Path] = Field(default=None)
+    WHATSAPP_DB_PATH: Path = Field(
+        default_factory=lambda: get_default_workspace_dir() / "data" / "whatsapp" / "whatsapp.db"
+    )
     WHATSAPP_CONTACTS_FILE: Optional[Path] = Field(default=None)
     WHATSAPP_CALL_TIMEOUT_MS: int = Field(default=120000)
     WHATSAPP_DEFAULT_COUNTRY_CODE: str = Field(default="91")

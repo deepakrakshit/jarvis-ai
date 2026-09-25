@@ -13,7 +13,7 @@
 
 import { execSync } from "node:child_process";
 import { loadConfig } from "../config.js";
-import { WhatsAppManager } from "../whatsapp/client.js";
+import { WhatsAppManager } from "../engine/client.js";
 import {
   generateTone,
   generateSilence,
@@ -21,7 +21,7 @@ import {
   float32ToInt16,
   int16ToFloat32,
   resample24kTo16k,
-} from "../whatsapp/audio.js";
+} from "../engine/audio.js";
 
 export async function runTransportTest(): Promise<boolean> {
   console.log("=== TEST: WhatsApp Pure Audio Transport ===");

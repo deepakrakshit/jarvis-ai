@@ -46,10 +46,14 @@ from jarvis.policy.firewall import (
     CAPABILITY_UI_INSPECT,
     CAPABILITY_UI_INTERACT,
     CAPABILITY_WHATSAPP_CALL,
+    CAPABILITY_WHATSAPP_CONTACTS_SEARCH,
     CAPABILITY_WHATSAPP_HISTORY,
     CAPABILITY_WHATSAPP_LOGIN,
     CAPABILITY_WHATSAPP_LOGOUT,
+    CAPABILITY_WHATSAPP_REVIEW_UNREAD,
+    CAPABILITY_WHATSAPP_SEND_TEXT,
     CAPABILITY_WHATSAPP_STATUS,
+    CAPABILITY_WHATSAPP_SYNC,
     CAPABILITY_WINDOW_CLOSE,
     CAPABILITY_WINDOW_FOCUS,
     CAPABILITY_WINDOW_LIST,
@@ -405,6 +409,72 @@ TELEGRAM_LIVE_TOOLS_SPEC: List[Dict[str, Any]] = [
         "parameters": {"type": "OBJECT", "properties": {}},
     },
     {
+        "name": "whatsapp_search_contacts",
+        "description": "Search contacts in WhatsApp address book by name, phone number, or alias.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Contact name, phone number, or alias to search for.",
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Maximum number of contacts to return (default: 10).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "whatsapp_send_message",
+        "description": "Send a WhatsApp text message to a contact or phone number.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "recipient": {
+                    "type": "STRING",
+                    "description": "Recipient contact name, phone number, or JID.",
+                },
+                "message": {
+                    "type": "STRING",
+                    "description": "The text message content to send.",
+                },
+            },
+            "required": ["recipient", "message"],
+        },
+    },
+    {
+        "name": "whatsapp_review_unread",
+        "description": "Review unread WhatsApp conversations, retrieving message history, dialogue context, and sender details for Gemini Live to evaluate intent and formulate dynamic draft replies safely without sending.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "limit_chats": {
+                    "type": "INTEGER",
+                    "description": "Maximum unread chats to review (default: 10).",
+                },
+                "context_limit": {
+                    "type": "INTEGER",
+                    "description": "Number of preceding context messages per conversation (default: 5).",
+                },
+            },
+        },
+    },
+    {
+        "name": "whatsapp_sync",
+        "description": "Synchronize contacts, chats, and messages from WhatsApp to local database mirror.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "full": {
+                    "type": "BOOLEAN",
+                    "description": "Whether to perform a full sync (default: false).",
+                }
+            },
+        },
+    },
+    {
         "name": "shell_execute",
         "description": "Execute a PowerShell command on the host Windows system within policy boundaries.",
         "parameters": {
@@ -478,6 +548,10 @@ TOOL_TO_CAPABILITY_MAP: Dict[str, str] = {
     "whatsapp_status": CAPABILITY_WHATSAPP_STATUS,
     "whatsapp_login": CAPABILITY_WHATSAPP_LOGIN,
     "whatsapp_logout": CAPABILITY_WHATSAPP_LOGOUT,
+    "whatsapp_search_contacts": CAPABILITY_WHATSAPP_CONTACTS_SEARCH,
+    "whatsapp_send_message": CAPABILITY_WHATSAPP_SEND_TEXT,
+    "whatsapp_review_unread": CAPABILITY_WHATSAPP_REVIEW_UNREAD,
+    "whatsapp_sync": CAPABILITY_WHATSAPP_SYNC,
     "deliver_artifact": CAPABILITY_ARTIFACT_DELIVER,
 }
 
@@ -543,6 +617,11 @@ class TelegramLiveSession:
             "When the user asks to place a WhatsApp phone call, deliver a message, or call a contact, "
             "use whatsapp_call(target=..., objective=...). "
             "whatsapp_call waits until the call concludes and returns the recipient's reply—report it immediately. "
+            "When the user asks to find or search for someone on WhatsApp, use whatsapp_search_contacts(query=...). "
+            "When the user asks to send a WhatsApp text message to someone, use whatsapp_send_message(recipient=..., message=...). "
+            "When the user asks to check, read, or review unread WhatsApp messages, use whatsapp_review_unread(). "
+            "whatsapp_review_unread provides the unread messages, senders, and surrounding dialogue context without sending anything. "
+            "Inspect the conversation history yourself, evaluate intent, dynamically compose a context-aware draft reply, and propose it to the user for confirmation before sending. "
             "When the user asks for real-time web information, news, or weather, use web_search. "
             "Respond naturally, cleanly, and concisely in text. Do not emit markdown formatting that breaks display."
         )
@@ -669,13 +748,7 @@ class TelegramLiveSession:
             CAPABILITY_BROWSER_SCREENSHOT,
         ):
             target = ExecutionTarget.BROWSER_NODE
-        elif capability in (
-            CAPABILITY_WHATSAPP_CALL,
-            CAPABILITY_WHATSAPP_STATUS,
-            CAPABILITY_WHATSAPP_HISTORY,
-            CAPABILITY_WHATSAPP_LOGIN,
-            CAPABILITY_WHATSAPP_LOGOUT,
-        ):
+        elif capability.startswith("whatsapp."):
             target = ExecutionTarget.WHATSAPP_NODE
         else:
             target = ExecutionTarget.WINDOWS_NODE

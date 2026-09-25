@@ -10,7 +10,7 @@
 
 import { type CallHistoryManager, type CallHistoryEntry } from "../memory/call-history.js";
 import { type ContactResolver } from "../contacts/resolver.js";
-import { type CallSession } from "../whatsapp/call.js";
+import { type CallSession } from "../engine/call.js";
 
 export interface ToolExecutorDeps {
   historyManager: CallHistoryManager;

@@ -12,7 +12,7 @@
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { loadConfig } from "../config.js";
-import { WhatsAppManager } from "../whatsapp/client.js";
+import { WhatsAppManager } from "../engine/client.js";
 import { GeminiLiveSession } from "../gemini/live.js";
 import { buildSystemPrompt } from "../gemini/prompts.js";
 import { RealtimeAudioBridge } from "../bridge/realtime-audio.js";
@@ -22,7 +22,7 @@ import { CallHistoryManager, type CallHistoryEntry } from "../memory/call-histor
 import { ContactResolver } from "../contacts/resolver.js";
 import { ToolExecutor } from "../brain/executor.js";
 import { ConsoleAgentBrain } from "../brain/agent-brain.js";
-import { type CallSession } from "../whatsapp/call.js";
+import { type CallSession } from "../engine/call.js";
 
 // Shield console and standard streams against cryptographic leaks
 installSecuritySanitizer();

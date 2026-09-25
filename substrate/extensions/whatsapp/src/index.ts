@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { loadConfig } from "./config.js";
-import { WhatsAppManager } from "./whatsapp/client.js";
+import { WhatsAppManager } from "./engine/client.js";
 import { ContactResolver } from "./contacts/resolver.js";
 import { GeminiLiveSession } from "./gemini/live.js";
 import { buildSystemPrompt } from "./gemini/prompts.js";
@@ -52,13 +52,24 @@ export interface CallWhatsAppResult {
  */
 export async function callWhatsApp(options: CallWhatsAppOptions): Promise<CallWhatsAppResult> {
   const config = loadConfig();
-  const resolver = new ContactResolver({ defaultCountryCode: config.defaultCountryCode });
+  if (!config.geminiApiKey) {
+    throw new Error("GEMINI_API_KEY is required for autonomous WhatsApp voice calls.");
+  }
+  const resolver = new ContactResolver({
+    defaultCountryCode: config.defaultCountryCode,
+    dbPath: config.whatsappDbPath,
+    authDir: config.whatsappAuthDir,
+    contactsFilePath: config.contactsFilePath,
+  });
   const contact = resolver.resolveTarget(options.target);
 
   console.log(`[Call Manager] Preparing outbound call to ${contact.name ?? "direct number"} (${contact.formatted})...`);
   console.log(`[Call Manager] Objective: "${options.objective}"`);
 
-  const whatsapp = new WhatsAppManager({ authDir: config.whatsappAuthDir });
+  const whatsapp = new WhatsAppManager({
+    authDir: config.whatsappAuthDir,
+    dbPath: config.whatsappDbPath,
+  });
 
   console.log("[Call Manager] Connecting WhatsApp client...");
   await whatsapp.connect();
@@ -261,7 +272,10 @@ export async function callWhatsApp(options: CallWhatsAppOptions): Promise<CallWh
  */
 async function handleLogin(options: { json: boolean; forceRefresh?: boolean }): Promise<void> {
   const config = loadConfig();
-  const manager = new WhatsAppManager({ authDir: config.whatsappAuthDir });
+  const manager = new WhatsAppManager({
+    authDir: config.whatsappAuthDir,
+    dbPath: config.whatsappDbPath,
+  });
 
   if (manager.hasPersistedAuth && !options.forceRefresh) {
     const res = {
@@ -285,6 +299,7 @@ async function handleLogin(options: { json: boolean; forceRefresh?: boolean }): 
 
   const qrManager = new WhatsAppManager({
     authDir: config.whatsappAuthDir,
+    dbPath: config.whatsappDbPath,
     onQrCode: (qr: string) => {
       const htmlDir = resolve(config.workspaceDir || process.cwd(), "data", "whatsapp");
       mkdirSync(htmlDir, { recursive: true });
@@ -381,6 +396,7 @@ async function handleWarmup(): Promise<void> {
   const config = loadConfig();
   const manager = new WhatsAppManager({
     authDir: config.whatsappAuthDir,
+    dbPath: config.whatsappDbPath,
     silent: true,
   });
 
@@ -402,7 +418,10 @@ async function handleWarmup(): Promise<void> {
  */
 function handleLogout(options: { json: boolean }): void {
   const config = loadConfig();
-  const manager = new WhatsAppManager({ authDir: config.whatsappAuthDir });
+  const manager = new WhatsAppManager({
+    authDir: config.whatsappAuthDir,
+    dbPath: config.whatsappDbPath,
+  });
   manager.logout();
   const res = {
     success: true,
@@ -428,22 +447,40 @@ async function main() {
   let durationMs: number | undefined;
   let jsonOutput = false;
   let forceRefresh = false;
+  let message = "";
+  let filePath = "";
+  let caption = "";
+  let fileAs = "";
+  let replyTo = "";
+  let reactionEmoji = "";
+  let phone = "";
+  let chatJid = "";
+  let msgId = "";
+  let settleMs: number | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--action" && args[i + 1]) {
       action = args[++i];
+    } else if ((arg === "--id" || arg === "--msg-id") && args[i + 1]) {
+      msgId = args[++i];
     } else if (arg === "--login") {
       action = "login";
     } else if (arg === "--logout") {
       action = "logout";
     } else if (arg === "--status") {
       action = "status";
+    } else if (arg === "--diagnostics" || arg === "-d") {
+      action = "diagnostics";
+    } else if (arg === "--sync") {
+      action = "sync";
     } else if (arg === "--warmup") {
       action = "warmup";
     } else if (arg === "--force") {
       forceRefresh = true;
     } else if (arg === "--target" && args[i + 1]) {
+      target = args[++i];
+    } else if (arg === "--to" && args[i + 1]) {
       target = args[++i];
     } else if (arg === "--objective" && args[i + 1]) {
       objective = args[++i];
@@ -451,6 +488,26 @@ async function main() {
       mode = args[++i];
     } else if (arg === "--duration" && args[i + 1]) {
       durationMs = Number(args[++i]);
+    } else if (arg === "--message" && args[i + 1]) {
+      message = args[++i];
+    } else if (arg === "--file" && args[i + 1]) {
+      filePath = args[++i];
+    } else if (arg === "--caption" && args[i + 1]) {
+      caption = args[++i];
+    } else if (arg === "--as" && args[i + 1]) {
+      fileAs = args[++i];
+    } else if (arg === "--reply-to" && args[i + 1]) {
+      replyTo = args[++i];
+    } else if (arg === "--reaction" && args[i + 1]) {
+      reactionEmoji = args[++i];
+    } else if (arg === "--emoji" && args[i + 1]) {
+      reactionEmoji = args[++i];
+    } else if (arg === "--phone" && args[i + 1]) {
+      phone = args[++i];
+    } else if (arg === "--chat" && args[i + 1]) {
+      chatJid = args[++i];
+    } else if (arg === "--settle" && args[i + 1]) {
+      settleMs = Number(args[++i]);
     } else if (arg === "--json") {
       jsonOutput = true;
     }
@@ -471,24 +528,254 @@ async function main() {
     return;
   }
 
-  if (action === "status") {
+  if (action === "status" || action === "diagnostics") {
     const config = loadConfig();
-    const manager = new WhatsAppManager({ authDir: config.whatsappAuthDir });
-    const stat = {
-      available: true,
-      authenticated: manager.hasPersistedAuth,
+    const manager = new WhatsAppManager({
       authDir: config.whatsappAuthDir,
-      defaultCountryCode: config.defaultCountryCode,
-    };
+      dbPath: config.whatsappDbPath,
+    });
+    const diagnostics = manager.getDiagnostics();
     if (jsonOutput) {
-      console.log(`[CALL_RESULT_JSON]${JSON.stringify(stat)}[/CALL_RESULT_JSON]`);
+      console.log(`[CALL_RESULT_JSON]${JSON.stringify({ success: true, ...diagnostics })}[/CALL_RESULT_JSON]`);
     } else {
-      console.log(JSON.stringify(stat, null, 2));
+      console.log(JSON.stringify(diagnostics, null, 2));
     }
     process.exit(0);
   }
 
-  // If not provided via CLI, check environment
+  if (action === "sync") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const diagnostics = await manager.sync(settleMs || 5000);
+      manager.disconnect();
+      const out = { success: true, ...diagnostics };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(out, null, 2));
+      }
+      process.exit(0);
+    } catch (err: any) {
+      const out = { success: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "send-text") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const recipient = target || phone;
+      if (!recipient) throw new Error("Recipient target (--to) is required.");
+      if (!message) throw new Error("Message text (--message) is required.");
+      const result = await manager.sendText(recipient, message, replyTo || undefined);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: any) {
+      const out = { success: false, sent: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "send-file") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const recipient = target || phone;
+      if (!recipient) throw new Error("Recipient target (--to) is required.");
+      if (!filePath) throw new Error("File path (--file) is required.");
+      const result = await manager.sendFile(recipient, filePath, caption || undefined, fileAs || undefined);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: any) {
+      const out = { success: false, sent: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "send-voice") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const recipient = target || phone;
+      if (!recipient) throw new Error("Recipient target (--to) is required.");
+      if (!filePath) throw new Error("File path (--file) is required.");
+      const result = await manager.sendVoice(recipient, filePath);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: any) {
+      const out = { success: false, sent: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "send-reaction") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const recipient = target || phone;
+      if (!recipient) throw new Error("Recipient target (--to) is required.");
+      if (!reactionEmoji) throw new Error("Reaction emoji (--reaction/--emoji) is required.");
+      const targetReactionMsgId = msgId || replyTo;
+      if (!targetReactionMsgId) throw new Error("Message ID (--id or --reply-to) is required.");
+      const result = await manager.sendReaction(recipient, targetReactionMsgId, reactionEmoji);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: any) {
+      const out = { success: false, sent: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "check-number") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const checkTarget = phone || target;
+      if (!checkTarget) throw new Error("Phone number (--phone) is required.");
+      const result = await manager.checkNumber(checkTarget);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(0);
+    } catch (err: any) {
+      const out = { phone: phone || target, exists: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "mark-read") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const targetChat = chatJid || target || phone;
+      if (!targetChat) throw new Error("Chat JID (--chat) is required.");
+      const result = await manager.markRead(targetChat);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(0);
+    } catch (err: any) {
+      const out = { success: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  if (action === "download-media") {
+    try {
+      const config = loadConfig();
+      const manager = new WhatsAppManager({
+        authDir: config.whatsappAuthDir,
+        dbPath: config.whatsappDbPath,
+      });
+      const targetChat = chatJid || target;
+      const targetMsgId = msgId;
+      if (!targetChat || !targetMsgId) {
+        throw new Error("Both --chat and --id are required for download-media.");
+      }
+      const result = await manager.downloadMedia(targetChat, targetMsgId, filePath || undefined);
+      manager.disconnect();
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(result)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.log(JSON.stringify(result, null, 2));
+      }
+      process.exit(result.success ? 0 : 1);
+    } catch (err: any) {
+      const out = { success: false, error: err?.message || String(err) };
+      if (jsonOutput) {
+        console.log(`[CALL_RESULT_JSON]${JSON.stringify(out)}[/CALL_RESULT_JSON]`);
+      } else {
+        console.error(err);
+      }
+      process.exit(1);
+    }
+  }
+
+  // Fallback: place autonomous VoIP call
   if (!target) {
     const config = loadConfig();
     target = config.testWhatsAppNumber || "";
@@ -501,7 +788,13 @@ Usage:
   npm run call -- --action login [--force] [--json]
   npm run call -- --action logout [--json]
   npm run call -- --action status [--json]
-  npm run call -- --action warmup
+  npm run call -- --action sync [--settle <ms>] [--json]
+  npm run call -- --action send-text --to <target> --message "<text>" [--reply-to <id>] [--json]
+  npm run call -- --action send-file --to <target> --file <path> [--caption "<text>"] [--json]
+  npm run call -- --action send-voice --to <target> --file <path> [--json]
+  npm run call -- --action send-reaction --to <target> --id <msg_id> --reaction "<emoji>" [--json]
+  npm run call -- --action check-number --phone <number> [--json]
+  npm run call -- --action mark-read --chat <jid> [--json]
     `);
     process.exit(1);
   }

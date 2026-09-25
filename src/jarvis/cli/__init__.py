@@ -31,10 +31,22 @@ from .commands import (
     handle_telegram_status,
     handle_telegram_unpair,
     handle_whatsapp_call,
+    handle_whatsapp_chats_list,
+    handle_whatsapp_contacts_alias,
+    handle_whatsapp_contacts_check,
+    handle_whatsapp_contacts_get,
+    handle_whatsapp_contacts_search,
+    handle_whatsapp_contacts_tags,
     handle_whatsapp_history,
     handle_whatsapp_login,
     handle_whatsapp_logout,
+    handle_whatsapp_messages_context,
+    handle_whatsapp_messages_list,
+    handle_whatsapp_messages_search,
+    handle_whatsapp_send,
     handle_whatsapp_status,
+    handle_whatsapp_sync,
+    handle_whatsapp_unread,
 )
 
 
@@ -226,6 +238,72 @@ def build_parser() -> argparse.ArgumentParser:
 
     wa_logout_p = wa_sub.add_parser("logout", help="Log out and purge stored WhatsApp credentials")
     wa_logout_p.add_argument("--json", action="store_true", help="Output status as JSON")
+
+    wa_sync_p = wa_sub.add_parser(
+        "sync", help="Synchronize chats, contacts, and messages from WhatsApp"
+    )
+    wa_sync_p.add_argument("--full", action="store_true", help="Perform full historical sync")
+    wa_sync_p.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    wa_contacts_p = wa_sub.add_parser(
+        "contacts", help="Search, inspect, and manage WhatsApp contacts"
+    )
+    wa_contacts_p.add_argument(
+        "query", nargs="?", default="", help="Search query (name, phone, alias)"
+    )
+    wa_contacts_p.add_argument("--limit", "-n", type=int, default=20, help="Max results")
+    wa_contacts_p.add_argument("--alias", type=str, default=None, help="Set alias for contact")
+    wa_contacts_p.add_argument("--remove-alias", action="store_true", help="Remove specified alias")
+    wa_contacts_p.add_argument("--tag", type=str, default=None, help="Add tag to contact")
+    wa_contacts_p.add_argument("--remove-tag", action="store_true", help="Remove tag from contact")
+    wa_contacts_p.add_argument(
+        "--check", type=str, default=None, help="Check phone number on WhatsApp"
+    )
+    wa_contacts_p.add_argument(
+        "--get", action="store_true", help="Resolve specific contact and show full details"
+    )
+    wa_contacts_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    wa_chats_p = wa_sub.add_parser("chats", help="List WhatsApp chats")
+    wa_chats_p.add_argument("--limit", "-n", type=int, default=50, help="Max chats to list")
+    wa_chats_p.add_argument("--unread", action="store_true", help="Filter unread chats only")
+    wa_chats_p.add_argument("--archived", action="store_true", help="Include archived chats")
+    wa_chats_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    wa_messages_p = wa_sub.add_parser("messages", help="List, search, and view WhatsApp messages")
+    wa_messages_p.add_argument("query", nargs="?", default="", help="Search text query")
+    wa_messages_p.add_argument(
+        "--chat", "-c", type=str, default=None, help="Chat JID or contact name"
+    )
+    wa_messages_p.add_argument("--limit", "-n", type=int, default=20, help="Max messages to list")
+    wa_messages_p.add_argument(
+        "--context", type=str, default=None, help="Message ID to view context for"
+    )
+    wa_messages_p.add_argument("--radius", type=int, default=5, help="Context radius")
+    wa_messages_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    wa_unread_p = wa_sub.add_parser(
+        "unread", help="Review unread WhatsApp messages and generate proposed draft replies"
+    )
+    wa_unread_p.add_argument("--limit", "-n", type=int, default=15, help="Max chats to inspect")
+    wa_unread_p.add_argument("--context", type=int, default=5, help="Context messages per chat")
+    wa_unread_p.add_argument("--json", action="store_true", help="Output as JSON")
+
+    wa_send_p = wa_sub.add_parser(
+        "send", help="Send WhatsApp messages, files, voices, or reactions"
+    )
+    wa_send_p.add_argument(
+        "--to", "-t", type=str, required=True, help="Recipient name, phone, or JID"
+    )
+    wa_send_p.add_argument("--message", "-m", type=str, default=None, help="Text message content")
+    wa_send_p.add_argument("--file", "-f", type=str, default=None, help="File path to send")
+    wa_send_p.add_argument("--caption", "-c", type=str, default=None, help="Caption for file")
+    wa_send_p.add_argument(
+        "--voice", "-v", type=str, default=None, help="Audio file path to send as voice note"
+    )
+    wa_send_p.add_argument("--react", "-r", type=str, default=None, help="Reaction emoji")
+    wa_send_p.add_argument("--msg-id", type=str, default=None, help="Message ID for reaction")
+    wa_send_p.add_argument("--json", action="store_true", help="Output as JSON")
 
     # 10. telegram
     tg_parser = subparsers.add_parser(
@@ -456,6 +534,201 @@ def main(argv: Optional[List[str]] = None) -> int:
                 else:
                     print(res.get("message", "WhatsApp credentials cleared."))
                 return 0
+
+            elif subcmd == "sync":
+                res = asyncio.run(handle_whatsapp_sync(full=getattr(args, "full", False)))
+                if getattr(args, "json", False):
+                    print(json.dumps(res, indent=2))
+                else:
+                    if res.get("success"):
+                        stats = res.get("store_stats", {})
+                        print("WhatsApp Mirror Sync Completed Successfully!")
+                        print(
+                            f"Contacts: {stats.get('contacts', 0)} | Chats: {stats.get('chats', 0)} | "
+                            f"Messages: {stats.get('messages', 0)} | Calls: {stats.get('calls', 0)}"
+                        )
+                    else:
+                        print(f"WhatsApp Sync Failed: {res.get('error', 'Unknown error')}")
+                return 0 if res.get("success") else 1
+
+            elif subcmd == "contacts":
+                if getattr(args, "check", None):
+                    res = asyncio.run(handle_whatsapp_contacts_check(args.check))
+                    if getattr(args, "json", False):
+                        print(json.dumps(res, indent=2))
+                    else:
+                        status = (
+                            "Registered on WhatsApp"
+                            if res.get("registered")
+                            else "Not registered on WhatsApp"
+                        )
+                        print(f"{args.check}: {status} (JID: {res.get('jid', 'N/A')})")
+                    return 0
+                if getattr(args, "alias", None):
+                    res = handle_whatsapp_contacts_alias(
+                        jid=getattr(args, "query", ""),
+                        alias=args.alias,
+                        remove=getattr(args, "remove_alias", False),
+                    )
+                    if getattr(args, "json", False):
+                        print(json.dumps(res, indent=2))
+                    else:
+                        print(f"Alias '{args.alias}' updated successfully.")
+                    return 0
+                if getattr(args, "tag", None):
+                    res = handle_whatsapp_contacts_tags(
+                        jid=getattr(args, "query", ""),
+                        tag=args.tag,
+                        remove=getattr(args, "remove_tag", False),
+                    )
+                    if getattr(args, "json", False):
+                        print(json.dumps(res, indent=2))
+                    else:
+                        print(f"Tag '{args.tag}' updated successfully.")
+                    return 0
+
+                query = getattr(args, "query", "")
+                if getattr(args, "get", False):
+                    res = handle_whatsapp_contacts_get(query)
+                    if getattr(args, "json", False):
+                        print(json.dumps(res, indent=2))
+                    else:
+                        if res.get("resolved"):
+                            print(
+                                f"Contact: {res.get('display_name')} (JID: {res.get('canonical_jid')})"
+                            )
+                        elif res.get("ambiguous"):
+                            print(f"Ambiguous: {res.get('disambiguation_prompt')}")
+                        else:
+                            print(f"Not found: {res.get('error')}")
+                    return 0
+
+                contacts = handle_whatsapp_contacts_search(
+                    query=query, limit=getattr(args, "limit", 20)
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(contacts, indent=2))
+                else:
+                    if not contacts:
+                        print(f"No contacts found matching '{query}'.")
+                    else:
+                        print(f"Found {len(contacts)} contact(s):")
+                        for idx, c in enumerate(contacts, 1):
+                            alias_str = f" [alias: {c['alias']}]" if c.get("alias") else ""
+                            phone_str = f" ({c['phone']})" if c.get("phone") else ""
+                            tags_str = f" tags: {','.join(c['tags'])}" if c.get("tags") else ""
+                            print(
+                                f"[{idx}] {c['display_name']}{phone_str}{alias_str} - {c['jid']}{tags_str}"
+                            )
+                return 0
+
+            elif subcmd == "chats":
+                chats = handle_whatsapp_chats_list(
+                    limit=getattr(args, "limit", 50),
+                    unread_only=getattr(args, "unread", False),
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(chats, indent=2))
+                else:
+                    if not chats:
+                        print("No chats found.")
+                    else:
+                        print(f"Chats ({len(chats)}):")
+                        for idx, ch in enumerate(chats, 1):
+                            unread_badge = (
+                                f" [UNREAD: {ch['unread_count']}]" if ch.get("unread_count") else ""
+                            )
+                            print(
+                                f"[{idx}] {ch.get('name') or ch['jid']} ({ch['kind']}){unread_badge} - {ch['jid']}"
+                            )
+                return 0
+
+            elif subcmd == "messages":
+                context_id = getattr(args, "context", None)
+                chat_jid = getattr(args, "chat", None)
+                if context_id and chat_jid:
+                    messages = handle_whatsapp_messages_context(
+                        chat_jid=chat_jid,
+                        message_id=context_id,
+                        radius=getattr(args, "radius", 5),
+                    )
+                elif getattr(args, "query", ""):
+                    messages = handle_whatsapp_messages_search(
+                        query=args.query,
+                        chat_jid=chat_jid,
+                        limit=getattr(args, "limit", 20),
+                    )
+                elif chat_jid:
+                    messages = handle_whatsapp_messages_list(
+                        chat_jid=chat_jid,
+                        limit=getattr(args, "limit", 50),
+                    )
+                else:
+                    messages = handle_whatsapp_messages_search(
+                        query="",
+                        limit=getattr(args, "limit", 20),
+                    )
+
+                if getattr(args, "json", False):
+                    print(json.dumps(messages, indent=2))
+                else:
+                    if not messages:
+                        print("No messages found.")
+                    else:
+                        for m in messages:
+                            sender = (
+                                "Me" if m.get("from_me") else (m.get("sender_name") or "Remote")
+                            )
+                            print(f"[{m.get('msg_id', '')[:8]}] {sender}: {m.get('text', '')}")
+                return 0
+
+            elif subcmd == "unread":
+                res = asyncio.run(
+                    handle_whatsapp_unread(
+                        limit=getattr(args, "limit", 15),
+                        context=getattr(args, "context", 5),
+                    )
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(res, indent=2))
+                else:
+                    reviews = res.get("reviews", [])
+                    print(f"Unread Conversations Review ({len(reviews)} active):")
+                    for r in reviews:
+                        print(f"\n--- Chat: {r['display_name']} ({r['unread_count']} unread) ---")
+                        print(f"Summary: {r['conversation_summary']}")
+                        print(f"Intent: {r['intent']}")
+                        if r.get("requires_reply"):
+                            print(f'PROPOSED DRAFT: "{r.get("draft")}"')
+                        else:
+                            print("Requires Reply: No")
+                    print(
+                        "\n[Safety Guarantee: Drafts held in memory. Nothing was sent automatically.]"
+                    )
+                return 0
+
+            elif subcmd == "send":
+                res = asyncio.run(
+                    handle_whatsapp_send(
+                        to=args.to,
+                        message=getattr(args, "message", None),
+                        file_path=getattr(args, "file", None),
+                        caption=getattr(args, "caption", None),
+                        voice_path=getattr(args, "voice", None),
+                        react=getattr(args, "react", None),
+                        msg_id=getattr(args, "msg_id", None),
+                    )
+                )
+                if getattr(args, "json", False):
+                    print(json.dumps(res, indent=2))
+                else:
+                    if res.get("success"):
+                        print(f"WhatsApp Message Dispatched Successfully! (Target: {args.to})")
+                    else:
+                        print(f"Send Failed: {res.get('error', 'Unknown error')}")
+                        if res.get("disambiguation_prompt"):
+                            print(f"Disambiguation: {res['disambiguation_prompt']}")
+                return 0 if res.get("success") else 1
 
             else:
                 parser.parse_args(["whatsapp", "--help"])

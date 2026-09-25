@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { ActiveCall, CallState } from "../src/voip/index.mjs";
-import { CallSession } from "../src/whatsapp/call.js";
+import { CallSession } from "../src/engine/call.js";
 
 describe("Call Lifecycle and State Machine", () => {
   const createMockEngine = () => ({

@@ -31,7 +31,13 @@ from jarvis.core.app_control_engine import app_control_engine
 from jarvis.core.control_plane import ControlPlane, control_plane
 from jarvis.cron import HeartbeatMonitor, heartbeat_monitor
 from jarvis.execution.browser.host import browser_node
-from jarvis.execution.whatsapp import get_whatsapp_caller, whatsapp_node
+from jarvis.execution.whatsapp import (
+    get_whatsapp_caller,
+    jarvis_contact_resolver,
+    whatsapp_node,
+    whatsapp_store,
+    whatsapp_unread_reviewer,
+)
 from jarvis.execution.windows.host import windows_node
 from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
@@ -949,6 +955,7 @@ def handle_whatsapp_status() -> Dict[str, Any]:
     """Retrieve WhatsApp VoIP engine and session status."""
     ensure_nodes_registered()
     caller = get_whatsapp_caller()
+    stats = whatsapp_store.get_stats()
     return {
         "available": caller.is_available,
         "authenticated": caller.has_persisted_session,
@@ -957,6 +964,7 @@ def handle_whatsapp_status() -> Dict[str, Any]:
         "default_country_code": settings.WHATSAPP_DEFAULT_COUNTRY_CODE,
         "conversation_mode": settings.WHATSAPP_CONVERSATION_MODE,
         "enabled": settings.WHATSAPP_VOIP_ENABLED,
+        "store": stats,
     }
 
 
@@ -983,6 +991,229 @@ def handle_whatsapp_logout() -> Dict[str, Any]:
     ensure_nodes_registered()
     caller = get_whatsapp_caller()
     return caller.logout()
+
+
+async def handle_whatsapp_sync(full: bool = False) -> Dict[str, Any]:
+    """Synchronize contacts, chats, and messages from WhatsApp to local SQLite mirror."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    res = await caller.sync(full=full)
+    stats = whatsapp_store.get_stats()
+    return {
+        "success": res.get("success", False),
+        "error": res.get("error"),
+        "store_stats": stats,
+        "output": res.get("output"),
+    }
+
+
+def handle_whatsapp_contacts_search(query: str = "", limit: int = 20) -> List[Dict[str, Any]]:
+    """Search contacts in local mirror."""
+    ensure_nodes_registered()
+    contacts = whatsapp_store.search_contacts(query=query, limit=limit)
+    return [
+        {
+            "jid": c.jid,
+            "phone": c.phone,
+            "display_name": c.display_name,
+            "full_name": c.full_name,
+            "push_name": c.push_name,
+            "alias": c.alias,
+            "business_name": c.business_name,
+            "tags": c.tags,
+        }
+        for c in contacts
+    ]
+
+
+def handle_whatsapp_contacts_get(query: str) -> Dict[str, Any]:
+    """Resolve a specific contact by name, phone, or JID."""
+    ensure_nodes_registered()
+    res = jarvis_contact_resolver.resolve(query)
+    return res.to_dict()
+
+
+async def handle_whatsapp_contacts_check(phone: str) -> Dict[str, Any]:
+    """Check if a phone number exists on WhatsApp."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    return await caller.check_number(phone=phone)
+
+
+def handle_whatsapp_contacts_alias(jid: str, alias: str, remove: bool = False) -> Dict[str, Any]:
+    """Set or remove an operator alias for a contact."""
+    ensure_nodes_registered()
+    if remove:
+        whatsapp_store.remove_alias(alias)
+        return {"success": True, "action": "removed", "alias": alias}
+    if "@" not in jid:
+        res = jarvis_contact_resolver.resolve(jid)
+        if res.resolved and res.canonical_jid:
+            jid = res.canonical_jid
+    whatsapp_store.set_alias(jid=jid, alias=alias)
+    return {"success": True, "action": "set", "jid": jid, "alias": alias}
+
+
+def handle_whatsapp_contacts_tags(jid: str, tag: str, remove: bool = False) -> Dict[str, Any]:
+    """Add or remove a tag for a contact."""
+    ensure_nodes_registered()
+    if "@" not in jid:
+        res = jarvis_contact_resolver.resolve(jid)
+        if res.resolved and res.canonical_jid:
+            jid = res.canonical_jid
+    if remove:
+        whatsapp_store.remove_tag(jid=jid, tag=tag)
+        return {"success": True, "action": "removed", "jid": jid, "tag": tag}
+    whatsapp_store.add_tag(jid=jid, tag=tag)
+    return {"success": True, "action": "added", "jid": jid, "tag": tag}
+
+
+def handle_whatsapp_chats_list(limit: int = 50, unread_only: bool = False) -> List[Dict[str, Any]]:
+    """List recent chats."""
+    ensure_nodes_registered()
+    chats = (
+        whatsapp_store.get_unread_chats() if unread_only else whatsapp_store.list_chats(limit=limit)
+    )
+    return [
+        {
+            "jid": c.jid,
+            "kind": c.kind,
+            "name": c.name,
+            "unread_count": c.unread_count,
+            "last_message_ts": c.last_message_ts,
+        }
+        for c in chats[:limit]
+    ]
+
+
+def handle_whatsapp_messages_list(
+    chat_jid: str, limit: int = 50, before: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """List messages in a chat."""
+    ensure_nodes_registered()
+    if "@" not in chat_jid:
+        res = jarvis_contact_resolver.resolve(chat_jid)
+        if res.resolved and res.canonical_jid:
+            chat_jid = res.canonical_jid
+    messages = whatsapp_store.list_messages(chat_jid=chat_jid, limit=limit, before_timestamp=before)
+    return [
+        {
+            "msg_id": m.msg_id,
+            "ts": m.ts,
+            "from_me": bool(m.from_me),
+            "sender_name": m.sender_name,
+            "text": m.text,
+            "media_type": m.media_type,
+        }
+        for m in messages
+    ]
+
+
+def handle_whatsapp_messages_search(
+    query: str, chat_jid: Optional[str] = None, limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Search messages."""
+    ensure_nodes_registered()
+    if chat_jid and "@" not in chat_jid:
+        res = jarvis_contact_resolver.resolve(chat_jid)
+        if res.resolved and res.canonical_jid:
+            chat_jid = res.canonical_jid
+    messages = whatsapp_store.search_messages(query=query, chat_jid=chat_jid, limit=limit)
+    return [
+        {
+            "chat_jid": m.chat_jid,
+            "msg_id": m.msg_id,
+            "ts": m.ts,
+            "from_me": bool(m.from_me),
+            "sender_name": m.sender_name,
+            "text": m.text,
+        }
+        for m in messages
+    ]
+
+
+def handle_whatsapp_messages_context(
+    chat_jid: str, message_id: str, radius: int = 5
+) -> List[Dict[str, Any]]:
+    """Get context around a message."""
+    ensure_nodes_registered()
+    if "@" not in chat_jid:
+        res = jarvis_contact_resolver.resolve(chat_jid)
+        if res.resolved and res.canonical_jid:
+            chat_jid = res.canonical_jid
+    ctx_data = whatsapp_store.get_message_context(
+        chat_jid=chat_jid, msg_id=message_id, radius=radius
+    )
+    messages = ctx_data.get("all_chronological", [])
+    return [
+        {
+            "msg_id": m.msg_id,
+            "ts": m.ts,
+            "from_me": bool(m.from_me),
+            "sender_name": m.sender_name,
+            "text": m.text,
+        }
+        for m in messages
+    ]
+
+
+async def handle_whatsapp_unread(limit: int = 15, context: int = 5) -> Dict[str, Any]:
+    """Review unread messages and generate draft replies safely."""
+    ensure_nodes_registered()
+    return await whatsapp_unread_reviewer.review_unread_chats(
+        max_chats=limit, context_limit=context
+    )
+
+
+async def handle_whatsapp_send(
+    to: str,
+    message: Optional[str] = None,
+    file_path: Optional[str] = None,
+    caption: Optional[str] = None,
+    voice_path: Optional[str] = None,
+    react: Optional[str] = None,
+    msg_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Send text, file, voice note, or reaction."""
+    ensure_nodes_registered()
+    caller = get_whatsapp_caller()
+    res = jarvis_contact_resolver.resolve(to)
+    if not res.resolved or not res.canonical_jid:
+        if res.ambiguous:
+            return {
+                "success": False,
+                "error": "AMBIGUOUS_RECIPIENT",
+                "disambiguation_prompt": res.disambiguation_prompt,
+                "candidates": [
+                    {
+                        "jid": c.jid,
+                        "phone": c.phone,
+                        "display_name": c.display_name,
+                        "alias": c.alias,
+                    }
+                    for c in res.candidates
+                ],
+            }
+        return {"success": False, "error": res.error or f"Recipient '{to}' could not be resolved"}
+
+    target_jid = res.canonical_jid
+    if target_jid.endswith("@lid"):
+        mapped = whatsapp_store.resolve_lid_to_pn(target_jid)
+        if mapped:
+            target_jid = f"{mapped}@s.whatsapp.net"
+
+    if react and msg_id:
+        return await caller.send_reaction(chat_jid=target_jid, message_id=msg_id, reaction=react)
+    if voice_path:
+        return await caller.send_voice(recipient=target_jid, audio_path=voice_path)
+    if file_path:
+        return await caller.send_file(recipient=target_jid, file_path=file_path, caption=caption)
+    if message:
+        return await caller.send_text(recipient=target_jid, message=message)
+    return {
+        "success": False,
+        "error": "No send content specified (message, file, voice, or react).",
+    }
 
 
 def handle_telegram_status() -> Dict[str, Any]:

@@ -18,6 +18,7 @@ coverage.xml
 *.sqlite3
 data/
 jarvis/data/
+scratch/
 **/auth/
 **/recordings/
 **/call-history.json
@@ -46,3 +47,7 @@ node_modules/
 Thumbs.db
 .idea/
 .vscode/
+
+# Development Resources
+skills/
+index.html

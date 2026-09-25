@@ -15,7 +15,7 @@
 
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { type TranscriptEntry } from "../bridge/realtime-audio.js";
-import { type CallMetrics } from "../whatsapp/call.js";
+import { type CallMetrics } from "../engine/call.js";
 
 export interface CallReportResult {
   conversationalMessage: string;

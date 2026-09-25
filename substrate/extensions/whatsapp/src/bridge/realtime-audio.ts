@@ -13,9 +13,9 @@
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { type CallSession } from "../whatsapp/call.js";
+import { type CallSession } from "../engine/call.js";
 import { type GeminiLiveSession } from "../gemini/live.js";
-import { float32ToInt16, int16ToFloat32, resample24kTo16k } from "../whatsapp/audio.js";
+import { float32ToInt16, int16ToFloat32, resample24kTo16k } from "../engine/audio.js";
 
 export interface TranscriptEntry {
   role: "user" | "assistant" | "system";
