@@ -83,6 +83,13 @@ class JarvisSettings(BaseSettings):
     GATEWAY_PORT_SEARCH_LIMIT: int = Field(default=50)
     HTTP_PORT: int = Field(default=8000)
 
+    # UI Web Server & Interface Settings
+    UI_HOST: str = Field(default="127.0.0.1")
+    UI_PORT: int = Field(default=8080)
+    UI_PORT_AUTO_DISCOVERY: bool = Field(default=True)
+    UI_PORT_SEARCH_LIMIT: int = Field(default=50)
+    UI_AUTO_OPEN_BROWSER: bool = Field(default=True)
+
     # Timeouts & Budgets
     DEFAULT_TIMEOUT_SECONDS: float = Field(default=60.0)
     MAX_SUBAGENT_DEPTH: int = Field(default=3)

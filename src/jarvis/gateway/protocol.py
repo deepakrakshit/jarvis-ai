@@ -79,6 +79,12 @@ class ProtocolEvent(str, Enum):
     TASK_COMPLETED = "task.completed"
     APPROVAL_REQUIRED = "approval.required"
     HEARTBEAT = "heartbeat"
+    LIVE_AUDIO = "live.audio"
+    LIVE_TEXT = "live.text"
+    LIVE_TURN_COMPLETE = "live.turn_complete"
+    LIVE_TOOL_CALL = "live.tool_call"
+    LIVE_INTERRUPTED = "live.interrupted"
+    LIVE_TRANSCRIPTION = "live.transcription"
 
 
 # Factory Helpers

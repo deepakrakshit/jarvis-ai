@@ -23,10 +23,12 @@ from jarvis.gateway.protocol import (
     create_task_progress_event,
 )
 from jarvis.gateway.server import GatewayServer, gateway_server
+from jarvis.gateway.web_server import JarvisWebServer
 
 __all__ = [
     "GatewayServer",
     "gateway_server",
+    "JarvisWebServer",
     "ConnectionManager",
     "ClientSession",
     "RequestFrame",

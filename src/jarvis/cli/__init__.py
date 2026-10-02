@@ -30,6 +30,7 @@ from .commands import (
     handle_telegram_pair,
     handle_telegram_status,
     handle_telegram_unpair,
+    handle_ui,
     handle_whatsapp_call,
     handle_whatsapp_chats_list,
     handle_whatsapp_contacts_alias,
@@ -121,7 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
     acp_run_p.add_argument("--model", type=str, default="GPT-OSS 120B", help="Model family")
 
     # 6. serve
-    serve_parser = subparsers.add_parser("serve", help="Run unified server (Gateway + Heartbeat)")
+    serve_parser = subparsers.add_parser(
+        "serve", help="Run unified server (Gateway + Heartbeat + Web UI)"
+    )
     serve_parser.add_argument("--host", type=str, default=settings.GATEWAY_HOST, help="Server host")
     serve_parser.add_argument("--port", type=int, default=settings.GATEWAY_PORT, help="Server port")
     serve_parser.add_argument(
@@ -129,6 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=60.0,
         help="Heartbeat monitor interval in seconds",
+    )
+    serve_parser.add_argument(
+        "--no-ui", action="store_true", help="Disable static web interface server"
+    )
+    serve_parser.add_argument(
+        "--no-browser", action="store_true", help="Do not automatically launch web browser"
     )
 
     # 7. chat
@@ -147,7 +156,25 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "--with-daemon",
         action="store_true",
-        help="Start background daemon (Gateway + Heartbeat) alongside chat session",
+        help="Start background daemon (Gateway + Heartbeat + Web UI) alongside chat session",
+    )
+    chat_parser.add_argument(
+        "--no-ui",
+        action="store_true",
+        help="Disable static web interface server when daemon is running",
+    )
+    chat_parser.add_argument(
+        "--no-browser", action="store_true", help="Do not automatically launch web browser"
+    )
+
+    # 8. ui
+    ui_parser = subparsers.add_parser(
+        "ui", help="Start the JARVIS Neural Web UI Server and Gateway daemon"
+    )
+    ui_parser.add_argument("--host", type=str, default=settings.UI_HOST, help="UI server host")
+    ui_parser.add_argument("--port", type=int, default=settings.UI_PORT, help="UI server port")
+    ui_parser.add_argument(
+        "--no-browser", action="store_true", help="Do not automatically launch web browser"
     )
 
     # 8. app
@@ -407,6 +434,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     host=args.host,
                     port=args.port,
                     heartbeat_interval=args.heartbeat_interval,
+                    with_ui=not getattr(args, "no_ui", False),
+                    open_browser=not getattr(args, "no_browser", False),
                 )
             )
             return 0
@@ -418,6 +447,18 @@ def main(argv: Optional[List[str]] = None) -> int:
                     live_mode=args.live,
                     message=args.message,
                     with_daemon=args.with_daemon,
+                    with_ui=not getattr(args, "no_ui", False),
+                    open_browser=not getattr(args, "no_browser", False),
+                )
+            )
+            return 0
+
+        elif args.command == "ui":
+            asyncio.run(
+                handle_ui(
+                    host=args.host,
+                    port=args.port,
+                    open_browser=not getattr(args, "no_browser", False),
                 )
             )
             return 0

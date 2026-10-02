@@ -1,0 +1,46 @@
+/* Orb Viewport & Layering System */
+
+.orb-viewport {
+  position: relative;
+  width: min(85vw, 440px);
+  height: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+signal-orb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+speaking-orb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: auto !important;
+  contain: none !important;
+  --cap: #f4f6fc;
+  --cap-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.orb-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transform: scale(0.96);
+}
+
+.orb-visible {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transform: scale(1);
+}

@@ -10,6 +10,7 @@ Implements CLI commands for:
 """
 
 import asyncio
+import base64
 import sys
 import time
 from pathlib import Path
@@ -41,6 +42,7 @@ from jarvis.execution.whatsapp import (
 from jarvis.execution.windows.host import windows_node
 from jarvis.execution.windows.system import get_system_info
 from jarvis.gateway.server import GatewayServer
+from jarvis.gateway.web_server import JarvisWebServer
 from jarvis.storage.database import DatabaseEngine, db
 from jarvis.telemetry import logger, set_console_logging
 from jarvis.voice import (
@@ -239,12 +241,23 @@ async def handle_serve(
     host: Optional[str] = None,
     port: Optional[int] = None,
     heartbeat_interval: float = 60.0,
+    with_ui: bool = True,
+    open_browser: bool = True,
 ) -> None:
-    """Run the unified system server daemon: Gateway + Heartbeat Monitor + Telegram."""
+    """Run the unified system server daemon: Gateway + Heartbeat Monitor + Telegram + Web UI."""
     ensure_nodes_registered()
     server = GatewayServer(host=host, port=port)
     await server.start()
     logger.info("JARVIS Unified Server started (Gateway + Heartbeat). Press Ctrl+C to terminate.")
+
+    ui_server: Optional[JarvisWebServer] = None
+    if with_ui:
+        try:
+            ui_server = JarvisWebServer()
+            ui_server.start(open_browser=open_browser, gateway_port=server.port)
+            logger.info(f"JARVIS Neural UI available at {ui_server.url}/index.html")
+        except Exception as ui_err:
+            logger.warning(f"Notice: UI server initialization warning: {ui_err}")
 
     async def heartbeat_loop() -> None:
         while True:
@@ -281,6 +294,8 @@ async def handle_serve(
                 await telegram_service.stop()
             except Exception as err:
                 logger.error(f"Error stopping Telegram service: {err}")
+        if ui_server:
+            ui_server.stop()
         await server.stop()
         logger.info("JARVIS Unified Server stopped cleanly.")
 
@@ -290,6 +305,8 @@ async def handle_chat(
     live_mode: bool = False,
     message: Optional[str] = None,
     with_daemon: bool = False,
+    with_ui: bool = True,
+    open_browser: bool = True,
     cp: Optional[ControlPlane] = None,
 ) -> Optional[Dict[str, Any]]:
     """Conduct an interactive or single-turn real-time dialogue session with JARVIS."""
@@ -297,6 +314,7 @@ async def handle_chat(
 
     daemon_tasks: List[asyncio.Task[Any]] = []
     gateway_server: Optional[GatewayServer] = None
+    ui_server: Optional[JarvisWebServer] = None
 
     if with_daemon:
         try:
@@ -307,6 +325,15 @@ async def handle_chat(
             )
         except Exception as gw_err:
             logger.warning(f"Notice: Background gateway daemon initialization warning: {gw_err}")
+
+        if with_ui:
+            try:
+                ui_server = JarvisWebServer()
+                gw_port = gateway_server.port if gateway_server else None
+                ui_server.start(open_browser=open_browser, gateway_port=gw_port)
+                logger.info(f"JARVIS Neural UI active at {ui_server.url}/index.html")
+            except Exception as ui_err:
+                logger.warning(f"Notice: UI server initialization warning: {ui_err}")
 
         async def heartbeat_loop() -> None:
             while True:
@@ -336,6 +363,9 @@ async def handle_chat(
 
             set_console_logging(False)
             bridge = GeminiLiveBridge(session_id=session_id)
+            if gateway_server:
+                gateway_server.attach_live_bridge(bridge)
+
             voice_state_machine = VoiceStateMachine(initial_state=VoiceState.IDLE)
             input_gate = AudioInputGate(state_machine=voice_state_machine)
             mic = MicrophoneCapture(
@@ -358,12 +388,29 @@ async def handle_chat(
             async def on_audio(chunk: bytes) -> None:
                 nonlocal audio_chunk_count
                 audio_chunk_count += 1
-                if voice_state_machine.state != VoiceState.SPEAKING:
-                    pcm_player.start_stream()
-                    voice_state_machine.transition(VoiceState.SPEAKING, reason="Model audio stream")
-                pcm_player.play_chunk(chunk)
+                app_active = gateway_server is not None and gateway_server.connections.count() > 0
+                if app_active and gateway_server:
+                    b64_audio = base64.b64encode(chunk).decode("ascii")
+                    await gateway_server.broadcast_live_event(
+                        "live.audio",
+                        {
+                            "pcm": b64_audio,
+                            "rate": settings.AUDIO_OUTPUT_SAMPLE_RATE,
+                        },
+                    )
+                else:
+                    if voice_state_machine.state != VoiceState.SPEAKING:
+                        pcm_player.start_stream()
+                        voice_state_machine.transition(
+                            VoiceState.SPEAKING, reason="Model audio stream"
+                        )
+                    pcm_player.play_chunk(chunk)
 
             async def on_tool_call(name: str, args: Dict[str, Any]) -> None:
+                if gateway_server:
+                    await gateway_server.broadcast_live_event(
+                        "live.tool_call", {"name": name, "args": args}
+                    )
                 if name == "web_search":
                     query = args.get("query", "")
                     console.print(f"\n[bold cyan]>> [Web Search: '{query}']...[/bold cyan]")
@@ -454,15 +501,28 @@ async def handle_chat(
 
             async def on_text(chunk: str) -> None:
                 turn_text_chunks.append(chunk)
+                if gateway_server:
+                    await gateway_server.broadcast_live_event("live.text", {"chunk": chunk})
 
             async def on_turn_complete() -> None:
                 nonlocal audio_chunk_count
-                pcm_player.mark_generation_finished()
-                await pcm_player.wait_until_drained(timeout=settings.DEFAULT_TIMEOUT_SECONDS)
-                pcm_player.mark_idle()
+                app_active = gateway_server is not None and gateway_server.connections.count() > 0
+                if not app_active:
+                    pcm_player.mark_generation_finished()
+                    await pcm_player.wait_until_drained(timeout=settings.DEFAULT_TIMEOUT_SECONDS)
+                    pcm_player.mark_idle()
                 voice_state_machine.transition(VoiceState.LISTENING, reason="Playback drained")
 
                 full_text = "".join(turn_text_chunks).strip()
+                if gateway_server:
+                    await gateway_server.broadcast_live_event(
+                        "live.turn_complete",
+                        {
+                            "text": full_text,
+                            "audio_chunks": audio_chunk_count,
+                        },
+                    )
+
                 if full_text:
                     console.print(
                         Panel(
@@ -496,12 +556,18 @@ async def handle_chat(
                     VoiceState.INTERRUPTED, reason=f"{callsign} barge-in"
                 )
                 pcm_player.interrupt()
+                if gateway_server:
+                    await gateway_server.broadcast_live_event("live.interrupted", {})
                 voice_state_machine.transition(VoiceState.LISTENING, reason="Interruption reset")
                 console.print(
                     f"\n[bold yellow]>> [{callsign} Interrupted - Listening...][/bold yellow]\n"
                 )
 
             async def on_input_transcription(text: str, finished: bool) -> None:
+                if gateway_server:
+                    await gateway_server.broadcast_live_event(
+                        "live.transcription", {"text": text, "finished": finished}
+                    )
                 if text:
                     callsign = get_user_callsign()
                     console.print(
@@ -549,17 +615,33 @@ async def handle_chat(
                 if settings.AUDIO_AEC_ENABLED
                 else "[dim]DISABLED[/dim]"
             )
+            ui_info = (
+                f"[bold white]Neural Web UI:[/bold white] [cyan]{ui_server.url}/index.html[/cyan]\n"
+                if ui_server
+                else ""
+            )
+            voice_engine_label = (
+                "[green]DESKTOP APP (AEC Duplex Active)[/green]" if with_ui else mic_label
+            )
+            cli_mode_label = (
+                "[cyan]Telemetry, Cognitive Logs & Console Inputs[/cyan]"
+                if with_ui
+                else "[green]Interactive Voice + Console[/green]"
+            )
+
             live_header = (
                 f"[bold white]Session:[/bold white] [cyan]{bridge.session_id}[/cyan] | "
                 f"[bold white]Voice:[/bold white] [cyan]{bridge.voice_name}[/cyan] | "
                 f"[bold white]Voice Mode:[/bold white] [green]HALF-DUPLEX + REALTIME AEC[/green]\n"
                 f"[bold white]Approvals:[/bold white] [green]BYPASSED (LIVE)[/green] | "
                 f"[bold white]Core Model:[/bold white] [cyan]Gemini 3.8 Live Multimodal (Audio/Text/Vision)[/cyan]\n"
-                f"[bold white]Microphone:[/bold white] {mic_label}\n"
+                f"[bold white]Voice Engine:[/bold white] {voice_engine_label}\n"
+                f"[bold white]CLI Operating Mode:[/bold white] {cli_mode_label}\n"
                 f"[bold white]Echo Cancellation:[/bold white] {aec_status} [dim](YouTube / Spotify / Game Audio Suppressed)[/dim]\n"
+                f"{ui_info}"
                 f"[bold white]Capabilities:[/bold white] [cyan]Live Web Search + Windows Native + Browser Automation[/cyan]\n"
                 f"[bold white]Delegation:[/bold white] [cyan]GPT-OSS 120B & Qwen 3.8 27B Specialist Models[/cyan]\n"
-                f"[bold white]Input Modes:[/bold white] [cyan]Speak into Mic (Realtime VAD) OR Type in Console[/cyan]\n"
+                f"[bold white]Input Modes:[/bold white] [cyan]Speak into App (Realtime WebRTC) OR Type in App / Console[/cyan]\n"
                 f"[bold white]Commands:[/bold white] [dim]Type 'exit' to quit | /image <path> for vision inputs[/dim]"
             )
             console.print(
@@ -583,13 +665,20 @@ async def handle_chat(
                     asyncio.create_task(wa_caller.warmup())
 
             mic_active = False
-            try:
-                mic.start()
-                mic_task = asyncio.create_task(mic_streaming_loop())
-                mic_active = True
-            except Exception as mic_err:
-                console.print(
-                    f"[bold yellow]Notice: Microphone unavailable: {mic_err}[/bold yellow]\n"
+            # When Desktop UI is active, audio I/O is delegated entirely to the Desktop App
+            # CLI runs strictly in logging and telemetry mode to prevent audio feedback loops.
+            if not with_ui:
+                try:
+                    mic.start()
+                    mic_task = asyncio.create_task(mic_streaming_loop())
+                    mic_active = True
+                except Exception as mic_err:
+                    console.print(
+                        f"[bold yellow]Notice: Microphone unavailable: {mic_err}[/bold yellow]\n"
+                    )
+            else:
+                logger.info(
+                    "Desktop App active: Delegating audio capture and voice playback to Desktop App. CLI running in dedicated logging & telemetry mode."
                 )
 
             try:
@@ -765,10 +854,16 @@ async def handle_chat(
         greeting = f"JARVIS operational. Standing by for your command, {callsign}."
         voice_synthesizer.speak(greeting)
 
+        ui_info = (
+            f"[bold white]Neural Web UI:[/bold white] [cyan]{ui_server.url}/index.html[/cyan]\n"
+            if ui_server
+            else ""
+        )
         chat_banner = (
             f"[bold white]Session ID:[/bold white] [cyan]{sess_id}[/cyan]\n"
             f"[bold white]Voice Synthesis:[/bold white] [green]ACTIVE[/green] | "
             f"[bold white]Native Nodes:[/bold white] [cyan]WINDOWS + BROWSER[/cyan]\n"
+            f"{ui_info}"
             f"[bold white]Control Plane:[/bold white] [cyan]Autonomous Intent Formulation & Action Broker[/cyan]\n"
             f"[bold white]Commands:[/bold white] [dim]Type any instruction, query, or 'exit' to quit[/dim]"
         )
@@ -870,8 +965,48 @@ async def handle_chat(
                 await telegram_service.stop()
             except Exception as tg_stop_err:
                 logger.debug(f"Error stopping Telegram service: {tg_stop_err}")
+        if ui_server:
+            ui_server.stop()
         if gateway_server:
             await gateway_server.stop()
+
+
+async def handle_ui(
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    open_browser: bool = True,
+) -> None:
+    """Run the JARVIS Neural Web UI Server alongside the persistent WebSocket Gateway."""
+    ensure_nodes_registered()
+    server = GatewayServer()
+    await server.start()
+
+    ui_server = JarvisWebServer(host=host, port=port)
+    ui_server.start(open_browser=open_browser, gateway_port=server.port)
+
+    console.print(
+        Panel(
+            f"[bold green]JARVIS Neural Web Interface Online[/bold green]\n\n"
+            f"[bold white]Web Interface:[/bold white] [cyan]{ui_server.url}/index.html[/cyan]\n"
+            f"[bold white]Gateway WebSocket:[/bold white] [cyan]ws://{server.host}:{server.port}[/cyan]\n"
+            f"[bold white]Status:[/bold white] [green]OPERATIONAL[/green]\n\n"
+            f"[dim]Press Ctrl+C to terminate session.[/dim]",
+            title="[bold cyan]JARVIS NEURAL UI[/bold cyan]",
+            border_style="bright_blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+
+    try:
+        while True:
+            await asyncio.sleep(1.0)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        logger.info("Shutdown signal received. Terminating UI and Gateway...")
+    finally:
+        ui_server.stop()
+        await server.stop()
+        logger.info("JARVIS UI and Gateway stopped cleanly.")
 
 
 def handle_app_launch(target: str, arguments: Optional[List[str]] = None) -> Dict[str, Any]:

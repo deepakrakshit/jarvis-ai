@@ -22,13 +22,17 @@ echo             BOOTING JARVIS PERSONAL AI OPERATING SYSTEM
 echo                           Version 1.0.0
 echo ================================================================
 echo.
-echo Initializing Gemini 3.8 Live session, background gateway, and native nodes...
+echo Initializing Neural 3D Interface, Background Gateway, and Nodes...
 echo.
 
-"%PYTHON_CMD%" -m jarvis.cli chat --live --with-daemon
+if "%~1"=="" (
+    "%PYTHON_CMD%" -m jarvis.cli chat --live --with-daemon
+) else (
+    "%PYTHON_CMD%" -m jarvis.cli %*
+)
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo JARVIS live session exited with code %ERRORLEVEL%.
+    echo JARVIS session exited with code %ERRORLEVEL%.
     pause
 )

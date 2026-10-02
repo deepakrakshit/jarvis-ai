@@ -10,7 +10,7 @@ Implements Section 9 of ARCHITECTURE.md:
 
 import base64
 import json
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 import websockets
@@ -33,6 +33,7 @@ from jarvis.contracts.task import Task, TaskPriority, TaskState, TaskType
 from jarvis.core.control_plane import ControlPlane, control_plane
 from jarvis.gateway.connection_manager import ConnectionManager
 from jarvis.gateway.protocol import (
+    EventFrame,
     ProtocolMethod,
     RequestFrame,
     create_challenge_event,
@@ -78,6 +79,19 @@ class GatewayServer:
         self.connections = ConnectionManager()
         self._server: Optional[WebSocketServer] = None
         self._is_running = False
+        self.live_bridge: Any = None
+
+    def attach_live_bridge(self, bridge: Any) -> None:
+        """Attach active Gemini 3.8 Live session bridge for unified session synchronization."""
+        self.live_bridge = bridge
+        logger.info("Attached active Gemini Live bridge to GatewayServer.")
+
+    async def broadcast_live_event(
+        self, event_name: str, payload: Dict[str, Any], session_id: Optional[str] = None
+    ) -> None:
+        """Broadcast live cognitive and voice session events to connected UI interfaces."""
+        event_frame = EventFrame(event=event_name, payload=payload)
+        await self.connections.broadcast_event(event_frame, session_id=session_id)
 
     @staticmethod
     async def _is_gateway_alive(host: str, port: int) -> bool:
@@ -234,7 +248,40 @@ class GatewayServer:
                     conn_id, create_success_response(req.id, payload)
                 )
 
+            elif method == "live.send":
+                text = params.get("text", "")
+                if self.live_bridge:
+                    await self.live_bridge.send_text(text)
+                    await self.connections.send_response(
+                        conn_id, create_success_response(req.id, {"status": "LIVE_DISPATCHED"})
+                    )
+                else:
+                    await self._handle_task_create(conn_id, req)
+
+            elif method == "live.audio_chunk":
+                pcm_b64 = params.get("pcm", "")
+                if self.live_bridge and pcm_b64:
+                    try:
+                        pcm_bytes = base64.b64decode(pcm_b64)
+                        await self.live_bridge.send_audio_chunk(pcm_bytes)
+                    except Exception as dec_err:
+                        logger.debug(f"Audio chunk decode error: {dec_err}")
+
             elif method == ProtocolMethod.TASK_CREATE.value:
+                if self.live_bridge:
+                    intent = params.get("intent", "")
+                    if intent:
+                        logger.info(
+                            f"Routing UI task intent directly into active live cognitive bridge: {intent}"
+                        )
+                        await self.live_bridge.send_text(intent)
+                        await self.connections.send_response(
+                            conn_id,
+                            create_success_response(
+                                req.id, {"status": "LIVE_DISPATCHED", "intent": intent}
+                            ),
+                        )
+                        return
                 await self._handle_task_create(conn_id, req)
 
             elif method == ProtocolMethod.TASK_GET.value:
@@ -426,6 +473,21 @@ class GatewayServer:
         params = req.params
         raw_intent = params.get("intent", "")
         session_id = params.get("session_id") or f"SESSION-{uuid4().hex[:8].upper()}"
+
+        if self.live_bridge:
+            logger.info(f"Routing intent directly into active Gemini Live session: '{raw_intent}'")
+            accept_res = create_success_response(
+                req.id,
+                {
+                    "task_id": f"LIVE-{uuid4().hex[:8].upper()}",
+                    "session_id": session_id,
+                    "state": "ACTIVE",
+                    "status": "LIVE_ACCEPTED",
+                },
+            )
+            await self.connections.send_response(conn_id, accept_res)
+            await self.live_bridge.send_text(raw_intent)
+            return
         priority_str = params.get("priority", "NORMAL")
         task_type_str = params.get("task_type", "CONVERSATION")
 
