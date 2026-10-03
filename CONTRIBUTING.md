@@ -6,6 +6,15 @@ JARVIS is built as an open, stateful, multimodal cognitive control plane. To mai
 
 ---
 
+## 🎯 Where to Start
+
+You do not need to understand the entire architecture to make meaningful contributions:
+* 🟢 **Bite-Sized & Accessible Tasks:** Browse open **[Good First Issues](https://github.com/deepakrakshit/jarvis-ai/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)**.
+* 🙋 **Domain-Specific Challenges:** Explore **[Help Wanted](https://github.com/deepakrakshit/jarvis-ai/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)** issues for DSP audio, WebRTC, UIA automation, WebGL HUD, and memory subsystems.
+* 💡 **Proposals & RFCs:** Discuss architectural enhancements in **[GitHub Discussions](https://github.com/deepakrakshit/jarvis-ai/discussions)** or file an **[Issue](https://github.com/deepakrakshit/jarvis-ai/issues)**.
+
+---
+
 ## 🏛️ Core Engineering Invariants
 
 Every commit, pull request, and contribution must uphold the project's non-negotiable core invariants:
@@ -46,8 +55,8 @@ A pull request will only be accepted if it maintains 100% compliance across all 
 
 ### 1. Clone the Repository
 ```powershell
-git clone https://github.com/your-username/jarvis-workspace.git
-cd jarvis-workspace
+git clone https://github.com/deepakrakshit/jarvis-ai.git
+cd jarvis-ai
 ```
 
 ### 2. Configure Python Virtual Environment
