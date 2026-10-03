@@ -26,7 +26,6 @@ All pull requests must strictly satisfy the project invariants:
 - [ ] **Core Rule 2 (Strict Communication Standard):**
   - Conventional Commits strictly adhered to (`feat(...)`, `fix(...)`, etc.).
   - Work documented by functional capability and architectural domain.
-  - Work is described in terms of functional capability and architectural domain.
 - [ ] **Core Rule 3 (Data Safety & Privacy):**
   - Private session logs, keys, `.env`, and database artifacts remain untracked in `.gitignore`.
   - Zero destructive modifications to operator data without explicit authorization.
