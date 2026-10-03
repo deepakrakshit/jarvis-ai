@@ -38,10 +38,10 @@ Every commit, pull request, and contribution must uphold the project's non-negot
 * Keep private runtime session files (`sessions.json`, `conversations.json`, `*.log`, `*.jsonl`, `.env`, `coverage.xml`) strictly gitignored and never committed into version control.
 
 ### 4. Mandatory Quality Gates
-A pull request will only be accepted if it maintains 100% compliance across all quality gates:
-1. **100% Test Pass Rate:** `pytest` passes with zero failures.
-2. **100% Strict Type Safety:** `mypy src tests` passes with zero errors.
-3. **100% Clean Linting & Formatting:** `ruff check .` and `ruff format --check .` pass with zero violations.
+A pull request must pass all configured quality gates before merge:
+1. **Tests:** `pytest` passes with zero failures.
+2. **Strict Type Safety:** `mypy src tests` passes with zero errors.
+3. **Linting & Formatting:** `ruff check .` and `ruff format --check .` pass with zero violations.
 
 ---
 
@@ -108,6 +108,19 @@ ruff format .
 ```
 
 ---
+
+## 🧭 Contributor Workflow
+
+A typical contribution should stay small and easy to review:
+
+1. Pick one open issue and comment that you are working on it.
+2. Create a focused branch from `main`.
+3. Make the smallest coherent change that solves the issue.
+4. Run the local quality gates.
+5. Open a pull request and include verification evidence.
+6. Respond to review feedback and keep the PR focused.
+
+For questions, design proposals, or subsystem discussions, use GitHub Discussions once enabled for the repository.
 
 ## 📂 Repository Architecture Overview
 
