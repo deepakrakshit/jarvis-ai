@@ -9,9 +9,11 @@ Tests Section 32 requirements:
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from jarvis.contracts.model import ModelFamily, ModelInvocationResponse, ModelProvider
 from jarvis.contracts.task import TaskState
 from jarvis.core.control_plane import ControlPlane
 from jarvis.cron.heartbeat import HeartbeatMonitor
@@ -96,8 +98,20 @@ async def test_heartbeat_pulse_and_task_lifecycle(
         next_run_at=(datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(),
     )
 
-    # 3. Execute pulse
-    report = await monitor.pulse()
+    with patch.object(
+        control.router,
+        "invoke",
+        new=AsyncMock(
+            return_value=ModelInvocationResponse(
+                model_family=ModelFamily.GEMINI_3_5_FLASH_LITE,
+                provider=ModelProvider.GOOGLE_GENAI,
+                text_content="Heartbeat check complete.",
+                total_tokens=10,
+            )
+        ),
+    ):
+        # 3. Execute pulse
+        report = await monitor.pulse()
 
     assert report.status == "COMPLETED"
     assert report.standing_intents_fired == 1

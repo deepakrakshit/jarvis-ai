@@ -70,6 +70,11 @@ async def test_control_plane_cognitive_conversational_turn(
     temp_dir: Path, test_db: DatabaseEngine
 ) -> None:
     """Verify pure cognitive tasks route through the Model Router to COMPLETED."""
+    from jarvis.config import settings
+
+    if not settings.GEMINI_API_KEY:
+        pytest.skip("GEMINI_API_KEY not configured")
+
     policy = PolicyEngine(workspace_dir=temp_dir, database=test_db)
     broker = ActionBroker(policy=policy, database=test_db)
     cp = ControlPlane(broker=broker, policy=policy, database=test_db)

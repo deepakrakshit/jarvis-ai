@@ -17,6 +17,15 @@ from jarvis.execution.substrate_bridge import (
 )
 
 
+@pytest.fixture(autouse=True)
+def require_substrate(request: pytest.FixtureRequest) -> None:
+    """Skip substrate execution tests if the substrate runner is unavailable."""
+    if request.node.name == "test_substrate_bridge_initialization":
+        return
+    if not substrate_bridge.is_healthy_sync():
+        pytest.skip("Substrate runner dependencies not installed in this environment")
+
+
 def test_substrate_bridge_initialization() -> None:
     """Verify SubstrateBridge resolves workspace and runner paths dynamically."""
     bridge = SubstrateBridge()

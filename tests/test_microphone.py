@@ -247,37 +247,41 @@ async def test_multi_turn_voice_loop_simulation() -> None:
 
     bridge.turn_complete_handler = on_turn_complete
 
-    # --- Turn 1: Operator speaks ---
-    turn_1_chunk = b"\x20\x00" * 1600
-    mic._audio_callback(turn_1_chunk, 1600, None, None)
-    await asyncio.sleep(0.02)
-    captured_turn_1 = await mic.read_chunk()
-    await bridge.send_audio_chunk(captured_turn_1)
+    with patch("sounddevice.RawOutputStream") as mock_stream_cls:
+        mock_stream = MagicMock()
+        mock_stream_cls.return_value = mock_stream
 
-    # Server responds with audio
-    player.play_chunk(b"\x10\x00" * 1200)
-    assert player.is_playing
+        # --- Turn 1: Operator speaks ---
+        turn_1_chunk = b"\x20\x00" * 1600
+        mic._audio_callback(turn_1_chunk, 1600, None, None)
+        await asyncio.sleep(0.02)
+        captured_turn_1 = await mic.read_chunk()
+        await bridge.send_audio_chunk(captured_turn_1)
 
-    # Turn 1 completes
-    await on_turn_complete()
-    assert turn_completed_count == 1
-    assert not player.is_playing
+        # Server responds with audio
+        player.play_chunk(b"\x10\x00" * 1200)
+        assert player.is_playing
 
-    # --- Turn 2: Operator speaks again immediately ---
-    turn_2_chunk = b"\x30\x00" * 1600
-    mic._audio_callback(turn_2_chunk, 1600, None, None)
-    await asyncio.sleep(0.02)
+        # Turn 1 completes
+        await on_turn_complete()
+        assert turn_completed_count == 1
+        assert not player.is_playing
 
-    # Turn 2 chunk MUST be successfully captured and not dropped
-    captured_turn_2 = await mic.read_chunk()
-    assert captured_turn_2 == turn_2_chunk
-    await bridge.send_audio_chunk(captured_turn_2)
+        # --- Turn 2: Operator speaks again immediately ---
+        turn_2_chunk = b"\x30\x00" * 1600
+        mic._audio_callback(turn_2_chunk, 1600, None, None)
+        await asyncio.sleep(0.02)
 
-    # Server responds with Turn 2 audio
-    player.play_chunk(b"\x20\x00" * 1200)
-    assert player.is_playing
+        # Turn 2 chunk MUST be successfully captured and not dropped
+        captured_turn_2 = await mic.read_chunk()
+        assert captured_turn_2 == turn_2_chunk
+        await bridge.send_audio_chunk(captured_turn_2)
 
-    # Turn 2 completes
-    await on_turn_complete()
-    assert turn_completed_count == 2
-    assert not player.is_playing
+        # Server responds with Turn 2 audio
+        player.play_chunk(b"\x20\x00" * 1200)
+        assert player.is_playing
+
+        # Turn 2 completes
+        await on_turn_complete()
+        assert turn_completed_count == 2
+        assert not player.is_playing
