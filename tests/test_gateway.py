@@ -20,6 +20,7 @@ import pytest
 import websockets
 
 from jarvis.core.control_plane import ControlPlane
+from jarvis.gateway.protocol import ProtocolEvent
 from jarvis.gateway.server import GatewayServer
 from jarvis.memory.manager import MemoryManager
 from jarvis.storage.database import DatabaseEngine
@@ -276,3 +277,46 @@ async def test_gateway_existing_daemon_detection(temp_gateway_db: DatabaseEngine
         await secondary_server.stop()
     finally:
         await primary_server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_live_tool_complete_broadcast(gateway_harness: Dict[str, Any]) -> None:
+    """Verify live.tool_complete events broadcast reliably to registered clients."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+
+    await server.start()
+    uri = f"ws://127.0.0.1:{port}"
+
+    try:
+        async with websockets.connect(uri) as ws:
+            # 1. Receive connect.challenge
+            challenge_raw = await ws.recv()
+            challenge = json.loads(challenge_raw)
+            assert challenge["event"] == ProtocolEvent.CONNECT_CHALLENGE.value
+
+            # 2. Handshake connect
+            connect_req = {
+                "type": "req",
+                "id": "conn-1",
+                "method": "connect",
+                "params": {"client_id": "test-operator-ui"},
+            }
+            await ws.send(json.dumps(connect_req))
+            conn_res = json.loads(await ws.recv())
+            assert conn_res["ok"] is True
+
+            # 3. Broadcast live.tool_complete event
+            await server.broadcast_live_event(
+                ProtocolEvent.LIVE_TOOL_COMPLETE.value,
+                {"name": "web_search", "result": {"status": "success", "count": 3}},
+            )
+
+            # 4. Verify client received event frame
+            evt_raw = await ws.recv()
+            evt = json.loads(evt_raw)
+            assert evt["event"] == "live.tool_complete"
+            assert evt["payload"]["name"] == "web_search"
+            assert evt["payload"]["result"]["status"] == "success"
+    finally:
+        await server.stop()

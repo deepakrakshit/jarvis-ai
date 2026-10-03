@@ -92,10 +92,26 @@ export class AudioPlayer {
         this.audioCtx.currentTime >= this.nextPlayTime - 0.05 &&
         this.activeAudioSources.length === 0
       ) {
-        // Wait if speaking orb has an active unfinished typography line
+        // Wait if speaking orb has an active unfinished typography line,
+        // unless the app is hidden in the background or the line duration has elapsed
         if (this.speakingOrb.line && !this.speakingOrb.line.after) {
-          this.scheduleDrainCheck();
-          return;
+          const line = this.speakingOrb.line;
+          const isBackgrounded = typeof document !== 'undefined' && document.hidden;
+          const elapsedSec = line.wallClockStart ? (Date.now() - line.wallClockStart) / 1000 : Infinity;
+          const expectedSec = line.expectedDuration || 2.0;
+          const isExpired = elapsedSec >= expectedSec;
+
+          if (isBackgrounded || isExpired) {
+            line.after = true;
+            if (typeof this.speakingOrb.finishCurrentLine === 'function') {
+              this.speakingOrb.finishCurrentLine();
+            } else {
+              this.speakingOrb.state = this.speakingOrb.getAttribute('rest') || 'listening';
+            }
+          } else {
+            this.scheduleDrainCheck();
+            return;
+          }
         }
         if (typeof this.onDrain === 'function') {
           this.onDrain();

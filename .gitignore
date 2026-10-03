@@ -41,6 +41,9 @@ build/
 secret/
 node_modules/
 .pnpm-store/
+vendor/
+migration_backup/
+research/
 
 # OS & IDE
 .DS_Store

@@ -619,6 +619,9 @@ class GeminiLiveBridge:
         self.tool_call_handler: Optional[
             Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
         ] = None
+        self.tool_complete_handler: Optional[
+            Callable[[str, Dict[str, Any]], Coroutine[Any, Any, None]]
+        ] = None
 
         # Internal queues
         self.audio_output_queue: asyncio.Queue[bytes] = asyncio.Queue()
@@ -1139,5 +1142,15 @@ class GeminiLiveBridge:
             )
 
         if function_responses:
+            for resp in function_responses:
+                if self.tool_complete_handler:
+                    try:
+                        await self.tool_complete_handler(
+                            resp.name or "",
+                            resp.response if isinstance(resp.response, dict) else {},
+                        )
+                    except Exception as cb_err:
+                        logger.debug(f"Error in tool_complete_handler callback: {cb_err}")
+
             logger.info(f"Sending {len(function_responses)} tool responses back to Gemini Live")
             await self._active_session.send_tool_response(function_responses=function_responses)

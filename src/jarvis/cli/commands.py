@@ -499,6 +499,17 @@ async def handle_chat(
                     args_summary = ", ".join(f"{k}={v!r}" for k, v in args.items())
                     console.print(f"\n[bold cyan]>> [Executing {name}({args_summary})][/bold cyan]")
 
+            async def on_tool_complete(name: str, result: Dict[str, Any]) -> None:
+                if gateway_server:
+                    await gateway_server.broadcast_live_event(
+                        "live.tool_complete", {"name": name, "result": result}
+                    )
+                status_str = result.get("status", "success")
+                if status_str == "error":
+                    console.print(f"\n[bold red]>> [Tool Failed: {name}][/bold red]")
+                else:
+                    console.print(f"\n[bold green]>> [Action Completed: {name}][/bold green]")
+
             async def on_text(chunk: str) -> None:
                 turn_text_chunks.append(chunk)
                 if gateway_server:
@@ -583,6 +594,7 @@ async def handle_chat(
             bridge.text_chunk_handler = on_text
             bridge.turn_complete_handler = on_turn_complete
             bridge.tool_call_handler = on_tool_call
+            bridge.tool_complete_handler = on_tool_complete
             bridge.interrupted_handler = on_interrupted
             bridge.input_transcription_handler = on_input_transcription
 

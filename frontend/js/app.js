@@ -22,15 +22,94 @@ import { GatewayClient } from './gateway/client.js';
   const promptInput = document.getElementById('prompt-input');
   const promptForm = document.getElementById('prompt-form');
 
+  // Application Constants
+  const MIN_SEARCH_VISIBLE_MS = 800;
+  const DONE_VISIBLE_MS = 1200;
+
+  function formatToolDetail(name, args) {
+    if (!name) return 'Retrieving context or executing tool...';
+    const a = args || {};
+    switch (name) {
+      case 'web_search':
+        return a.query ? `Searching web: "${a.query}"...` : 'Searching the web...';
+      case 'shell_execute':
+        return a.command ? `Executing command: ${a.command}...` : 'Running shell command...';
+      case 'app_launch':
+        return a.target ? `Launching ${a.target}...` : 'Launching application...';
+      case 'app_focus':
+        return a.target ? `Focusing ${a.target}...` : 'Focusing window...';
+      case 'app_close':
+        return a.target ? `Closing ${a.target}...` : 'Closing application...';
+      case 'system_volume_set':
+        return a.level !== undefined ? `Setting volume to ${a.level}%...` : 'Adjusting volume...';
+      case 'system_volume_get':
+        return 'Checking system volume...';
+      case 'system_screenshot':
+        return 'Capturing desktop screenshot...';
+      case 'system_info':
+        return 'Inspecting system diagnostics...';
+      case 'browser_navigate':
+        return a.url ? `Navigating to ${a.url}...` : 'Navigating browser...';
+      case 'browser_click':
+        return a.selector ? `Clicking element: ${a.selector}...` : 'Clicking browser element...';
+      case 'browser_type':
+        return a.text ? `Typing "${a.text}"...` : 'Entering browser text...';
+      case 'browser_snapshot':
+        return 'Analyzing web page structure...';
+      case 'whatsapp_send':
+        return a.target ? `Sending WhatsApp message to ${a.target}...` : 'Sending WhatsApp message...';
+      case 'whatsapp_call':
+        return a.target ? `Initiating WhatsApp call to ${a.target}...` : 'Placing WhatsApp call...';
+      case 'delegate_task':
+        return a.target_model ? `Delegating to ${a.target_model}...` : 'Delegating to specialist model...';
+      default:
+        return `Executing ${name.replace(/_/g, ' ')}...`;
+    }
+  }
+
+  function formatToolCompletion(name) {
+    if (!name) return 'Action completed successfully.';
+    switch (name) {
+      case 'web_search': return 'Web search completed.';
+      case 'shell_execute': return 'Command executed successfully.';
+      case 'app_launch': return 'Application launched.';
+      case 'app_focus': return 'Window focused.';
+      case 'app_close': return 'Application closed.';
+      case 'system_volume_set': return 'Volume adjusted.';
+      case 'system_screenshot': return 'Screenshot captured.';
+      case 'system_info': return 'System diagnostics retrieved.';
+      case 'browser_navigate': return 'Page loaded.';
+      case 'browser_click': return 'Element clicked.';
+      case 'browser_type': return 'Input submitted.';
+      case 'whatsapp_send': return 'WhatsApp message sent.';
+      case 'whatsapp_call': return 'WhatsApp call placed.';
+      default: return `${name.replace(/_/g, ' ')} completed successfully.`;
+    }
+  }
+
   // Application State
   const sessionId = generateSessionId();
   let currentInterfaceMode = 'listening';
   let activeTurnText = '';
+  let turnHadToolCall = false;
+  let searchingStartTime = 0;
+  let modeRevertTimer = null;
+  let pendingSpeakingTimer = null;
 
   // Audio Player Engine (24kHz Algenib Voice Output)
   const player = new AudioPlayer(speakingOrb, () => {
     if (currentInterfaceMode === 'speaking') {
-      setInterfaceMode('listening');
+      if (turnHadToolCall) {
+        turnHadToolCall = false;
+        setInterfaceMode('done');
+        modeRevertTimer = setTimeout(() => {
+          if (currentInterfaceMode === 'done') {
+            setInterfaceMode('listening');
+          }
+        }, DONE_VISIBLE_MS);
+      } else {
+        setInterfaceMode('listening');
+      }
     }
   });
 
@@ -70,6 +149,15 @@ import { GatewayClient } from './gateway/client.js';
 
   // Visual Mode Coordinator
   function setInterfaceMode(mode, detail = '') {
+    if (modeRevertTimer) {
+      clearTimeout(modeRevertTimer);
+      modeRevertTimer = null;
+    }
+    if (pendingSpeakingTimer && mode !== 'speaking') {
+      clearTimeout(pendingSpeakingTimer);
+      pendingSpeakingTimer = null;
+    }
+
     currentInterfaceMode = mode;
     if (modeBadge) {
       modeBadge.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
@@ -110,9 +198,9 @@ import { GatewayClient } from './gateway/client.js';
         } else if (mode === 'thinking') {
           feedbackLine.textContent = 'Synthesizing reasoning graph and formulating plan...';
         } else if (mode === 'searching') {
-          feedbackLine.textContent = detail ? `Executing tool: ${detail}...` : 'Retrieving context or executing tool...';
+          feedbackLine.textContent = detail || 'Retrieving context or executing tool...';
         } else if (mode === 'done') {
-          feedbackLine.textContent = 'Action completed successfully.';
+          feedbackLine.textContent = detail || 'Action completed successfully.';
         }
       }
     }
@@ -122,7 +210,17 @@ import { GatewayClient } from './gateway/client.js';
   if (speakingOrb) {
     speakingOrb.addEventListener('end', () => {
       if (!player.isPlaying()) {
-        setInterfaceMode('listening');
+        if (turnHadToolCall) {
+          turnHadToolCall = false;
+          setInterfaceMode('done');
+          modeRevertTimer = setTimeout(() => {
+            if (currentInterfaceMode === 'done') {
+              setInterfaceMode('listening');
+            }
+          }, DONE_VISIBLE_MS);
+        } else {
+          setInterfaceMode('listening');
+        }
       }
     });
   }
@@ -132,7 +230,32 @@ import { GatewayClient } from './gateway/client.js';
     if (payload.pcm) {
       player.playPcmChunk(payload.pcm, payload.rate || CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
       if (currentInterfaceMode !== 'speaking') {
-        setInterfaceMode('speaking');
+        if (currentInterfaceMode === 'searching') {
+          const elapsed = Date.now() - searchingStartTime;
+          if (elapsed < MIN_SEARCH_VISIBLE_MS) {
+            if (!pendingSpeakingTimer) {
+              pendingSpeakingTimer = setTimeout(() => {
+                pendingSpeakingTimer = null;
+                if (player.isPlaying() || activeTurnText) {
+                  setInterfaceMode('speaking');
+                }
+              }, MIN_SEARCH_VISIBLE_MS - elapsed);
+            }
+          } else {
+            setInterfaceMode('speaking');
+          }
+        } else if (currentInterfaceMode === 'done') {
+          if (!pendingSpeakingTimer) {
+            pendingSpeakingTimer = setTimeout(() => {
+              pendingSpeakingTimer = null;
+              if (player.isPlaying() || activeTurnText) {
+                setInterfaceMode('speaking');
+              }
+            }, 600);
+          }
+        } else {
+          setInterfaceMode('speaking');
+        }
       }
     }
   });
@@ -141,7 +264,21 @@ import { GatewayClient } from './gateway/client.js';
     if (payload.chunk) {
       activeTurnText += payload.chunk;
       if (currentInterfaceMode !== 'speaking') {
-        setInterfaceMode('speaking');
+        if (currentInterfaceMode === 'searching') {
+          const elapsed = Date.now() - searchingStartTime;
+          if (elapsed < MIN_SEARCH_VISIBLE_MS) {
+            if (!pendingSpeakingTimer) {
+              pendingSpeakingTimer = setTimeout(() => {
+                pendingSpeakingTimer = null;
+                setInterfaceMode('speaking');
+              }, MIN_SEARCH_VISIBLE_MS - elapsed);
+            }
+          } else {
+            setInterfaceMode('speaking');
+          }
+        } else {
+          setInterfaceMode('speaking');
+        }
       }
       if (speakingOrb && speakingOrb.streamWords) {
         speakingOrb.streamWords(payload.chunk);
@@ -158,16 +295,47 @@ import { GatewayClient } from './gateway/client.js';
   });
 
   gateway.on('live.tool_call', (payload) => {
-    setInterfaceMode('searching', payload.name || '');
+    turnHadToolCall = true;
+    searchingStartTime = Date.now();
+    const detail = formatToolDetail(payload.name, payload.args);
+    setInterfaceMode('searching', detail);
+  });
+
+  gateway.on('live.tool_complete', (payload) => {
+    const elapsed = Date.now() - searchingStartTime;
+    const remaining = Math.max(0, MIN_SEARCH_VISIBLE_MS - elapsed);
+    setTimeout(() => {
+      if (currentInterfaceMode === 'searching') {
+        setInterfaceMode('done', formatToolCompletion(payload.name));
+        modeRevertTimer = setTimeout(() => {
+          if (currentInterfaceMode === 'done' && !player.isPlaying()) {
+            setInterfaceMode('listening');
+          }
+        }, DONE_VISIBLE_MS);
+      }
+    }, remaining);
   });
 
   gateway.on('live.interrupted', () => {
     player.stop();
-    if (speakingOrb && speakingOrb.line) {
-      speakingOrb.line.after = true;
-      speakingOrb.line = null;
+    if (speakingOrb) {
+      if (speakingOrb.finishCurrentLine) {
+        speakingOrb.finishCurrentLine();
+      } else if (speakingOrb.line) {
+        speakingOrb.line.after = true;
+        speakingOrb.line = null;
+      }
+    }
+    if (pendingSpeakingTimer) {
+      clearTimeout(pendingSpeakingTimer);
+      pendingSpeakingTimer = null;
+    }
+    if (modeRevertTimer) {
+      clearTimeout(modeRevertTimer);
+      modeRevertTimer = null;
     }
     activeTurnText = '';
+    turnHadToolCall = false;
     setInterfaceMode('listening');
     if (feedbackLine) {
       feedbackLine.textContent = 'Interrupted. Listening...';
@@ -177,15 +345,17 @@ import { GatewayClient } from './gateway/client.js';
   gateway.on('live.transcription', (payload) => {
     if (payload.text && feedbackLine) {
       feedbackLine.textContent = payload.text;
-      if (payload.finished) {
+      if (payload.finished && currentInterfaceMode === 'listening') {
         setInterfaceMode('thinking');
       }
     }
   });
 
   gateway.on('task.progress', (payload) => {
-    const currentState = payload.state;
-    if (currentState === 'EXECUTING' || currentState === 'SEARCHING') {
+    const currentTaskState = payload.state;
+    if (currentTaskState === 'EXECUTING' || currentTaskState === 'SEARCHING') {
+      turnHadToolCall = true;
+      searchingStartTime = Date.now();
       setInterfaceMode('searching', payload.message || '');
     } else {
       setInterfaceMode('thinking');
@@ -197,9 +367,9 @@ import { GatewayClient } from './gateway/client.js';
 
   gateway.on('task.completed', () => {
     setInterfaceMode('done');
-    setTimeout(() => {
+    modeRevertTimer = setTimeout(() => {
       setInterfaceMode('listening');
-    }, 1200);
+    }, DONE_VISIBLE_MS);
   });
 
   // User Interaction & Mic Controls
@@ -272,6 +442,36 @@ import { GatewayClient } from './gateway/client.js';
   // Initialize
   setInterfaceMode('listening');
   gateway.connect();
+
+  // App visibility & focus synchronization to eliminate background freeze
+  function syncVisibilityState() {
+    if (document.hidden) return;
+    if (!player.isPlaying() && currentInterfaceMode === 'speaking') {
+      if (speakingOrb && typeof speakingOrb.finishCurrentLine === 'function') {
+        speakingOrb.finishCurrentLine();
+      }
+      if (turnHadToolCall) {
+        turnHadToolCall = false;
+        setInterfaceMode('done');
+        modeRevertTimer = setTimeout(() => {
+          if (currentInterfaceMode === 'done') {
+            setInterfaceMode('listening');
+          }
+        }, 800);
+      } else {
+        setInterfaceMode('listening');
+      }
+    }
+    if (speakingOrb && typeof speakingOrb.resize === 'function') {
+      speakingOrb.resize();
+    }
+    if (signalOrb && typeof signalOrb.resize === 'function') {
+      signalOrb.resize();
+    }
+  }
+
+  document.addEventListener('visibilitychange', syncVisibilityState);
+  window.addEventListener('focus', syncVisibilityState);
 
   // Test Harnesses for automated verification
   window.__jarvis_handleFrame = (frame) => gateway.handleFrame(frame);

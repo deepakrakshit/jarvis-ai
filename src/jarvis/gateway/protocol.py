@@ -83,6 +83,7 @@ class ProtocolEvent(str, Enum):
     LIVE_TEXT = "live.text"
     LIVE_TURN_COMPLETE = "live.turn_complete"
     LIVE_TOOL_CALL = "live.tool_call"
+    LIVE_TOOL_COMPLETE = "live.tool_complete"
     LIVE_INTERRUPTED = "live.interrupted"
     LIVE_TRANSCRIPTION = "live.transcription"
 

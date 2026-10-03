@@ -98,12 +98,12 @@
         this.gl=setupGL(dots); if(!this.gl) this.dctx=dots.getContext('2d');
       }
       this.media=matchMedia('(prefers-reduced-motion: reduce)');
-      this.weights=names.map(n=>n===this.state?1:0); this.time=0; this.last=0; this.slow=0; this.env=0; this.onsets=[]; this.line=null;
+      this.weights=names.map(n=>n===this.state?1:0); this.time=performance.now()/1000; this.last=performance.now(); this.slow=0; this.env=0; this.onsets=[]; this.line=null;
       this.resize=()=>{const w=this.canvas.parentNode.getBoundingClientRect().width,size=Math.max(1,Math.round(w*Math.min(devicePixelRatio||1,2)));
         this.canvas.width=this.canvas.height=this.dots.width=this.dots.height=size;this.style.setProperty('--cap-size',Math.round(clamp(w*.066,18,34))+'px');
         const hr=this.getBoundingClientRect(),k=Math.min(devicePixelRatio||1,2);this.fx.width=Math.round(hr.width*k);this.fx.height=Math.round(hr.height*k);this.glyphCache=new Map();this.draw(this.time);};
       this.observer=new ResizeObserver(this.resize);this.observer.observe(this);this.resize();
-      this.onMotion=()=>{cancelAnimationFrame(this.frame);this.last=0;this.start();};
+      this.onMotion=()=>{cancelAnimationFrame(this.frame);this.last=performance.now();this.start();};
       this.media.addEventListener('change',this.onMotion);
       this.setAttribute('role','img');this.setAttribute('aria-label',`Assistant ${this.state}`);
       this.start();
@@ -118,7 +118,7 @@
 
     say(text, {words, audio, voice} = {}) {
       const toks = String(text).trim().split(/\s+/).filter(Boolean);
-      const line = {toks, words: [], t0: this.time, live: true};
+      const line = {toks, words: [], t0: this.time, live: true, wallClockStart: Date.now(), expectedDuration: 0};
       if (words?.length) line.words = words.map((w, i) => ({w: toks[i] ?? w.w, start: w.start, end: w.end}));
       this.line = line; this.state = 'speaking';
       if (audio) { this.attachAudio(audio); line.audio = audio; audio.currentTime = 0; audio.play?.(); return; }
@@ -151,10 +151,11 @@
       const toks = String(text).trim().split(/\s+/).filter(Boolean);
       if (!toks.length) return;
       if (!this.line || !this.line.live || this.line.after) {
-        this.line = {toks: [], words: [], t0: this.time, live: true};
+        this.line = {toks: [], words: [], t0: this.time, live: true, wallClockStart: Date.now(), expectedDuration: 0};
         this.state = 'speaking';
       }
       const L = this.line;
+      if (!L.wallClockStart) L.wallClockStart = Date.now();
       let lastEnd = L.words.length ? L.words[L.words.length - 1].end : 0;
       const currentLt = this.time - L.t0;
       if (currentLt > lastEnd && L.words.length === 0) {
@@ -166,6 +167,7 @@
         L.words.push({w: tok, start: lastEnd, end: lastEnd + d - (/[,.!?]$/.test(tok) ? .18 : 0)});
         lastEnd += d;
       }
+      L.expectedDuration = lastEnd + 1.2;
       delete L.groups;
     }
 
@@ -183,6 +185,18 @@
       }
       if (this.line && this.line.words.length) {
         this.line.done = this.line.words[this.line.words.length - 1].end;
+        this.line.expectedDuration = this.line.done + 1.2;
+      }
+    }
+
+    finishCurrentLine() {
+      if (this.line) {
+        this.line.after = true;
+      }
+      this.state = this.getAttribute('rest') || 'listening';
+      if (this.capEl) {
+        this.capEl.textContent = '';
+        this.capEl.dataset.g = '';
       }
     }
 
@@ -198,9 +212,12 @@
 
     tick=(now)=>{
       if(this.hasAttribute('recording'))return;
-      const dt=this.last?Math.min((now-this.last)/1000,.05):0;this.last=now;this.time+=dt;
-      if(!this.hasAttribute('particles')&&dt){this.slow=dt>.025?this.slow+1:0;if(this.slow>30&&this.auto>800){this.auto=Math.max(800,Math.round(this.auto*.6));this.slow=0;}}
-      const k=1-Math.exp(-dt*7);
+      const dt=this.last?(now-this.last)/1000:0.016;
+      this.last=now;
+      this.time=now/1000;
+      const pdt=Math.min(dt,.05);
+      if(!this.hasAttribute('particles')&&dt){this.slow=pdt>.025?this.slow+1:0;if(this.slow>30&&this.auto>800){this.auto=Math.max(800,Math.round(this.auto*.6));this.slow=0;}}
+      const k=1-Math.exp(-pdt*7);
       this.weights=this.weights.map((w,i)=>w+((names[i]===this.state?1:0)-w)*k);
       const L=this.line;let raw=0,lt=0;
       if(L){lt=L.audio?L.audio.currentTime:this.time-L.t0;
