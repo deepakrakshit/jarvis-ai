@@ -20,20 +20,20 @@
 
 All pull requests must strictly satisfy the project invariants:
 
-- [ ] **Core Rule 1 (Top-Most Invariant - Never Hardcode Anything):**
+- [ ] **Core Rule 1 (Top-Most Invariant - Avoid Hardcoding):**
   - Configurations, API endpoints, model identifiers, filesystem paths, and timeouts are parameterized, discoverable, or dynamically resolved.
   - OS-agnostic path handling (`pathlib.Path`) used throughout.
 - [ ] **Core Rule 2 (Strict Communication Standard):**
   - Conventional Commits strictly adhered to (`feat(...)`, `fix(...)`, etc.).
   - Work documented by functional capability and architectural domain.
-  - Absolute prohibition: The prohibited forbidden progression term is NOT used anywhere in code, docstrings, comments, or documentation.
+  - Work is described in terms of functional capability and architectural domain.
 - [ ] **Core Rule 3 (Data Safety & Privacy):**
   - Private session logs, keys, `.env`, and database artifacts remain untracked in `.gitignore`.
   - Zero destructive modifications to operator data without explicit authorization.
 - [ ] **Core Rule 4 (Engineering Quality Gates):**
-  - 100% test pass rate: `pytest` passes with zero failures.
-  - 100% strict type safety: `mypy src tests` passes with zero errors.
-  - 100% linting & formatting compliance: `ruff check .` and `ruff format --check .` pass.
+  - `pytest` passes with zero failures.
+  - `mypy src tests` passes with zero errors.
+  - `ruff check .` and `ruff format --check .` pass.
 
 ## 🧪 Verification & Testing Performed
 
