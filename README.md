@@ -213,7 +213,7 @@ jarvis health
 
 ## 🧪 Quality Verification Gates
 
-JARVIS enforces a non-negotiable 100% compliance gate for all code:
+Pull requests must pass the project's automated quality gates before merge:
 
 ```powershell
 # Run Python linter
