@@ -162,8 +162,8 @@ Explore detailed architectural manuals, contribution standards, and subsystem gu
 ### 2. Setup Environment
 ```powershell
 # Clone the repository
-git clone https://github.com/your-username/jarvis-workspace.git
-cd jarvis-workspace
+git clone https://github.com/deepakrakshit/jarvis-ai.git
+cd jarvis-ai
 
 # Create and activate Python virtual environment
 python -m venv .venv
@@ -247,7 +247,7 @@ Contributions are what make open source an exceptional space to innovate, learn,
 1. **Top-Most Invariant (Never Hardcode Anything):** All endpoints, paths, configurations, and models must be dynamic, discoverable, and parameterized.
 2. **Strict Communication & Commit Standards:** Strictly follow Conventional Commits (`feat(...)`, `fix(...)`, etc.). Progress is documented by capability and domain.
 3. **Data Safety & Privacy:** Private session records, keys, and `.env` files are strictly gitignored.
-4. **100% Quality Gates:** Zero test failures, zero type errors, zero lint warnings.
+4. **Quality Gates:** PRs must pass the project's test suite, static type-checking, and linting/formatting checks.
 
 ---
 

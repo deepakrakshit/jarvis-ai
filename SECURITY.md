@@ -60,8 +60,7 @@ We take the security of JARVIS and our users' machines with utmost seriousness. 
 
 ### How to Report
 1. **Do NOT open a public GitHub issue** for undisclosed security vulnerabilities.
-2. Send a detailed report to the security team or project maintainers via encrypted email or GitHub Private Vulnerability Reporting:
-   - **Email:** `security@jarvis-project.local` (or maintainer contact listed in repository settings)
+2. Please report vulnerabilities directly via **[GitHub Private Vulnerability Reporting](https://github.com/deepakrakshit/jarvis-ai/security/advisories/new)** in this repository.
 3. Include the following details in your report:
    - Detailed description of the vulnerability and attack vector
    - Step-by-step reproduction instructions or proof-of-concept
