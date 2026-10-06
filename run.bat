@@ -19,7 +19,7 @@ if exist ".venv\Scripts\python.exe" (
 cls
 echo ================================================================
 echo             BOOTING JARVIS PERSONAL AI OPERATING SYSTEM
-echo                           Version 1.0.0
+echo                           Version 1.0.1
 echo ================================================================
 echo.
 echo Initializing Neural 3D Interface, Background Gateway, and Nodes...
