@@ -3,55 +3,80 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05050a">
+<meta name="color-scheme" content="dark">
 <title>JARVIS · Autonomous Neural Interface</title>
 <meta name="description" content="JARVIS Personal AI Operating System - Autonomous Multimodal Interface">
 
 <!-- Stylesheets -->
-<link rel="stylesheet" href="css/main.css">
-<link rel="stylesheet" href="css/orbs.css">
+<link rel="stylesheet" href="css/main.css?v=2">
+<link rel="stylesheet" href="css/orbs.css?v=2">
 
 <!-- Application Module -->
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/app.js?v=2"></script>
 </head>
-<body>
-<div class="grain"></div>
+<body data-mode="listening">
+<!-- Ambient layers -->
+<canvas class="particle-field" id="particle-field" aria-hidden="true"></canvas>
+<div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
 
 <!-- Top Bar Status -->
 <header class="top-status">
-  <div class="status-pill">
-    <div class="status-dot" id="status-dot"></div>
-    <span id="gateway-label">JARVIS OPERATIONAL</span>
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">JARVIS</span>
   </div>
-  <div class="mode-badge" id="mode-badge">Listening</div>
+  <div class="status-cluster">
+    <div class="status-pill" role="status">
+      <span class="status-dot connecting" id="status-dot"></span>
+      <span id="gateway-label">CONNECTING...</span>
+    </div>
+    <div class="mode-badge" id="mode-badge">
+      <span class="mode-dot" aria-hidden="true"></span>
+      <span id="mode-label">Listening</span>
+    </div>
+  </div>
 </header>
 
 <!-- Central Viewport -->
 <main class="viewport-area">
-  <div class="orb-viewport">
+  <div class="orb-viewport" id="orb-viewport">
+    <svg class="orb-hud" viewBox="0 0 200 200" aria-hidden="true">
+      <circle class="hud-ring hud-ring--outer" cx="100" cy="100" r="96"/>
+      <circle class="hud-ring hud-ring--ticks" cx="100" cy="100" r="90"/>
+      <circle class="hud-ring hud-ring--arc" cx="100" cy="100" r="84"/>
+    </svg>
     <signal-orb id="signal-orb" state="listening" level="0.4" class="orb-visible"></signal-orb>
     <speaking-orb id="speaking-orb" state="listening" level="0.4" class="orb-hidden"></speaking-orb>
   </div>
-  <div class="feedback-line" id="feedback-line">Standing by for voice or command.</div>
+  <p class="feedback-line" id="feedback-line" aria-live="polite">Standing by for voice or command.</p>
 </main>
 
 <!-- Bottom Input Capsule -->
 <footer class="input-capsule-container">
-  <form class="input-capsule" id="prompt-form">
-    <button type="button" class="btn-mic" id="btn-mic" title="Voice Input" aria-label="Microphone">
-      <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+  <form class="input-capsule" id="prompt-form" autocomplete="off">
+    <button type="button" class="btn-mic" id="btn-mic" title="Toggle microphone" aria-label="Toggle microphone" aria-pressed="false">
+      <span class="mic-level" aria-hidden="true"></span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
     </button>
-    <input 
-      type="text" 
-      class="prompt-input" 
-      id="prompt-input" 
-      placeholder="Ask JARVIS anything, or press Mic to speak..." 
-      aria-label="Prompt Input"
-      autocomplete="off"
+    <label class="sr-only" for="prompt-input">Message JARVIS</label>
+    <input
+      type="text"
+      class="prompt-input"
+      id="prompt-input"
+      name="prompt"
+      placeholder="Ask JARVIS anything…"
+      enterkeyhint="send"
+      spellcheck="false"
     >
-    <button type="submit" class="btn-send" id="btn-send" title="Transmit" aria-label="Transmit">
-      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    <kbd class="kbd-hint" id="kbd-hint" aria-hidden="true"></kbd>
+    <button type="submit" class="btn-send" id="btn-send" title="Send" aria-label="Send" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
   </form>
+  <p class="hint-row" id="hint-row"></p>
 </footer>
 </body>
 </html>

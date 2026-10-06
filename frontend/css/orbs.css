@@ -1,14 +1,65 @@
 /* Orb Viewport & Layering System */
 
 .orb-viewport {
+  --orb-size: min(85vw, 440px, 54dvh);
   position: relative;
-  width: min(85vw, 440px);
-  height: 520px;
+  width: var(--orb-size);
+  height: calc(var(--orb-size) * 1.2);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
 }
+
+/* HUD rings framing the orb */
+.orb-hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: visible;
+  pointer-events: none;
+  color: rgb(var(--mode-rgb));
+  transition: color var(--dur-slow, 900ms) ease;
+}
+
+.hud-ring {
+  fill: none;
+  stroke: currentColor;
+  transform-origin: 100px 100px;
+  transform-box: view-box;
+}
+
+.hud-ring--outer {
+  stroke-width: 0.35;
+  stroke-opacity: 0.18;
+  stroke-dasharray: 2 6;
+  animation: hud-spin 60s linear infinite;
+}
+
+.hud-ring--ticks {
+  stroke-width: 1.6;
+  stroke-opacity: 0.14;
+  stroke-dasharray: 0.4 3.6;
+  animation: hud-spin 90s linear infinite reverse;
+}
+
+.hud-ring--arc {
+  stroke-width: 0.6;
+  stroke-opacity: 0.45;
+  stroke-linecap: round;
+  stroke-dasharray: 60 468;
+  filter: drop-shadow(0 0 2px currentColor);
+  animation: hud-spin 9s linear infinite;
+}
+
+body[data-mode="thinking"] .hud-ring--arc { animation-duration: 3s; stroke-dasharray: 90 438; }
+body[data-mode="searching"] .hud-ring--arc { animation-duration: 1.6s; stroke-dasharray: 40 88; }
+body[data-mode="speaking"] .hud-ring--arc { stroke-opacity: calc(0.3 + var(--level, 0) * 0.7); }
+body[data-mode="done"] .hud-ring--arc { stroke-dasharray: 528 0; stroke-opacity: 0.3; }
+
+@keyframes hud-spin { to { transform: rotate(360deg); } }
 
 signal-orb {
   position: absolute;
@@ -16,7 +67,7 @@ signal-orb {
   left: 0;
   width: 100%;
   aspect-ratio: 1;
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  transition: opacity 0.45s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease;
 }
 
 speaking-orb {
@@ -27,15 +78,18 @@ speaking-orb {
   height: auto !important;
   contain: none !important;
   --cap: #f4f6fc;
-  --cap-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  --cap-font: var(--font-sans);
+  transition: opacity 0.45s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease;
 }
 
 .orb-hidden {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  transform: scale(0.96);
+  transform: scale(0.92);
+  filter: blur(6px);
+  transition-property: opacity, transform, filter, visibility;
+  transition-delay: 0s, 0s, 0s, 0.45s;
 }
 
 .orb-visible {
@@ -43,4 +97,5 @@ speaking-orb {
   pointer-events: auto;
   visibility: visible;
   transform: scale(1);
+  filter: blur(0);
 }

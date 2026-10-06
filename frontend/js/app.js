@@ -6,6 +6,7 @@
 import { CONFIG, getGatewayUrl, generateSessionId } from './config.js';
 import './components/signal-orb.js';
 import './components/speaking-orb.js';
+import { ParticleField } from './components/particle-field.js';
 import { AudioPlayer } from './audio/player.js';
 import { AudioRecorder } from './audio/recorder.js';
 import { GatewayClient } from './gateway/client.js';
@@ -16,15 +17,50 @@ import { GatewayClient } from './gateway/client.js';
   const speakingOrb = document.getElementById('speaking-orb');
   const statusDot = document.getElementById('status-dot');
   const gatewayLabel = document.getElementById('gateway-label');
-  const modeBadge = document.getElementById('mode-badge');
+  const modeLabel = document.getElementById('mode-label');
   const feedbackLine = document.getElementById('feedback-line');
   const btnMic = document.getElementById('btn-mic');
+  const btnSend = document.getElementById('btn-send');
   const promptInput = document.getElementById('prompt-input');
   const promptForm = document.getElementById('prompt-form');
+  const orbViewport = document.getElementById('orb-viewport');
+  const kbdHint = document.getElementById('kbd-hint');
+  const hintRow = document.getElementById('hint-row');
+  const fieldCanvas = document.getElementById('particle-field');
 
   // Application Constants
-  const MIN_SEARCH_VISIBLE_MS = 800;
-  const DONE_VISIBLE_MS = 1200;
+  const { MIN_SEARCH_VISIBLE_MS, DONE_VISIBLE_MS, SHORTCUTS } = CONFIG.UI;
+  const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
+  const modKey = isMac ? '⌘' : 'Ctrl';
+
+  // Ambient 3D particle field + live voice level plumbing
+  let micLevel = 0;
+  let lastCssLevel = -1;
+  const field = fieldCanvas
+    ? new ParticleField(fieldCanvas, { particles: CONFIG.PARTICLES, theme: CONFIG.THEME })
+    : null;
+
+  function currentVoiceLevel() {
+    const lvl = currentInterfaceMode === 'speaking'
+      ? Math.min(1, (speakingOrb?.env || 0) * 1.4)
+      : (recorder.isActive ? micLevel : 0);
+    if (Math.abs(lvl - lastCssLevel) > 0.02) {
+      lastCssLevel = lvl;
+      const v = lvl.toFixed(3);
+      orbViewport?.style.setProperty('--level', v);
+      btnMic?.style.setProperty('--level', v);
+    }
+    return lvl;
+  }
+
+  function applyTheme(mode) {
+    const pair = CONFIG.THEME[mode];
+    if (!pair) return;
+    const root = document.documentElement.style;
+    root.setProperty('--mode-rgb', pair[0].join(', '));
+    root.setProperty('--mode-rgb-2', pair[1].join(', '));
+    document.body.dataset.mode = mode;
+  }
 
   function formatToolDetail(name, args) {
     if (!name) return 'Retrieving context or executing tool...';
@@ -119,6 +155,7 @@ import { GatewayClient } from './gateway/client.js';
       gateway.sendLiveAudio(pcmBase64);
     },
     onLevel: (level) => {
+      micLevel = Math.max(0, (level - 0.15) / 0.85);
       if (currentInterfaceMode === 'listening' && signalOrb) {
         signalOrb.setAttribute('level', level.toFixed(2));
       }
@@ -135,10 +172,9 @@ import { GatewayClient } from './gateway/client.js';
       if (status === 'connected') {
         statusDot.className = 'status-dot';
         gatewayLabel.textContent = label;
+        field?.pulse(1);
         if (!recorder.isActive) {
-          recorder.start().then((active) => {
-            if (active) btnMic.classList.add('active');
-          });
+          recorder.start().then((active) => setMicUi(active === true));
         }
       } else {
         statusDot.className = 'status-dot connecting';
@@ -159,9 +195,11 @@ import { GatewayClient } from './gateway/client.js';
     }
 
     currentInterfaceMode = mode;
-    if (modeBadge) {
-      modeBadge.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+    if (modeLabel) {
+      modeLabel.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
     }
+    applyTheme(mode);
+    field?.setMode(mode);
 
     if (mode === 'speaking') {
       if (signalOrb) {
@@ -373,17 +411,20 @@ import { GatewayClient } from './gateway/client.js';
   });
 
   // User Interaction & Mic Controls
+  function setMicUi(active) {
+    if (!btnMic) return;
+    btnMic.classList.toggle('active', active);
+    btnMic.setAttribute('aria-pressed', String(active));
+  }
+
   async function handleMicToggle() {
     player.getAudioContext();
     const active = await recorder.toggle();
-    if (btnMic) {
-      if (active) {
-        btnMic.classList.add('active');
-        if (feedbackLine) feedbackLine.textContent = 'JARVIS is listening... Speak or type anytime.';
-      } else {
-        btnMic.classList.remove('active');
-        if (feedbackLine) feedbackLine.textContent = 'Microphone paused.';
-      }
+    setMicUi(active);
+    if (feedbackLine && currentInterfaceMode === 'listening') {
+      feedbackLine.textContent = active
+        ? 'JARVIS is listening... Speak or type anytime.'
+        : 'Microphone paused.';
     }
   }
 
@@ -398,9 +439,7 @@ import { GatewayClient } from './gateway/client.js';
   const unlockAudioOnGesture = (e) => {
     player.getAudioContext();
     if (!recorder.isActive && !e.target.closest('#btn-mic')) {
-      recorder.start().then((active) => {
-        if (active && btnMic) btnMic.classList.add('active');
-      });
+      recorder.start().then((active) => setMicUi(active === true));
     }
   };
 
@@ -408,12 +447,18 @@ import { GatewayClient } from './gateway/client.js';
   window.addEventListener('keydown', unlockAudioOnGesture, { once: true });
 
   // Prompt Submission
+  function syncSendState() {
+    if (btnSend && promptInput) btnSend.disabled = !promptInput.value.trim();
+  }
+
   function submitQuery(rawText) {
     const text = rawText.trim();
     if (!text) return;
 
     player.getAudioContext();
     if (promptInput) promptInput.value = '';
+    syncSendState();
+    field?.pulse(1.2);
 
     setInterfaceMode('thinking');
     if (feedbackLine) {
@@ -438,9 +483,32 @@ import { GatewayClient } from './gateway/client.js';
       }
     });
   }
+  promptInput?.addEventListener('input', syncSendState);
+
+  // Keyboard shortcuts
+  if (kbdHint) kbdHint.textContent = SHORTCUTS.FOCUS_INPUT;
+  if (hintRow) {
+    hintRow.innerHTML = `<kbd>${SHORTCUTS.FOCUS_INPUT}</kbd> type · <kbd>${modKey}+${SHORTCUTS.TOGGLE_MIC.toUpperCase()}</kbd> mic · <kbd>Esc</kbd> dismiss`;
+  }
+
+  window.addEventListener('keydown', (e) => {
+    const typing = document.activeElement === promptInput;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === SHORTCUTS.TOGGLE_MIC) {
+      e.preventDefault();
+      handleMicToggle();
+    } else if (!typing && e.key === SHORTCUTS.FOCUS_INPUT && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      promptInput?.focus();
+    } else if (typing && e.key === 'Escape') {
+      promptInput.blur();
+    }
+  });
 
   // Initialize
   setInterfaceMode('listening');
+  if (field) {
+    field.setAnchor(orbViewport).setLevelSource(currentVoiceLevel).start();
+  }
   gateway.connect();
 
   // App visibility & focus synchronization to eliminate background freeze

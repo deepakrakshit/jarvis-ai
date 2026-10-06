@@ -152,14 +152,14 @@ export class AudioRecorder {
     }
   }
 
-  toggle() {
+  async toggle() {
     const now = Date.now();
-    if (now - this.lastToggleTime < 350) return;
+    if (now - this.lastToggleTime < 350) return this.isActive;
     this.lastToggleTime = now;
     if (this.isActive) {
       this.stop();
-    } else {
-      this.start();
+      return false;
     }
+    return (await this.start()) === true;
   }
 }

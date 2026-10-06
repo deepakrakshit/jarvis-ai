@@ -38,12 +38,25 @@ class JarvisUIRequestHandler(http.server.SimpleHTTPRequestHandler):
         ".ico": "image/x-icon",
     }
 
+    def translate_path(self, path: str) -> str:
+        """Translate a /-relative path to the local filesystem, handling /frontend/ prefix."""
+        clean_path = path.split("?", 1)[0].split("#", 1)[0]
+        if clean_path in ("/frontend", "/frontend/"):
+            path = "/"
+        elif clean_path.startswith("/frontend/"):
+            path = "/" + clean_path[len("/frontend/") :]
+        else:
+            path = clean_path
+        return super().translate_path(path)
+
     def end_headers(self) -> None:
         """Inject CORS and caching headers."""
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Cache-Control", "no-cache, must-revalidate")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
@@ -68,6 +81,7 @@ class JarvisWebServer:
         self.host = host or settings.UI_HOST
         self.port = port or settings.UI_PORT
         self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
+        self.frontend_dir = self.workspace_dir / "frontend"
         self._server: Optional[http.server.ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._is_running = False
@@ -92,9 +106,8 @@ class JarvisWebServer:
         auto_discover = getattr(settings, "UI_PORT_AUTO_DISCOVERY", True)
         max_search = getattr(settings, "UI_PORT_SEARCH_LIMIT", 50) if auto_discover else 1
 
-        handler_factory = functools.partial(
-            JarvisUIRequestHandler, directory=str(self.workspace_dir)
-        )
+        target_dir = self.frontend_dir if self.frontend_dir.is_dir() else self.workspace_dir
+        handler_factory = functools.partial(JarvisUIRequestHandler, directory=str(target_dir))
 
         for offset in range(max_search):
             attempt_port = target_port + offset
@@ -130,9 +143,13 @@ class JarvisWebServer:
 
     def launch_desktop_window(self, gateway_port: Optional[int] = None) -> None:
         """Launch JARVIS in a dedicated, borderless desktop application window."""
-        target_url = f"{self.url}/index.html"
+        import time
+
+        query_parts: list[str] = []
         if gateway_port:
-            target_url += f"?gw={gateway_port}"
+            query_parts.append(f"gw={gateway_port}")
+        query_parts.append(f"t={int(time.time())}")
+        target_url = f"{self.url}/index.html?{'&'.join(query_parts)}"
 
         # 1. Search for Microsoft Edge (native on Windows)
         edge_candidates = [
