@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS completion boundary — isolated preview</title>
+<style>
+  body { background:#070b14; color:#dbe8f4; font:16px system-ui; max-width:900px; margin:40px auto; padding:20px; }
+  signal-orb { max-width:420px; margin:auto; }
+  button { background:#18283b; color:inherit; border:1px solid #446078; border-radius:8px; padding:12px; margin:4px; }
+  #status { font-size:24px; text-align:center; }
+</style>
+<h1>Completion boundary</h1>
+<p>Isolated real renderer. No Gateway, microphone, audio, credentials or network calls. The done window remains configured independently of settlement.</p>
+<signal-orb id="orb" particles="1200" state="searching"></signal-orb>
+<p id="status" role="status">Searching</p>
+<button id="search">Searching</button><button id="done">Done</button>
+<button id="speech">Immediate speech</button><button id="interrupt">Interrupt</button>
+<p>Use system reduced motion to review the static result. Tunables: <code>?settleMs=650&amp;doneMs=1200</code>.</p>
+<script type="module">
+  import { CONFIG } from '../js/config.js';
+  import '../js/components/signal-orb.js';
+  const orb = document.querySelector('#orb'), status = document.querySelector('#status');
+  orb.setAttribute('settle-ms', Math.max(0, Math.min(CONFIG.UI.DONE_SETTLE_MS, CONFIG.UI.DONE_VISIBLE_MS)));
+  let expiry;
+  const change = mode => {
+    clearTimeout(expiry);
+    status.textContent = mode;
+    orb.style.visibility = mode === 'Speaking' ? 'hidden' : 'visible';
+    if (mode === 'Speaking') orb.cancelSettlement();
+    else orb.setAttribute('state', mode.toLowerCase());
+  };
+  document.querySelector('#search').onclick = () => change('Searching');
+  document.querySelector('#done').onclick = () => {
+    change('Done');
+    expiry = setTimeout(() => change('Listening'), CONFIG.UI.DONE_VISIBLE_MS);
+  };
+  document.querySelector('#speech').onclick = () => change('Speaking');
+  document.querySelector('#interrupt').onclick = () => change('Listening');
+</script>
+</html>

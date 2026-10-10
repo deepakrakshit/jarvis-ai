@@ -30,6 +30,7 @@ import { GatewayClient } from './gateway/client.js';
 
   // Application Constants
   const { MIN_SEARCH_VISIBLE_MS, DONE_VISIBLE_MS, SHORTCUTS } = CONFIG.UI;
+  signalOrb?.setAttribute('settle-ms', Math.max(0, Math.min(CONFIG.UI.DONE_SETTLE_MS, DONE_VISIBLE_MS)));
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl';
 
@@ -203,6 +204,7 @@ import { GatewayClient } from './gateway/client.js';
 
     if (mode === 'speaking') {
       if (signalOrb) {
+        signalOrb.cancelSettlement();
         signalOrb.classList.remove('orb-visible');
         signalOrb.classList.add('orb-hidden');
       }

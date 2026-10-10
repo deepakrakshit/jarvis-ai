@@ -52,7 +52,7 @@
   };
 
   class SignalOrb extends HTMLElement {
-    static get observedAttributes() { return ['state','level','particles']; }
+    static get observedAttributes() { return ['state','level','particles','settle-ms']; }
     connectedCallback() {
       if (!this.shadowRoot) {
         this.attachShadow({mode:'open'}).innerHTML = `<style>:host{display:block;width:100%;aspect-ratio:1;contain:layout paint;position:relative}canvas{position:absolute;inset:0;width:100%;height:100%;display:block}</style><canvas aria-hidden="true"></canvas><canvas aria-hidden="true"></canvas>`;
@@ -62,25 +62,45 @@
         this.setAttribute('role','img');
       }
       this.media=matchMedia('(prefers-reduced-motion: reduce)');
-      this.weights=names.map(n=>n===this.state?1:0); this.time=0; this.last=0; this.slow=0;
+      this.weights=names.map(n=>n===this.state?1:0); this.time=0; this.last=0; this.slow=0; this.settlement=null;
       this.resize=()=>{const size=Math.max(1,Math.round(this.getBoundingClientRect().width*Math.min(devicePixelRatio||1,2)));this.canvas.width=this.canvas.height=this.dots.width=this.dots.height=size;this.paint(this.media.matches?0:this.time,this.weights);};
       this.observer=new ResizeObserver(this.resize);this.observer.observe(this);this.resize();
-      this.onMotion=()=>{cancelAnimationFrame(this.frame);this.last=0;this.paint(0,names.map(n=>n===this.state?1:0));if(!this.media.matches&&!this.hasAttribute('recording'))this.frame=requestAnimationFrame(this.tick);};
+      this.onMotion=()=>{cancelAnimationFrame(this.frame);this.last=0;this.cancelSettlement();this.weights=names.map(n=>n===this.state?1:0);this.paint(0,this.weights);if(!this.media.matches&&!this.hasAttribute('recording'))this.frame=requestAnimationFrame(this.tick);};
       this.media.addEventListener('change',this.onMotion);
       this.setAttribute('aria-label',`Assistant ${this.state}`);
       if(!this.hasAttribute('recording')&&!this.media.matches)this.frame=requestAnimationFrame(this.tick);
     }
-    disconnectedCallback(){cancelAnimationFrame(this.frame);this.observer?.disconnect();this.media?.removeEventListener('change',this.onMotion);}
+    disconnectedCallback(){this.cancelSettlement();cancelAnimationFrame(this.frame);this.observer?.disconnect();this.media?.removeEventListener('change',this.onMotion);}
     get state(){const value=this.getAttribute('state');return names.includes(value)?value:'listening';}
     get level(){const n=Number(this.getAttribute('level')??'.5');return Number.isFinite(n)?Math.max(0,Math.min(1,n)):.5;}
     get particles(){const n=parseInt(this.getAttribute('particles'),10);return Number.isFinite(n)?Math.max(200,Math.min(20000,n)):(this.auto??=this.gl?autoCount():1000);}
-    attributeChangedCallback(){if(!this.ctx)return;this.setAttribute('aria-label',`Assistant ${this.state}`);if(this.media?.matches){this.weights=names.map(n=>n===this.state?1:0);this.paint(0,this.weights);}}
+    get settleMs(){const value=this.getAttribute('settle-ms');if(value===null)return null;const n=Number(value);return Number.isFinite(n)?Math.max(0,n):0;}
+    cancelSettlement(){this.settlement=null;}
+    attributeChangedCallback(name,oldValue,newValue){
+      if(!this.ctx)return;
+      this.setAttribute('aria-label',`Assistant ${this.state}`);
+      if(name==='state'&&oldValue!==newValue){
+        this.cancelSettlement();
+        if(this.state==='done'&&this.settleMs!==null&&!this.media?.matches&&!this.hasAttribute('recording')){
+          if(this.settleMs)this.settlement={start:performance.now(),duration:this.settleMs,from:[...this.weights]};
+          else this.weights=names.map(n=>n===this.state?1:0);
+        }
+      }
+      if(this.media?.matches){this.cancelSettlement();this.weights=names.map(n=>n===this.state?1:0);this.paint(0,this.weights);}
+    }
     tick=(now)=>{
       if(this.hasAttribute('recording'))return;
       const dt=this.last?Math.min((now-this.last)/1000,.05):0;this.last=now;this.time+=dt;
       if(!this.hasAttribute('particles')&&dt){this.slow=dt>.025?this.slow+1:0;if(this.slow>30&&this.auto>800){this.auto=Math.max(800,Math.round(this.auto*.6));this.slow=0;}}
-      const k=1-Math.exp(-dt*7);
-      this.weights=this.weights.map((w,i)=>w+((names[i]===this.state?1:0)-w)*k);
+      if(this.settlement){
+        const p=Math.max(0,Math.min(1,(now-this.settlement.start)/this.settlement.duration));
+        const k=p*p*(3-2*p);
+        this.weights=this.settlement.from.map((w,i)=>w+((names[i]==='done'?1:0)-w)*k);
+        if(p===1)this.cancelSettlement();
+      }else{
+        const k=1-Math.exp(-dt*7);
+        this.weights=this.weights.map((w,i)=>w+((names[i]===this.state?1:0)-w)*k);
+      }
       this.paint(this.media.matches?0:this.time,this.weights);
       this.frame=requestAnimationFrame(this.tick);
     };

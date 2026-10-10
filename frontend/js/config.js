@@ -24,6 +24,7 @@ export const CONFIG = {
   UI: {
     MIN_SEARCH_VISIBLE_MS: numParam('searchMs', 800),
     DONE_VISIBLE_MS: numParam('doneMs', 1200),
+    DONE_SETTLE_MS: Math.max(0, numParam('settleMs', 650)),
     SHORTCUTS: {
       FOCUS_INPUT: '/',
       TOGGLE_MIC: 'm', // combined with Ctrl / Cmd
