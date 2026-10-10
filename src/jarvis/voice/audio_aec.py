@@ -383,7 +383,8 @@ class PartitionedBlockAEC:
             self.X_history.insert(0, X_zero)
             self.is_double_talk = False
             self.last_erle_db = 0.0
-            return d_block.copy()
+            passthrough: FloatArray = d_block.copy()
+            return passthrough
 
         # Step 1: Overlap-save 2B-point input for reference: [x_old, x_block]
         x_2b = np.concatenate([self.x_old, x_block])
