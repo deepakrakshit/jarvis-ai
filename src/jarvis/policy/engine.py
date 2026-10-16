@@ -13,7 +13,11 @@ from jarvis.contracts.action import ActionRequest, RiskTier
 from jarvis.contracts.policy import ApprovalStatus, PolicyDecision, PolicyVerdict
 from jarvis.policy.approvals import ApprovalManager, approval_manager
 from jarvis.policy.firewall import (
+    CAPABILITY_ARTIFACT_DELIVER,
     CAPABILITY_FILESYSTEM_DELETE,
+    CAPABILITY_FILESYSTEM_LIST,
+    CAPABILITY_FILESYSTEM_READ,
+    CAPABILITY_FILESYSTEM_SEARCH,
     CAPABILITY_FILESYSTEM_WRITE,
     CAPABILITY_PROCESS_TERMINATE,
     CAPABILITY_RISK_MAP,
@@ -60,6 +64,30 @@ class PolicyEngine:
             )
             self._log_decision(request, decision)
             return decision
+
+        if capability in {
+            CAPABILITY_ARTIFACT_DELIVER,
+            CAPABILITY_FILESYSTEM_DELETE,
+            CAPABILITY_FILESYSTEM_LIST,
+            CAPABILITY_FILESYSTEM_READ,
+            CAPABILITY_FILESYSTEM_SEARCH,
+            CAPABILITY_FILESYSTEM_WRITE,
+        }:
+            path_value = request.arguments.get("path")
+            if path_value:
+                from jarvis.execution.windows.filesystem import get_sensitive_path_reason
+
+                sensitive_reason = get_sensitive_path_reason(str(path_value))
+                if sensitive_reason:
+                    decision = PolicyDecision(
+                        action_id=request.action_id,
+                        verdict=PolicyVerdict.DENY,
+                        reason=sensitive_reason,
+                        capability=capability,
+                        risk_tier=RiskTier.CRITICAL.value,
+                    )
+                    self._log_decision(request, decision)
+                    return decision
 
         # Scoped capability boundary (e.g. sub-agent least privilege firewall)
         if self.allowed_capabilities is not None and capability not in self.allowed_capabilities:

@@ -30,6 +30,8 @@ FORBIDDEN_EXTENSIONS: Set[str] = {
     ".db",
 }
 
+SENSITIVE_DIRECTORY_NAMES: Set[str] = {".ssh", ".gnupg"}
+
 
 def resolve_path(path_str: str) -> Path:
     """Normalize and resolve user paths, mapping aliases to standard user folders."""
@@ -79,19 +81,38 @@ def resolve_path(path_str: str) -> Path:
     return p
 
 
+def _sensitive_path_reason(path: Path) -> Optional[str]:
+    """Return a denial reason when a path names a protected file or directory."""
+    resolved = path.resolve(strict=False)
+    for component in resolved.parts:
+        component_lower = component.lower()
+        if any(pattern in component_lower for pattern in FORBIDDEN_FILE_PATTERNS):
+            return f"Access to sensitive path '{path}' is strictly prohibited."
+        if component_lower in SENSITIVE_DIRECTORY_NAMES:
+            return f"Access to private directory '{path}' is strictly prohibited."
+
+    if resolved.suffix.lower() in FORBIDDEN_EXTENSIONS:
+        return f"Files with extension '{resolved.suffix}' contain private data and are protected."
+    return None
+
+
+def _ensure_safe_path(path: Path) -> None:
+    """Reject protected paths at the execution boundary."""
+    reason = _sensitive_path_reason(path)
+    if reason:
+        raise PermissionError(reason)
+
+
+def get_sensitive_path_reason(path_str: str) -> Optional[str]:
+    """Return a policy-ready denial reason for a protected user path."""
+    return _sensitive_path_reason(resolve_path(path_str))
+
+
 def is_safe_artifact_path(path: Path) -> Tuple[bool, Optional[str]]:
     """Verify that a path is safe for artifact export and not a private credential."""
-    name_lower = path.name.lower()
-
-    for pattern in FORBIDDEN_FILE_PATTERNS:
-        if pattern in name_lower:
-            return False, f"Access to sensitive file '{path.name}' is strictly prohibited."
-
-    if path.suffix.lower() in FORBIDDEN_EXTENSIONS:
-        return (
-            False,
-            f"Files with extension '{path.suffix}' contain private secrets and cannot be delivered.",
-        )
+    sensitive_reason = _sensitive_path_reason(path)
+    if sensitive_reason:
+        return False, sensitive_reason
 
     # Check maximum file size for Telegram delivery (default: 50 MB)
     max_bytes = getattr(settings, "TELEGRAM_MAX_UPLOAD_BYTES", 52428800)
@@ -113,6 +134,7 @@ def is_safe_artifact_path(path: Path) -> Tuple[bool, Optional[str]]:
 def read_file(path_str: str, max_bytes: int = 1_000_000) -> str:
     """Read contents of a text file safely."""
     path = resolve_path(path_str)
+    _ensure_safe_path(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
     if not path.is_file():
@@ -126,6 +148,7 @@ def read_file(path_str: str, max_bytes: int = 1_000_000) -> str:
 def write_file(path_str: str, content: str, overwrite: bool = True) -> Dict[str, Any]:
     """Write text contents to a file, creating parent directories as needed."""
     path = resolve_path(path_str)
+    _ensure_safe_path(path)
     if path.exists() and not overwrite:
         raise FileExistsError(f"File already exists and overwrite=False: {path}")
 
@@ -144,6 +167,7 @@ def write_file(path_str: str, content: str, overwrite: bool = True) -> Dict[str,
 def list_directory(dir_str: str, max_entries: int = 100) -> List[Dict[str, Any]]:
     """List contents of a directory."""
     path = resolve_path(dir_str)
+    _ensure_safe_path(path)
     if not path.exists():
         raise FileNotFoundError(f"Directory not found: {path}")
     if not path.is_dir():
@@ -152,6 +176,8 @@ def list_directory(dir_str: str, max_entries: int = 100) -> List[Dict[str, Any]]
     entries: List[Dict[str, Any]] = []
     for item in path.iterdir():
         try:
+            if _sensitive_path_reason(item):
+                continue
             stat = item.stat()
             entries.append(
                 {
@@ -171,6 +197,7 @@ def list_directory(dir_str: str, max_entries: int = 100) -> List[Dict[str, Any]]
 def delete_file(path_str: str) -> Dict[str, Any]:
     """Delete a file with guarded validation."""
     path = resolve_path(path_str)
+    _ensure_safe_path(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
@@ -194,6 +221,7 @@ def search_files(
 ) -> Dict[str, Any]:
     """Search for files in a directory matching keywords and optional extension."""
     path = resolve_path(dir_str)
+    _ensure_safe_path(path)
     if not path.exists():
         return {
             "found": False,
@@ -220,6 +248,8 @@ def search_files(
     try:
         for item in path.iterdir():
             if not item.is_file():
+                continue
+            if _sensitive_path_reason(item):
                 continue
             name_lower = item.name.lower()
             if len(available_samples) < 15:
@@ -258,6 +288,7 @@ def search_files(
 def deliver_file(path_str: str, caption: Optional[str] = None) -> Dict[str, Any]:
     """Validate a host file and package it as an authorized deliverable artifact."""
     path = resolve_path(path_str)
+    _ensure_safe_path(path)
     if not path.exists():
         raise FileNotFoundError(f"File not found on host: {path_str}")
     if not path.is_file():
