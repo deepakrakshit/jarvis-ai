@@ -6,7 +6,6 @@ registered URI schemes, and running processes without relying on static applicat
 
 import os
 import shutil
-import winreg
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -119,6 +118,8 @@ class AppRegistry:
 
         # 3. Discover from registered URI protocols in HKEY_CLASSES_ROOT
         try:
+            import winreg
+
             with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "") as root_key:
                 num_subkeys, _, _ = winreg.QueryInfoKey(root_key)
                 for i in range(min(num_subkeys, 500)):

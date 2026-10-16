@@ -39,3 +39,38 @@ assert callable(capture_screenshot)
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_app_registry_import_without_registry_module() -> None:
+    """Importing the registry module does not require the optional host module."""
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    script = """
+import builtins
+
+real_import = builtins.__import__
+
+
+def block_registry_module(name, *args, **kwargs):
+    if name == "winreg":
+        raise ImportError("registry module unavailable")
+    return real_import(name, *args, **kwargs)
+
+
+builtins.__import__ = block_registry_module
+from jarvis.execution.windows.app_registry import AppRegistry
+
+assert AppRegistry.__name__ == "AppRegistry"
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(source_root), environment.get("PYTHONPATH", "")]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
