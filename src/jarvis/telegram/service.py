@@ -10,6 +10,7 @@ import asyncio
 import html
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -303,18 +304,45 @@ class TelegramService:
                     return
 
                 ticket_id = ticket["ticket_id"]
+                expires_at = ticket.get("expires_at")
+                if expires_at:
+                    try:
+                        expiry = datetime.fromisoformat(expires_at)
+                        if expiry.tzinfo is None:
+                            expiry = expiry.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) >= expiry:
+                            self._db.resolve_telegram_approval_ticket(ticket_id, "TIMED_OUT")
+                            await query.answer(
+                                "This approval request has expired.", show_alert=True
+                            )
+                            return
+                    except ValueError:
+                        logger.warning(f"Invalid expiry timestamp for approval ticket {ticket_id}")
+
                 capability = ticket.get("capability", "privileged_operation")
                 new_status = "APPROVED" if is_approval else "DENIED"
 
                 # Update database ticket
-                self._db.resolve_telegram_approval_ticket(ticket_id, new_status)
+                if not self._db.resolve_telegram_approval_ticket(ticket_id, new_status):
+                    await query.answer(
+                        "This approval request is no longer pending or has expired.",
+                        show_alert=True,
+                    )
+                    return
 
                 # Resolve with in-memory approval manager
-                approval_manager.resolve(
+                resolved = approval_manager.resolve(
                     approval_id=ticket_id,
                     approved=is_approval,
                     operator_identity=f"telegram:{query.from_user.id}",
                 )
+                if not resolved:
+                    logger.error(f"Approval manager could not resolve Telegram ticket {ticket_id}")
+                    await query.answer(
+                        "Approval could not be applied. No action was authorized.",
+                        show_alert=True,
+                    )
+                    return
 
                 # Edit message to reflect decision
                 verdict_icon = "✅" if is_approval else "❌"
@@ -833,6 +861,9 @@ class TelegramService:
             return []
 
         opaque_token = secrets.token_urlsafe(16)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            seconds=max(1, int(settings.TELEGRAM_APPROVAL_TTL_SECONDS))
+        )
         card_text = format_approval_request_card(
             ticket_id=ticket_id,
             capability=capability,
@@ -863,7 +894,7 @@ class TelegramService:
                     risk_tier=risk_tier,
                     capability=capability,
                     safe_display=card_text,
-                    expires_at="",
+                    expires_at=expires_at.isoformat(),
                 )
             except Exception as err:
                 logger.warning(f"Failed to dispatch approval ticket to user {uid}: {err}")

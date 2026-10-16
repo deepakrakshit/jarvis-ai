@@ -103,6 +103,7 @@ class JarvisSettings(BaseSettings):
 
     # Security & Policy Controls (defaults to True for system safety, bypassed dynamically during interactive live voice sessions)
     REQUIRE_APPROVALS: bool = Field(default=True)
+    APPROVAL_TTL_SECONDS: int = Field(default=300)
 
     # Operator & Persona Settings
     USER_CALLSIGN: str = Field(default="Sir")

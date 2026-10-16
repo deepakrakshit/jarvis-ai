@@ -354,4 +354,10 @@ MIGRATIONS: List[str] = [
         processed_at TEXT NOT NULL
     );
     """,
+    # Approval expiration metadata (v2)
+    """
+    ALTER TABLE approvals ADD COLUMN expires_at TEXT;
+    CREATE INDEX IF NOT EXISTS idx_approvals_status_expiry
+        ON approvals(status, expires_at);
+    """,
 ]

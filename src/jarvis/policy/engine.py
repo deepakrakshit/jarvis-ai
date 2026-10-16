@@ -36,7 +36,9 @@ class PolicyEngine:
         require_approvals: Optional[bool] = None,
     ) -> None:
         self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
-        self.approvals = approvals or approval_manager
+        self.approvals = approvals or (
+            ApprovalManager(database=database) if database else approval_manager
+        )
         self.db = database or db
         self.allowed_capabilities = allowed_capabilities
         self.require_approvals = (

@@ -7,12 +7,14 @@ and strongly-typed repository methods for Tasks, Sessions, Actions, and Audits.
 import json
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
 
 from jarvis.config import settings
 from jarvis.contracts.action import ActionRequest, ActionResult
 from jarvis.contracts.memory import MemoryRecord, MemoryType, ProvenanceSource, TrustLevel
+from jarvis.contracts.policy import ApprovalRequest, ApprovalStatus
 from jarvis.contracts.task import Task, TaskPriority, TaskState, TaskType
 from jarvis.storage.migrations import MIGRATIONS
 from jarvis.telemetry import logger
@@ -263,6 +265,103 @@ class DatabaseEngine:
                     1 if res.audit_logged else 0,
                 ),
             )
+
+    # -------------------------------------------------------------------------
+    # Approval Repository
+    # -------------------------------------------------------------------------
+
+    def save_approval_request(self, request: ApprovalRequest) -> None:
+        """Persist an approval request and its current lifecycle state."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO approvals (
+                    approval_id, action_id, task_id, session_id, capability,
+                    target_resource, risk_summary, arguments_summary_json, status,
+                    requested_at, expires_at, decided_at, decided_by, rejection_reason
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(approval_id) DO UPDATE SET
+                    status = excluded.status,
+                    expires_at = excluded.expires_at,
+                    decided_at = excluded.decided_at,
+                    decided_by = excluded.decided_by,
+                    rejection_reason = excluded.rejection_reason;
+                """,
+                (
+                    request.approval_id,
+                    request.action_id,
+                    request.task_id,
+                    request.session_id,
+                    request.capability,
+                    request.target_resource,
+                    request.risk_summary,
+                    json.dumps(request.arguments_summary),
+                    request.status.value,
+                    request.requested_at.isoformat(),
+                    request.expires_at.isoformat() if request.expires_at else None,
+                    request.decided_at.isoformat() if request.decided_at else None,
+                    request.decided_by,
+                    request.rejection_reason,
+                ),
+            )
+
+    def get_approval_request(self, approval_id: str) -> Optional[ApprovalRequest]:
+        """Load an approval request from durable storage."""
+        with self.transaction() as cursor:
+            cursor.execute("SELECT * FROM approvals WHERE approval_id = ?;", (approval_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            def parse_datetime(value: Optional[str]) -> Optional[datetime]:
+                if not value:
+                    return None
+                parsed = datetime.fromisoformat(value)
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+            requested_at = parse_datetime(row["requested_at"]) or datetime.now(timezone.utc)
+            return ApprovalRequest(
+                approval_id=row["approval_id"],
+                action_id=row["action_id"],
+                task_id=row["task_id"],
+                session_id=row["session_id"],
+                capability=row["capability"],
+                target_resource=row["target_resource"],
+                risk_summary=row["risk_summary"],
+                arguments_summary=json.loads(row["arguments_summary_json"] or "{}"),
+                status=ApprovalStatus(row["status"]),
+                requested_at=requested_at,
+                expires_at=parse_datetime(row["expires_at"]),
+                decided_at=parse_datetime(row["decided_at"]),
+                decided_by=row["decided_by"],
+                rejection_reason=row["rejection_reason"],
+            )
+
+    def resolve_approval(
+        self,
+        approval_id: str,
+        status: ApprovalStatus,
+        decided_by: Optional[str] = None,
+        rejection_reason: Optional[str] = None,
+    ) -> bool:
+        """Atomically resolve a still-pending approval request."""
+        with self.transaction() as cursor:
+            cursor.execute(
+                """
+                UPDATE approvals
+                SET status = ?, decided_at = ?, decided_by = ?, rejection_reason = ?
+                WHERE approval_id = ? AND status = ?;
+                """,
+                (
+                    status.value,
+                    datetime.now(timezone.utc).isoformat(),
+                    decided_by,
+                    rejection_reason,
+                    approval_id,
+                    ApprovalStatus.PENDING.value,
+                ),
+            )
+            return cursor.rowcount > 0
 
     # -------------------------------------------------------------------------
     # Audit Log Repository

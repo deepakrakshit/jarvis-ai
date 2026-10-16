@@ -51,6 +51,7 @@ class ApprovalRequest(BaseModel):
 
     status: ApprovalStatus = ApprovalStatus.PENDING
     requested_at: datetime = Field(default_factory=utc_now)
+    expires_at: Optional[datetime] = None
     decided_at: Optional[datetime] = None
     decided_by: Optional[str] = None
     rejection_reason: Optional[str] = None
