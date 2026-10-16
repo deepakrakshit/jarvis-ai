@@ -46,11 +46,12 @@ install:
 	$(VENV_PYTHON) -m pip install --no-deps --no-build-isolation .
 	$(NPM) --prefix substrate ci --ignore-scripts
 
-# This target intentionally excludes tests that require a downloaded browser
-# or PortAudio hardware. It is deterministic and works without network access
-# after install has completed. Those suites remain available through test-all.
+# This target intentionally excludes tests that require a downloaded browser,
+# PortAudio hardware, or external provider/network access. It is deterministic
+# and works without network access after install has completed. Those suites
+# remain available through test-all.
 test:
-	$(PYTHON) -m pytest -m "not audio and not browser"
+	$(PYTHON) -m pytest -m "not audio and not browser and not live"
 
 test-all:
 	$(PYTHON) -m pytest

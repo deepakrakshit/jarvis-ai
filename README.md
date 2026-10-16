@@ -247,10 +247,10 @@ The CLI help and read-only diagnostics do not require provider credentials. Live
 
 ## 🧪 Quality Verification Gates
 
-The Makefile keeps checks local and does not download data or call paid APIs during the test command after setup:
+The Makefile keeps checks local and does not download data or call paid APIs during the test command after setup. The offline target excludes browser, audio, and provider-backed live tests; those remain available through `make test-all` when the required host capabilities and credentials are present:
 
 ```bash
-# Headless/offline-capable test target. Audio and browser-marked tests are excluded.
+# Headless/offline-capable test target. Audio, browser, and live-provider tests are excluded.
 make test
 
 # Python linter

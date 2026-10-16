@@ -8,7 +8,7 @@ This document outlines the testing strategy, test suites, quality gates, and Con
 
 The reproducible local checks are driven by the committed runtime pins and lockfiles. Code changes should satisfy these quality gates before being merged:
 
-1. **Offline regression suite**: `make test` must pass without network access, provider credentials, browser binaries, or audio hardware.
+1. **Offline regression suite**: `make test` must pass without network access, provider credentials, browser binaries, or audio hardware. It excludes tests marked `browser`, `audio`, or `live`.
 2. **Strict Type Safety**: `make typecheck` runs `mypy src tests` under strict mode.
 3. **Clean Linting and Formatting**: `make lint` and `make format-check` must report zero warnings or reformatting suggestions.
 4. **Frontend Syntax Verification**: `make js-check` checks every committed JavaScript client file.

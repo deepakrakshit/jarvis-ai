@@ -56,8 +56,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["src"]
 markers = [
-    "audio: tests that require PortAudio or physical audio devices",
-    "browser: tests that require an installed Playwright browser",
+    "audio: tests that require host audio hardware or PortAudio",
+    "browser: tests that require a browser binary or browser network access",
+    "live: tests that require external provider credentials or network access",
 ]
 
 [tool.mypy]

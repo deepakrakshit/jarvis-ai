@@ -83,6 +83,7 @@ async def test_model_router_fallback_execution() -> None:
     assert mock.invoked_models == [ModelFamily.GPT_OSS_120B, ModelFamily.QWEN_3_8_27B]
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_live_groq_reasoning_completion() -> None:
     """Live verification of Groq provider execution with real API credentials."""
@@ -102,6 +103,7 @@ async def test_live_groq_reasoning_completion() -> None:
     assert res.total_tokens > 0
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_live_google_genai_completion() -> None:
     """Live verification of Google GenAI provider execution with real API credentials."""

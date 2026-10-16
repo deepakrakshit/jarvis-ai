@@ -67,6 +67,7 @@ async def test_control_plane_dangerous_command_denial(
     assert "Policy Denial" in (final_task.error_message or "")
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_control_plane_cognitive_conversational_turn(
     temp_dir: Path, test_db: DatabaseEngine

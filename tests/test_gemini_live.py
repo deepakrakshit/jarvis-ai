@@ -85,6 +85,7 @@ async def test_tool_call_interception(mock_broker: AsyncMock) -> None:
     assert responses[0].response["output"]["os"] == "Windows"
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_live_gemini_3_8_connection_and_audio() -> None:
     """Live integration test connecting to Gemini 3.8 Live over WebSocket."""
