@@ -17,7 +17,12 @@ def ensure_interactive_desktop() -> None:
     try:
         import ctypes
 
-        user32 = ctypes.windll.user32
+        windll = getattr(ctypes, "windll", None)
+        if windll is None:
+            return
+        user32 = getattr(windll, "user32", None)
+        if user32 is None:
+            return
         h = user32.OpenDesktopW("default", 0, False, 0x01FF)
         if h:
             user32.SetThreadDesktop(h)

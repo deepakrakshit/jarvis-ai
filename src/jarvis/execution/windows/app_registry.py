@@ -120,15 +120,17 @@ class AppRegistry:
         try:
             import winreg
 
-            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "") as root_key:
-                num_subkeys, _, _ = winreg.QueryInfoKey(root_key)
+            registry_api: Any = winreg
+
+            with registry_api.OpenKey(registry_api.HKEY_CLASSES_ROOT, "") as root_key:
+                num_subkeys, _, _ = registry_api.QueryInfoKey(root_key)
                 for i in range(min(num_subkeys, 500)):
                     try:
-                        subkey_name = winreg.EnumKey(root_key, i)
+                        subkey_name = registry_api.EnumKey(root_key, i)
                         if not subkey_name.startswith((".", "{", "_")):
-                            with winreg.OpenKey(root_key, subkey_name) as sub:
+                            with registry_api.OpenKey(root_key, subkey_name) as sub:
                                 try:
-                                    _val, _ = winreg.QueryValueEx(sub, "URL Protocol")
+                                    _val, _ = registry_api.QueryValueEx(sub, "URL Protocol")
                                     protocol = f"{subkey_name}:"
                                     name = subkey_name.capitalize()
                                     if name.lower() not in discovered:

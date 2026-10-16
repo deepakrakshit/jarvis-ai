@@ -14,10 +14,11 @@ import asyncio
 import json
 import socket
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
 import pytest
 import websockets
+from websockets.typing import Origin
 
 from jarvis.core.control_plane import ControlPlane
 from jarvis.gateway.protocol import ProtocolEvent, create_challenge_response
@@ -87,7 +88,7 @@ async def authenticate(
         },
     }
     await ws.send(json.dumps(connect_req))
-    response = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+    response = cast(Dict[str, Any], json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0)))
     assert response["ok"] is True
     return response
 
@@ -428,7 +429,7 @@ async def test_gateway_rejects_unauthorized_origin(
     try:
         with pytest.raises(websockets.exceptions.InvalidStatus):
             async with websockets.connect(
-                f"ws://127.0.0.1:{port}", origin="https://untrusted.example"
+                f"ws://127.0.0.1:{port}", origin=Origin("https://untrusted.example")
             ):
                 pass
     finally:

@@ -21,7 +21,7 @@ import threading
 import time
 import wave
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 from scipy import signal  # type: ignore[import-untyped]
@@ -383,7 +383,7 @@ class PartitionedBlockAEC:
             self.X_history.insert(0, X_zero)
             self.is_double_talk = False
             self.last_erle_db = 0.0
-            return d_block.copy()
+            return cast(FloatArray, d_block.copy())
 
         # Step 1: Overlap-save 2B-point input for reference: [x_old, x_block]
         x_2b = np.concatenate([self.x_old, x_block])

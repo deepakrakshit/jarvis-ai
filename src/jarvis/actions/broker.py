@@ -202,12 +202,12 @@ class ActionBroker:
                 )
 
             if capability == "artifact.deliver":
-                path = output.get("artifact_path") if isinstance(output, dict) else None
+                artifact_path = output.get("artifact_path") if isinstance(output, dict) else None
                 return (
                     isinstance(output, dict)
                     and output.get("authorized") is True
-                    and isinstance(path, str)
-                    and Path(path).is_file(),
+                    and isinstance(artifact_path, str)
+                    and Path(artifact_path).is_file(),
                     False,
                     "Artifact authorization and file presence were checked.",
                 )

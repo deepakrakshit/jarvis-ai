@@ -2,21 +2,22 @@
 
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from jarvis.contracts.action import ActionRequest, RiskTier
-from jarvis.contracts.policy import ApprovalStatus, PolicyVerdict
+from jarvis.contracts.policy import ApprovalRequest, ApprovalStatus, PolicyVerdict
 from jarvis.policy.approvals import ApprovalManager
 from jarvis.policy.engine import PolicyEngine
 from jarvis.storage.database import DatabaseEngine
 from jarvis.storage.migrations import MIGRATIONS
 
 
-def make_manager(tmp_path) -> ApprovalManager:
+def make_manager(tmp_path: Path) -> ApprovalManager:
     """Create an approval manager backed by an isolated database."""
     return ApprovalManager(database=DatabaseEngine(db_path=tmp_path / "approvals.db"))
 
 
-def create_request(manager: ApprovalManager):
+def create_request(manager: ApprovalManager) -> ApprovalRequest:
     """Create a representative high-risk approval request."""
     return manager.create_request(
         action_id="action-1",
@@ -28,7 +29,7 @@ def create_request(manager: ApprovalManager):
     )
 
 
-def test_approval_survives_manager_restart(tmp_path) -> None:
+def test_approval_survives_manager_restart(tmp_path: Path) -> None:
     """A pending approval can be loaded by a fresh manager instance."""
     first_manager = make_manager(tmp_path)
     request = create_request(first_manager)
@@ -54,7 +55,7 @@ def test_approval_survives_manager_restart(tmp_path) -> None:
     assert after_restart.status.value == "APPROVED"
 
 
-def test_manager_refreshes_approval_state_from_shared_database(tmp_path) -> None:
+def test_manager_refreshes_approval_state_from_shared_database(tmp_path: Path) -> None:
     """A manager must observe a resolution made by another manager instance."""
     first_manager = make_manager(tmp_path)
     second_manager = make_manager(tmp_path)
@@ -68,7 +69,7 @@ def test_manager_refreshes_approval_state_from_shared_database(tmp_path) -> None
     assert refreshed.status == ApprovalStatus.APPROVED
 
 
-def test_approved_ticket_cannot_be_reused_for_another_action(tmp_path) -> None:
+def test_approved_ticket_cannot_be_reused_for_another_action(tmp_path: Path) -> None:
     """An approval must remain bound to the action it describes."""
     manager = make_manager(tmp_path)
     request = create_request(manager)
@@ -95,7 +96,7 @@ def test_approved_ticket_cannot_be_reused_for_another_action(tmp_path) -> None:
     assert "does not match" in decision.reason
 
 
-def test_expired_approval_cannot_be_resolved(tmp_path) -> None:
+def test_expired_approval_cannot_be_resolved(tmp_path: Path) -> None:
     """Expired approvals transition to TIMED_OUT and cannot authorize work."""
     manager = make_manager(tmp_path)
     request = create_request(manager)
@@ -129,7 +130,7 @@ def test_expired_approval_cannot_be_resolved(tmp_path) -> None:
     assert reloaded.status.value == "TIMED_OUT"
 
 
-def test_cancelled_approval_cannot_be_reused(tmp_path) -> None:
+def test_cancelled_approval_cannot_be_reused(tmp_path: Path) -> None:
     """Cancellation revokes an approval and blocks later resolution."""
     manager = make_manager(tmp_path)
     request = create_request(manager)
@@ -174,7 +175,7 @@ def test_cancelled_approval_cannot_be_reused(tmp_path) -> None:
     assert reloaded.status.value == "REVOKED"
 
 
-def test_legacy_pending_approval_gets_default_expiry_after_migration(tmp_path) -> None:
+def test_legacy_pending_approval_gets_default_expiry_after_migration(tmp_path: Path) -> None:
     """Pending rows from the pre-TTL schema must not remain valid forever."""
     db_path = tmp_path / "legacy.db"
     connection = sqlite3.connect(db_path)
