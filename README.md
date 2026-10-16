@@ -159,36 +159,51 @@ Explore the complete, implementation-verified knowledge base in **[`docs/`](docs
 
 ## 🚀 Quickstart & Installation
 
-### 1. Prerequisites
-- **Operating System:** Windows 10 or Windows 11 (64-bit)
-- **Python:** Python 3.10 or higher
-- **Node.js:** Node.js 18 LTS or higher
-- **Browser:** Microsoft Edge or Google Chrome (for the dedicated Neural UI window)
+The reproducible baseline is pinned to Python `3.14.4` in [`.python-version`](.python-version) and Node.js `22.14.0` in [`.nvmrc`](.nvmrc). Python dependencies are locked in [`uv.lock`](uv.lock) and the pip-compatible [`requirements.lock`](requirements.lock); the core Node substrate is locked by [`substrate/package-lock.json`](substrate/package-lock.json).
 
-### 2. Setup Environment
-```powershell
+### 1. Prerequisites
+
+- Git
+- Python `3.14.4` and `venv`
+- Node.js `22.14.0` and npm for the execution substrate
+- Docker Engine or Docker Desktop for the container path
+- A browser and host desktop/audio support only for the optional UI, browser, and voice integrations
+
+The application targets Windows desktop automation. The reproducibility commands below are also usable on Linux for the Python/server portion; Windows UI Automation, PowerShell, and native desktop checks require a Windows host and are not asserted by the Linux checks.
+
+### 2. Local setup (Linux/macOS shell)
+
+```bash
 # Clone the repository
 git clone https://github.com/deepakrakshit/jarvis-ai.git
 cd jarvis-ai
 
-# Create and activate Python virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Select the pinned Node runtime when nvm is available
+nvm install
+nvm use
 
-# Install Python package in editable mode
-pip install -e ".[dev]"
+# Create and activate the pinned Python environment
+python3.14 --version       # must report Python 3.14.4
+python3.14 -m venv .venv
+source .venv/bin/activate
 
-# Install Substrate Node dependencies
-cd substrate\extensions\whatsapp
-npm install
-npm run build
-cd ..\..\..
+# Install the committed Python lock and core substrate lock
+python -m pip install --requirement requirements.lock
+npm --prefix substrate ci --ignore-scripts
 
-# Configure environment variables
-Copy-Item .env.example .env
+# Configure environment variables without putting secrets in git
+cp .env.example .env
 ```
 
-Set your `GEMINI_API_KEY` in `.env`:
+If `nvm` is not installed, install Node.js `22.14.0` with the local version manager used by your environment and verify `node --version` before running the npm command. The WhatsApp extension has its own lockfile and is optional:
+
+```bash
+npm --prefix substrate/extensions/whatsapp ci
+npm --prefix substrate/extensions/whatsapp run build
+```
+
+Set provider credentials in `.env` only when using a provider-backed feature:
+
 ```ini
 GEMINI_API_KEY="your-gemini-api-key-here"
 ```
@@ -197,14 +212,24 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 
 ## 🎮 Usage & Interactive Modes
 
-### Start the Full Desktop Operating System
-Launch JARVIS with the dedicated Neural 3D Web UI, WebSocket Gateway, and Live Multimodal Session:
-```powershell
-jarvis
+### Start the server
+
+Run the gateway and web server without attempting to open a browser:
+
+```bash
+source .venv/bin/activate
+python -m jarvis.cli serve --host 127.0.0.1 --port 8765 --no-browser
 ```
 
-### Command Line Interface
-```powershell
+For the repository launcher, use the same command from the project root:
+
+```bash
+./run.sh serve --host 127.0.0.1 --port 8765 --no-browser
+```
+
+### Command-line diagnostics
+
+```bash
 # Interactive text chat mode
 jarvis chat
 
@@ -215,25 +240,53 @@ jarvis telegram pair
 jarvis health
 ```
 
+The CLI help and read-only diagnostics do not require provider credentials. Live model, browser, voice, Windows automation, and WhatsApp commands require their corresponding host capabilities and configuration.
+
 ---
 
 ## 🧪 Quality Verification Gates
 
-Pull requests must pass the project's automated quality gates before merge:
+The Makefile keeps checks local and does not download data or call paid APIs during the test command after setup:
 
-```powershell
-# Run Python linter
-ruff check .
+```bash
+# Headless/offline-capable test target. Audio and browser-marked tests are excluded.
+make test
 
-# Verify code formatting
-ruff format --check .
+# Python linter
+make lint
 
-# Validate strict static type safety
-mypy src tests
+# Python formatting check
+make format-check
 
-# Execute complete test suite
-pytest
+# Strict static type checking
+make typecheck
+
+# Frontend JavaScript syntax check when Node is installed
+make js-check
 ```
+
+`make test-all` runs every test, including browser and audio suites. On Linux it can still report failures for tests that require Windows PowerShell/UIA, a Windows filesystem, PortAudio hardware/libraries, a browser runtime, or the Node substrate. Those platform-specific checks are not claimed to pass from the current Linux environment; run them on the matching host.
+
+## 🐳 Container build and deployment
+
+The root [`Dockerfile`](Dockerfile) builds a Python 3.14.4 runtime, installs the locked Python and core substrate dependencies, and starts the gateway without opening a browser:
+
+```bash
+cp .env.example .env
+docker build --tag jarvis-os:local .
+docker run --rm --init --env-file .env --publish 8765:8765 --publish 8080:8080 jarvis-os:local
+```
+
+To publish the image to a registry, provide the registry and tag explicitly, then run the published image on a Docker host:
+
+```bash
+export IMAGE="registry.example.invalid/team/jarvis-os:1.0.1"
+docker build --tag "$IMAGE" .
+docker push "$IMAGE"
+docker run --rm --init --env-file .env --publish 8765:8765 --publish 8080:8080 "$IMAGE"
+```
+
+This repository does not configure a hosted deployment target, registry credentials, release signing, or a platform-specific production check. The commands above describe the container deployment procedure; they do not claim that a remote deployment has been performed.
 
 ---
 
