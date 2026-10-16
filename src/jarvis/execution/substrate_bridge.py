@@ -172,6 +172,16 @@ class SubstrateBridge:
             pass
         except Exception as exc:
             logger.error("Error in substrate reader loop: %s", exc)
+        finally:
+            if not self._is_shutting_down:
+                self._fail_pending_requests(SubstrateBridgeError("Substrate process terminated"))
+
+    def _fail_pending_requests(self, error: SubstrateBridgeError) -> None:
+        """Resolve every pending RPC when the runner can no longer answer."""
+        for future in self._pending_requests.values():
+            if not future.done():
+                future.set_exception(error)
+        self._pending_requests.clear()
 
     async def call_method(
         self, method: str, params: dict[str, Any] | None = None, timeout: float = 30.0

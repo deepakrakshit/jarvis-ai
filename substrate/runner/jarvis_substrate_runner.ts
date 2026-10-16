@@ -678,9 +678,10 @@ export async function runDaemon() {
 
   for await (const line of rl) {
     if (!line.trim()) continue;
+    let requestId: string | number | null = null;
     try {
       const msg = JSON.parse(line.trim());
-      const id = msg.id ?? "req";
+      requestId = typeof msg.id === "string" || typeof msg.id === "number" ? msg.id : null;
       const method = msg.method;
       const params = msg.params ?? {};
 
@@ -701,11 +702,12 @@ export async function runDaemon() {
         throw new Error(`METHOD_NOT_FOUND: Unknown method ${method}`);
       }
 
-      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n");
+      process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: requestId, result }) + "\n");
     } catch (err: unknown) {
       process.stdout.write(
         JSON.stringify({
           jsonrpc: "2.0",
+          id: requestId,
           error: { message: err instanceof Error ? err.message : String(err) },
         }) + "\n",
       );

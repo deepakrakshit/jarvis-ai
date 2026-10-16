@@ -1,6 +1,8 @@
 """Tests for Control Plane LangGraph State Machine & Task Execution Loop."""
 
+import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -88,3 +90,35 @@ async def test_control_plane_cognitive_conversational_turn(
     assert final_task.state == TaskState.COMPLETED
     assert final_task.result_summary is not None
     assert len(final_task.result_summary) > 0
+
+
+@pytest.mark.asyncio
+async def test_control_plane_cancellation_reaches_running_execution(
+    temp_dir: Path, test_db: DatabaseEngine
+) -> None:
+    """Cancelling a running task stops its execution coroutine and persists CANCELLED."""
+    policy = PolicyEngine(workspace_dir=temp_dir, database=test_db)
+    broker = ActionBroker(policy=policy, database=test_db)
+    cp = ControlPlane(broker=broker, policy=policy, database=test_db)
+    task = Task(session_id="SESS-TEST-CANCEL", raw_intent="long running operation")
+
+    async def blocked_graph(_state: object) -> dict[str, object]:
+        await asyncio.sleep(60)
+        return {"task": task}
+
+    with patch.object(cp._graph, "ainvoke", new=AsyncMock(side_effect=blocked_graph)):
+        runner = asyncio.create_task(cp.execute_task(task))
+        for _ in range(100):
+            if task.task_id in cp._running_tasks:
+                break
+            await asyncio.sleep(0)
+
+        assert task.task_id in cp._running_tasks
+        assert cp.cancel_task(task.task_id) is True
+        with pytest.raises(asyncio.CancelledError):
+            await runner
+
+    assert task.state == TaskState.CANCELLED
+    persisted = test_db.get_task(task.task_id)
+    assert persisted is not None
+    assert persisted.state == TaskState.CANCELLED

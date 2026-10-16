@@ -9,6 +9,7 @@ Core Invariant P5: Observe after acting.
 Core Invariant: The model is NOT the trust boundary.
 """
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict, cast
@@ -77,6 +78,7 @@ class ControlPlane:
         self.router = router or model_router
         self._ensure_nodes_registered()
         self._graph = self._build_graph()
+        self._running_tasks: Dict[str, Any] = {}
 
     def _ensure_nodes_registered(self) -> None:
         """Register host, browser, and WhatsApp nodes with the capability registry."""
@@ -607,6 +609,9 @@ class ControlPlane:
     async def execute_task(self, task: Task) -> Task:
         """Run a task through the compiled LangGraph state machine."""
         self.db.save_task(task)
+        current_task = asyncio.current_task()
+        if current_task is not None:
+            self._running_tasks[task.task_id] = current_task
         initial_state: ControlPlaneState = {
             "task": task,
             "plan": [],
@@ -616,8 +621,28 @@ class ControlPlane:
             "max_iterations": 10,
         }
 
-        final_state = await self._graph.ainvoke(initial_state)
-        return cast(Task, final_state["task"])
+        try:
+            final_state = await self._graph.ainvoke(initial_state)
+            final_task = cast(Task, final_state["task"])
+            if final_task.state == TaskState.CANCELLED:
+                self.db.save_task(final_task)
+            return final_task
+        except asyncio.CancelledError:
+            if task.state != TaskState.CANCELLED:
+                task.transition_to(TaskState.CANCELLED, "Cancelled while execution was running")
+                task.error_message = "Task cancelled by operator."
+                self.db.save_task(task)
+            raise
+        finally:
+            self._running_tasks.pop(task.task_id, None)
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a currently running task and return whether a runner was found."""
+        running = self._running_tasks.get(task_id)
+        if running is None or running.done():
+            return False
+        running.cancel()
+        return True
 
     async def submit_intent(
         self,

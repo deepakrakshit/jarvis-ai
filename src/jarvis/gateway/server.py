@@ -8,6 +8,7 @@ Implements Section 9 of ARCHITECTURE.md:
 - Bridges action approvals, memory search, model statuses, and node queries.
 """
 
+import asyncio
 import base64
 import json
 import re
@@ -362,12 +363,19 @@ class GatewayServer:
                         ),
                     )
                 else:
+                    was_running = self.control.cancel_task(task_id)
                     task.transition_to(TaskState.CANCELLED, "Cancelled by user via Gateway")
+                    task.error_message = "Task cancelled by operator."
                     self.db.save_task(task)
                     await self.connections.send_response(
                         conn_id,
                         create_success_response(
-                            req.id, {"task_id": task_id, "status": "CANCELLED"}
+                            req.id,
+                            {
+                                "task_id": task_id,
+                                "status": "CANCELLED",
+                                "running_operation_cancelled": was_running,
+                            },
                         ),
                     )
 
@@ -629,7 +637,19 @@ class GatewayServer:
 
         # Run task through Control Plane asynchronously
         try:
-            completed_task = await self.control.execute_task(task)
+            execution_task = asyncio.create_task(self.control.execute_task(task))
+            completed_task = await execution_task
+            if completed_task.state == TaskState.CANCELLED:
+                await self.connections.send_event(
+                    conn_id,
+                    create_task_completed_event(
+                        task_id=completed_task.task_id,
+                        state=TaskState.CANCELLED.value,
+                        error=completed_task.error_message or "Task cancelled by operator.",
+                        seq=2,
+                    ),
+                )
+                return
             # Emit completed event
             done_event = create_task_completed_event(
                 task_id=completed_task.task_id,
@@ -639,6 +659,19 @@ class GatewayServer:
                 seq=2,
             )
             await self.connections.send_event(conn_id, done_event)
+        except asyncio.CancelledError:
+            task.transition_to(TaskState.CANCELLED, "Cancelled by user via Gateway")
+            task.error_message = "Task cancelled by operator."
+            self.db.save_task(task)
+            await self.connections.send_event(
+                conn_id,
+                create_task_completed_event(
+                    task_id=task.task_id,
+                    state=TaskState.CANCELLED.value,
+                    error=task.error_message,
+                    seq=2,
+                ),
+            )
         except Exception as exec_err:
             logger.error(f"Task execution failed for {task.task_id}: {exec_err}")
             fail_event = create_task_completed_event(

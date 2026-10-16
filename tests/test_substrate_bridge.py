@@ -20,7 +20,10 @@ from jarvis.execution.substrate_bridge import (
 @pytest.fixture(autouse=True)
 def require_substrate(request: pytest.FixtureRequest) -> None:
     """Skip substrate execution tests if the substrate runner is unavailable."""
-    if request.node.name == "test_substrate_bridge_initialization":
+    if request.node.name in {
+        "test_substrate_bridge_initialization",
+        "test_substrate_bridge_fails_pending_requests_when_runner_dies",
+    }:
         return
     if not substrate_bridge.is_healthy_sync():
         pytest.skip("Substrate runner dependencies not installed in this environment")
@@ -131,3 +134,22 @@ async def test_substrate_bridge_daemon_lifecycle() -> None:
     finally:
         await bridge.stop()
         assert not bridge.is_running
+
+
+def test_substrate_bridge_fails_pending_requests_when_runner_dies() -> None:
+    """Pending daemon calls receive a terminal error when the runner disappears."""
+    import asyncio
+
+    bridge = SubstrateBridge()
+    loop = asyncio.new_event_loop()
+    try:
+        future = loop.create_future()
+        bridge._pending_requests["pending-1"] = future
+
+        bridge._fail_pending_requests(SubstrateBridgeError("runner stopped"))
+
+        assert future.done()
+        with pytest.raises(SubstrateBridgeError, match="runner stopped"):
+            future.result()
+    finally:
+        loop.close()
