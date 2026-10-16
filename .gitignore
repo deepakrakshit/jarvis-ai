@@ -52,4 +52,7 @@ Thumbs.db
 .vscode/
 
 # Development Resources
-skills/
+skills/
+!.opencode/
+!.opencode/skills/
+!.opencode/skills/**
