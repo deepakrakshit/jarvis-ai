@@ -15,8 +15,9 @@ import psutil
 from jarvis.execution.windows.winsta import ensure_interactive_desktop_attached
 from jarvis.telemetry import logger
 
-user32 = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
+_windll: Optional[Any] = getattr(ctypes, "windll", None)
+user32: Optional[Any] = _windll.user32 if _windll is not None else None
+kernel32: Optional[Any] = _windll.kernel32 if _windll is not None else None
 
 SW_HIDE = 0
 SW_SHOWNORMAL = 1
@@ -29,7 +30,8 @@ SW_RESTORE = 9
 
 WM_CLOSE = 0x0010
 
-WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_WINFUNCTYPE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+WNDENUMPROC = _WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
 @dataclass
@@ -75,6 +77,8 @@ class WindowManager:
     def get_active_window(self) -> Optional[WindowInfo]:
         """Return metadata for the currently active foreground window."""
         self._ensure_desktop()
+        if user32 is None:
+            return None
         hwnd = user32.GetForegroundWindow()
         if not hwnd or hwnd == 0:
             return None
@@ -83,6 +87,8 @@ class WindowManager:
     def list_windows(self, visible_only: bool = True) -> List[WindowInfo]:
         """Enumerate all desktop application windows."""
         self._ensure_desktop()
+        if user32 is None:
+            return []
         results: List[WindowInfo] = []
 
         def enum_cb(hwnd: int, lparam: int) -> bool:
@@ -172,6 +178,8 @@ class WindowManager:
     def find_window_by_hwnd(self, hwnd: int) -> Optional[WindowInfo]:
         """Find window information by exact HWND."""
         self._ensure_desktop()
+        if user32 is None:
+            return None
         if not user32.IsWindow(hwnd):
             return None
         return self._build_window_info(hwnd)
@@ -179,6 +187,8 @@ class WindowManager:
     def focus_window(self, hwnd: int) -> bool:
         """Bring target window to the foreground and activate it."""
         self._ensure_desktop()
+        if user32 is None or kernel32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             logger.warning(f"Invalid HWND {hwnd} passed to focus_window")
             return False
@@ -210,6 +220,8 @@ class WindowManager:
     def minimize_window(self, hwnd: int) -> bool:
         """Minimize the target window."""
         self._ensure_desktop()
+        if user32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             return False
         return bool(user32.ShowWindow(hwnd, SW_MINIMIZE))
@@ -217,6 +229,8 @@ class WindowManager:
     def maximize_window(self, hwnd: int) -> bool:
         """Maximize the target window."""
         self._ensure_desktop()
+        if user32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             return False
         return bool(user32.ShowWindow(hwnd, SW_MAXIMIZE))
@@ -224,6 +238,8 @@ class WindowManager:
     def restore_window(self, hwnd: int) -> bool:
         """Restore the target window from minimized or maximized state."""
         self._ensure_desktop()
+        if user32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             return False
         return bool(user32.ShowWindow(hwnd, SW_RESTORE))
@@ -231,6 +247,8 @@ class WindowManager:
     def close_window(self, hwnd: int) -> bool:
         """Close the target window cleanly by posting WM_CLOSE."""
         self._ensure_desktop()
+        if user32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             return False
         logger.info(f"Closing window HWND {hwnd}")
@@ -239,12 +257,16 @@ class WindowManager:
     def move_resize_window(self, hwnd: int, x: int, y: int, width: int, height: int) -> bool:
         """Move and resize the window to specified screen coordinates."""
         self._ensure_desktop()
+        if user32 is None:
+            return False
         if not user32.IsWindow(hwnd):
             return False
         return bool(user32.MoveWindow(hwnd, x, y, width, height, True))
 
     def _build_window_info(self, hwnd: int) -> Optional[WindowInfo]:
         """Construct a WindowInfo object from an HWND handle."""
+        if user32 is None:
+            return None
         try:
             length = user32.GetWindowTextLengthW(hwnd)
             title = ""

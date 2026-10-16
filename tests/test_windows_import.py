@@ -74,3 +74,51 @@ assert AppRegistry.__name__ == "AppRegistry"
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_window_station_import_without_windows_ctypes() -> None:
+    """Importing the window-station helper does not require Win32 bindings."""
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    script = """
+from jarvis.execution.windows.winsta import ensure_interactive_desktop_attached
+
+assert ensure_interactive_desktop_attached() is False
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(source_root), environment.get("PYTHONPATH", "")]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_window_manager_import_without_windows_ctypes() -> None:
+    """Importing the window manager does not require Win32 bindings."""
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    script = """
+from jarvis.execution.windows.window_manager import WindowManager
+
+manager = WindowManager()
+assert manager.list_windows() == []
+assert manager.get_active_window() is None
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [str(source_root), environment.get("PYTHONPATH", "")]
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr

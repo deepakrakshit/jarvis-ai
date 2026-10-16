@@ -6,10 +6,12 @@ can enumerate, inspect, and interact with open desktop applications.
 """
 
 import ctypes
+from typing import Any, Optional
 
 from jarvis.telemetry import logger
 
-user32 = ctypes.windll.user32
+_windll: Optional[Any] = getattr(ctypes, "windll", None)
+user32: Optional[Any] = _windll.user32 if _windll is not None else None
 
 WINSTA_ALL = 0x37F
 DESKTOP_ALL = 0x01FF
@@ -22,6 +24,8 @@ def ensure_interactive_desktop_attached() -> bool:
     global _desktop_attached
     if _desktop_attached:
         return True
+    if user32 is None:
+        return False
 
     try:
         hwinsta = user32.OpenWindowStationW("WinSta0", False, WINSTA_ALL)

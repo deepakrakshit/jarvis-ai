@@ -649,9 +649,9 @@ class GatewayServer:
             )
             await self.connections.send_event(conn_id, fail_event)
 
-    def _websocket_origins(self) -> list[object]:
+    def _websocket_origins(self) -> list[Any]:
         """Return exact and loopback origins accepted by the WebSocket server."""
-        origins: list[object] = list(self.allowed_origins)
+        origins: list[Any] = list(self.allowed_origins)
         origins.append(re.compile(r"^https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$"))
         if self.allow_no_origin:
             origins.append(None)
