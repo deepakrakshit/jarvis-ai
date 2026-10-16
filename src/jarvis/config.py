@@ -81,6 +81,12 @@ class JarvisSettings(BaseSettings):
     GATEWAY_PORT: int = Field(default=8765)
     GATEWAY_PORT_AUTO_DISCOVERY: bool = Field(default=True)
     GATEWAY_PORT_SEARCH_LIMIT: int = Field(default=50)
+    GATEWAY_AUTH_TOKEN: Optional[str] = Field(default=None)
+    GATEWAY_CHALLENGE_TTL_SECONDS: int = Field(default=30)
+    GATEWAY_ALLOWED_ORIGINS: List[str] = Field(
+        default_factory=lambda: ["http://127.0.0.1:8080", "http://localhost:8080"]
+    )
+    GATEWAY_ALLOW_NO_ORIGIN: bool = Field(default=True)
     HTTP_PORT: int = Field(default=8000)
 
     # UI Web Server & Interface Settings

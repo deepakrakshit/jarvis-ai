@@ -10,7 +10,10 @@ Implements Section 9 of ARCHITECTURE.md:
 
 import base64
 import json
-from typing import Any, Dict, Optional
+import re
+import secrets
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Sequence
 from uuid import uuid4
 
 import websockets
@@ -42,6 +45,7 @@ from jarvis.gateway.protocol import (
     create_success_response,
     create_task_completed_event,
     create_task_progress_event,
+    verify_challenge_response,
 )
 from jarvis.memory.manager import MemoryManager, memory_manager
 from jarvis.policy.engine import PolicyEngine, policy_engine
@@ -63,6 +67,8 @@ class GatewayServer:
         broker: Optional[ActionBroker] = None,
         policy: Optional[PolicyEngine] = None,
         artifacts: Optional[ArtifactStore] = None,
+        auth_token: Optional[str] = None,
+        allowed_origins: Optional[Sequence[str]] = None,
     ) -> None:
         self.host = host or settings.GATEWAY_HOST
         self.port = port or settings.GATEWAY_PORT
@@ -75,6 +81,19 @@ class GatewayServer:
         self.artifacts = artifacts or (
             ArtifactStore(database=self.db) if database else artifact_store
         )
+        self.auth_token = auth_token or settings.GATEWAY_AUTH_TOKEN or secrets.token_urlsafe(32)
+        self.challenge_ttl_seconds = max(
+            1, int(getattr(settings, "GATEWAY_CHALLENGE_TTL_SECONDS", 30))
+        )
+        configured_origins = (
+            list(allowed_origins)
+            if allowed_origins is not None
+            else list(getattr(settings, "GATEWAY_ALLOWED_ORIGINS", []))
+        )
+        if "*" in configured_origins:
+            raise ValueError("Wildcard gateway origins are not permitted")
+        self.allowed_origins = configured_origins
+        self.allow_no_origin = bool(getattr(settings, "GATEWAY_ALLOW_NO_ORIGIN", True))
 
         self.connections = ConnectionManager()
         self._server: Optional[WebSocketServer] = None
@@ -124,6 +143,7 @@ class GatewayServer:
                     self.host,
                     attempt_port,
                     reuse_address=True,
+                    origins=self._websocket_origins(),
                 )
                 self.port = attempt_port
                 settings.GATEWAY_PORT = attempt_port
@@ -177,6 +197,8 @@ class GatewayServer:
         """Handle incoming client WebSocket lifecycle."""
         client = self.connections.register(websocket)
         challenge_nonce = uuid4().hex
+        client.challenge_nonce = challenge_nonce
+        client.challenge_issued_at = datetime.now(timezone.utc)
 
         try:
             # 1. Send initial connect challenge event
@@ -223,12 +245,41 @@ class GatewayServer:
         try:
             if method == ProtocolMethod.CONNECT.value:
                 client = self.connections.get_client(conn_id)
-                if client:
-                    client.authenticated = True
-                    client.client_id = params.get("client_id", "anonymous-client")
-                    session_id = params.get("session_id")
-                    if session_id:
-                        client.subscribed_sessions.add(session_id)
+                if not client or client.authenticated:
+                    await self._reject_connection(
+                        conn_id,
+                        req.id,
+                        "Connection authentication has already been completed or is unavailable.",
+                    )
+                    return
+
+                client_id = self._read_identifier(params.get("client_id"))
+                session_id = self._read_identifier(params.get("session_id"))
+                challenge_response = params.get("challenge_response")
+                if (
+                    not client_id
+                    or not session_id
+                    or not isinstance(challenge_response, str)
+                    or not self._verify_client_challenge(
+                        client=client,
+                        client_id=client_id,
+                        session_id=session_id,
+                        challenge_response=challenge_response,
+                    )
+                ):
+                    await self._reject_connection(
+                        conn_id,
+                        req.id,
+                        "Invalid gateway authentication challenge response.",
+                    )
+                    return
+
+                client.authenticated = True
+                client.client_id = client_id
+                client.session_id = session_id
+                client.challenge_nonce = None
+                client.challenge_issued_at = None
+                client.subscribed_sessions.add(session_id)
 
                 res = create_hello_ok_response(
                     req_id=req.id,
@@ -303,6 +354,13 @@ class GatewayServer:
                     await self.connections.send_response(
                         conn_id, create_error_response(req.id, f"Task {task_id} not found")
                     )
+                elif not self._client_owns_session(conn_id, task.session_id):
+                    await self.connections.send_response(
+                        conn_id,
+                        create_error_response(
+                            req.id, "Task belongs to another authenticated session."
+                        ),
+                    )
                 else:
                     task.transition_to(TaskState.CANCELLED, "Cancelled by user via Gateway")
                     self.db.save_task(task)
@@ -317,19 +375,39 @@ class GatewayServer:
                 approval_id = params.get("approval_id", "")
                 decision = params.get("decision", "APPROVED")  # APPROVED or REJECTED
                 reason = params.get("reason")
-                self.policy.approvals.resolve(
-                    approval_id=approval_id,
-                    approved=(decision == "APPROVED"),
-                    operator_identity=conn_id,
-                    rejection_reason=reason,
-                )
-                await self.connections.send_response(
-                    conn_id,
-                    create_success_response(
-                        req.id,
-                        {"approval_id": approval_id, "decision": decision, "status": "RECORDED"},
-                    ),
-                )
+                client = self.connections.get_client(conn_id)
+                pending = self.policy.approvals.get_pending(approval_id)
+                if not client or not pending or pending.session_id != client.session_id:
+                    await self.connections.send_response(
+                        conn_id,
+                        create_error_response(
+                            req.id, "Approval is not associated with this session."
+                        ),
+                    )
+                else:
+                    resolved = self.policy.approvals.resolve(
+                        approval_id=approval_id,
+                        approved=(decision == "APPROVED"),
+                        operator_identity=conn_id,
+                        rejection_reason=reason,
+                    )
+                    if not resolved:
+                        await self.connections.send_response(
+                            conn_id,
+                            create_error_response(req.id, "Approval could not be resolved."),
+                        )
+                    else:
+                        await self.connections.send_response(
+                            conn_id,
+                            create_success_response(
+                                req.id,
+                                {
+                                    "approval_id": approval_id,
+                                    "decision": decision,
+                                    "status": "RECORDED",
+                                },
+                            ),
+                        )
 
             elif method == ProtocolMethod.SESSION_CREATE.value:
                 session_id = params.get("session_id") or f"SESSION-{uuid4().hex[:8].upper()}"
@@ -356,6 +434,18 @@ class GatewayServer:
                 )
 
             elif method == ProtocolMethod.MEMORY_STORE.value:
+                client = self.connections.get_client(conn_id)
+                requested_session_id = params.get("session_id")
+                if requested_session_id and not self._client_owns_session(
+                    conn_id, requested_session_id
+                ):
+                    await self.connections.send_response(
+                        conn_id,
+                        create_error_response(
+                            req.id, "Memory writes are limited to the authenticated session."
+                        ),
+                    )
+                    return
                 record = MemoryRecord(
                     memory_type=MemoryType(params.get("memory_type", MemoryType.SEMANTIC.value)),
                     key=params.get("key", "note"),
@@ -363,7 +453,7 @@ class GatewayServer:
                     provenance_source=ProvenanceSource.DIRECT_USER_INSTRUCTION,
                     trust_level=TrustLevel.TRUSTED_OPERATOR,
                     importance_score=float(params.get("importance_score", 0.5)),
-                    session_id=params.get("session_id"),
+                    session_id=requested_session_id or (client.session_id if client else None),
                 )
                 stored = self.memory.store(record)
                 await self.connections.send_response(
@@ -472,7 +562,19 @@ class GatewayServer:
         """Create and asynchronously execute a task, streaming progress to the client."""
         params = req.params
         raw_intent = params.get("intent", "")
-        session_id = params.get("session_id") or f"SESSION-{uuid4().hex[:8].upper()}"
+        client = self.connections.get_client(conn_id)
+        requested_session_id = params.get("session_id")
+        if requested_session_id and not self._client_owns_session(conn_id, requested_session_id):
+            await self.connections.send_response(
+                conn_id,
+                create_error_response(req.id, "Tasks are limited to the authenticated session."),
+            )
+            return
+        session_id = requested_session_id or (
+            client.session_id
+            if client and client.session_id
+            else f"SESSION-{uuid4().hex[:8].upper()}"
+        )
 
         if self.live_bridge:
             logger.info(f"Routing intent directly into active Gemini Live session: '{raw_intent}'")
@@ -546,6 +648,55 @@ class GatewayServer:
                 seq=2,
             )
             await self.connections.send_event(conn_id, fail_event)
+
+    def _websocket_origins(self) -> list[object]:
+        """Return exact and loopback origins accepted by the WebSocket server."""
+        origins: list[object] = list(self.allowed_origins)
+        origins.append(re.compile(r"^https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$"))
+        if self.allow_no_origin:
+            origins.append(None)
+        return origins
+
+    @staticmethod
+    def _read_identifier(value: Any) -> Optional[str]:
+        """Validate a bounded client or session identifier."""
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        return normalized if normalized and len(normalized) <= 128 else None
+
+    def _verify_client_challenge(
+        self,
+        client: Any,
+        client_id: str,
+        session_id: str,
+        challenge_response: str,
+    ) -> bool:
+        """Validate the one-time HMAC challenge for a client connection."""
+        if not client.challenge_nonce or not client.challenge_issued_at:
+            return False
+        age = (datetime.now(timezone.utc) - client.challenge_issued_at).total_seconds()
+        if age < 0 or age > self.challenge_ttl_seconds:
+            return False
+        return verify_challenge_response(
+            nonce=client.challenge_nonce,
+            client_id=client_id,
+            session_id=session_id,
+            auth_token=self.auth_token,
+            response=challenge_response,
+        )
+
+    def _client_owns_session(self, conn_id: str, session_id: Any) -> bool:
+        """Check that a request targets the authenticated connection session."""
+        client = self.connections.get_client(conn_id)
+        return bool(client and client.authenticated and client.session_id == session_id)
+
+    async def _reject_connection(self, conn_id: str, req_id: str, message: str) -> None:
+        """Send an authentication error and close the connection fail-closed."""
+        await self.connections.send_response(conn_id, create_error_response(req_id, message))
+        client = self.connections.get_client(conn_id)
+        if client:
+            await client.websocket.close(code=1008, reason="Authentication failed")
 
 
 # Default singleton instance

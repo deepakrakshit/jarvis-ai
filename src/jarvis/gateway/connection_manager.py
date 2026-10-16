@@ -25,7 +25,10 @@ class ClientSession:
     conn_id: str
     websocket: Any
     client_id: Optional[str] = None
+    session_id: Optional[str] = None
     authenticated: bool = False
+    challenge_nonce: Optional[str] = None
+    challenge_issued_at: Optional[datetime] = None
     subscribed_sessions: Set[str] = field(default_factory=set)
     connected_at: datetime = field(default_factory=utc_now)
 

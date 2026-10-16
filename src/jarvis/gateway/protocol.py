@@ -6,6 +6,8 @@ Implements Section 9 and adapts the RPC wire contracts from the core substrate:
 - Strongly-typed schemas for task lifecycle, action approval, and event streaming.
 """
 
+import hashlib
+import hmac
 import time
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -98,6 +100,34 @@ def create_challenge_event(nonce: Optional[str] = None) -> EventFrame:
             "ts": int(time.time() * 1000),
         },
     )
+
+
+def create_challenge_response(
+    nonce: str,
+    client_id: str,
+    session_id: str,
+    auth_token: str,
+) -> str:
+    """Create the HMAC response for a gateway connection challenge."""
+    message = "\0".join((nonce, client_id, session_id)).encode("utf-8")
+    return hmac.new(auth_token.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def verify_challenge_response(
+    nonce: str,
+    client_id: str,
+    session_id: str,
+    auth_token: str,
+    response: str,
+) -> bool:
+    """Verify a gateway connection challenge response without timing leaks."""
+    expected = create_challenge_response(
+        nonce=nonce,
+        client_id=client_id,
+        session_id=session_id,
+        auth_token=auth_token,
+    )
+    return hmac.compare_digest(expected, response)
 
 
 def create_hello_ok_response(

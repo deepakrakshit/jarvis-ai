@@ -20,9 +20,10 @@ import pytest
 import websockets
 
 from jarvis.core.control_plane import ControlPlane
-from jarvis.gateway.protocol import ProtocolEvent
+from jarvis.gateway.protocol import ProtocolEvent, create_challenge_response
 from jarvis.gateway.server import GatewayServer
 from jarvis.memory.manager import MemoryManager
+from jarvis.policy.engine import PolicyEngine
 from jarvis.storage.database import DatabaseEngine
 
 
@@ -45,6 +46,7 @@ def gateway_harness(temp_gateway_db: DatabaseEngine) -> Dict[str, Any]:
     port = get_free_port()
     mem = MemoryManager(database=temp_gateway_db)
     cp = ControlPlane(database=temp_gateway_db)
+    policy = PolicyEngine(database=temp_gateway_db)
 
     server = GatewayServer(
         host="127.0.0.1",
@@ -52,9 +54,42 @@ def gateway_harness(temp_gateway_db: DatabaseEngine) -> Dict[str, Any]:
         database=temp_gateway_db,
         memory=mem,
         control=cp,
+        policy=policy,
+        auth_token="test-gateway-token",
     )
 
     return {"server": server, "port": port}
+
+
+async def authenticate(
+    ws: Any,
+    server: GatewayServer,
+    client_id: str,
+    session_id: str,
+) -> Dict[str, Any]:
+    """Complete the gateway challenge-response handshake for a test client."""
+    raw_challenge = await asyncio.wait_for(ws.recv(), timeout=5.0)
+    challenge = json.loads(raw_challenge)
+    nonce = challenge["payload"]["nonce"]
+    connect_req = {
+        "type": "req",
+        "id": f"connect-{client_id}",
+        "method": "connect",
+        "params": {
+            "client_id": client_id,
+            "session_id": session_id,
+            "challenge_response": create_challenge_response(
+                nonce=nonce,
+                client_id=client_id,
+                session_id=session_id,
+                auth_token=server.auth_token,
+            ),
+        },
+    }
+    await ws.send(json.dumps(connect_req))
+    response = json.loads(await asyncio.wait_for(ws.recv(), timeout=5.0))
+    assert response["ok"] is True
+    return response
 
 
 @pytest.mark.asyncio
@@ -93,11 +128,21 @@ async def test_gateway_handshake_and_rpc_lifecycle(
             assert "Authentication required" in unauth_res["error"]
 
             # 3. Perform connect handshake
+            nonce = challenge["payload"]["nonce"]
             connect_req = {
                 "type": "req",
                 "id": "conn-1",
                 "method": "connect",
-                "params": {"client_id": "test-operator-ui"},
+                "params": {
+                    "client_id": "test-operator-ui",
+                    "session_id": "session-1",
+                    "challenge_response": create_challenge_response(
+                        nonce=nonce,
+                        client_id="test-operator-ui",
+                        session_id="session-1",
+                        auth_token=server.auth_token,
+                    ),
+                },
             }
             await ws.send(json.dumps(connect_req))
             raw_conn_res = await asyncio.wait_for(ws.recv(), timeout=5.0)
@@ -174,18 +219,7 @@ async def test_gateway_task_create_and_streaming(
 
     try:
         async with websockets.connect(uri) as ws:
-            # Drain challenge
-            await ws.recv()
-
-            # Connect
-            connect_req = {
-                "type": "req",
-                "id": "c1",
-                "method": "connect",
-                "params": {"client_id": "test-task-client"},
-            }
-            await ws.send(json.dumps(connect_req))
-            await ws.recv()
+            await authenticate(ws, server, "test-task-client", "session-task")
 
             # Submit task
             task_req = {
@@ -290,21 +324,7 @@ async def test_gateway_live_tool_complete_broadcast(gateway_harness: Dict[str, A
 
     try:
         async with websockets.connect(uri) as ws:
-            # 1. Receive connect.challenge
-            challenge_raw = await ws.recv()
-            challenge = json.loads(challenge_raw)
-            assert challenge["event"] == ProtocolEvent.CONNECT_CHALLENGE.value
-
-            # 2. Handshake connect
-            connect_req = {
-                "type": "req",
-                "id": "conn-1",
-                "method": "connect",
-                "params": {"client_id": "test-operator-ui"},
-            }
-            await ws.send(json.dumps(connect_req))
-            conn_res = json.loads(await ws.recv())
-            assert conn_res["ok"] is True
+            await authenticate(ws, server, "test-operator-ui", "session-live")
 
             # 3. Broadcast live.tool_complete event
             await server.broadcast_live_event(
@@ -318,5 +338,196 @@ async def test_gateway_live_tool_complete_broadcast(gateway_harness: Dict[str, A
             assert evt["event"] == "live.tool_complete"
             assert evt["payload"]["name"] == "web_search"
             assert evt["payload"]["result"]["status"] == "success"
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_rejects_invalid_challenge(gateway_harness: Dict[str, Any]) -> None:
+    """Reject a client that cannot prove possession of the gateway token."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+    await server.start()
+
+    try:
+        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+            await ws.recv()
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "req",
+                        "id": "bad-connect",
+                        "method": "connect",
+                        "params": {
+                            "client_id": "untrusted-client",
+                            "session_id": "session-invalid",
+                            "challenge_response": "not-a-valid-response",
+                        },
+                    }
+                )
+            )
+            response = json.loads(await ws.recv())
+            assert response["ok"] is False
+            assert "Invalid gateway authentication" in response["error"]
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await ws.recv()
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_rejects_replayed_connect_request(
+    gateway_harness: Dict[str, Any],
+) -> None:
+    """A completed challenge cannot be reused on the same connection."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+    await server.start()
+
+    try:
+        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+            challenge = json.loads(await ws.recv())
+            nonce = challenge["payload"]["nonce"]
+            request = {
+                "type": "req",
+                "id": "first-connect",
+                "method": "connect",
+                "params": {
+                    "client_id": "replay-client",
+                    "session_id": "session-replay",
+                    "challenge_response": create_challenge_response(
+                        nonce=nonce,
+                        client_id="replay-client",
+                        session_id="session-replay",
+                        auth_token=server.auth_token,
+                    ),
+                },
+            }
+            await ws.send(json.dumps(request))
+            first_response = json.loads(await ws.recv())
+            assert first_response["ok"] is True
+
+            request["id"] = "replayed-connect"
+            await ws.send(json.dumps(request))
+            replay_response = json.loads(await ws.recv())
+            assert replay_response["ok"] is False
+            assert "already been completed" in replay_response["error"]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_rejects_unauthorized_origin(
+    gateway_harness: Dict[str, Any],
+) -> None:
+    """Reject browser-originated connections outside the configured origin policy."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+    await server.start()
+
+    try:
+        with pytest.raises(websockets.exceptions.InvalidStatus):
+            async with websockets.connect(
+                f"ws://127.0.0.1:{port}", origin="https://untrusted.example"
+            ):
+                pass
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_blocks_unauthenticated_privileged_requests(
+    gateway_harness: Dict[str, Any],
+) -> None:
+    """Unauthenticated clients cannot create tasks, store memory, or approve actions."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+    await server.start()
+
+    requests = [
+        {
+            "id": "unauth-task",
+            "method": "task.create",
+            "params": {"intent": "delete a file"},
+        },
+        {
+            "id": "unauth-memory",
+            "method": "memory.store",
+            "params": {"key": "blocked", "content": "blocked"},
+        },
+        {
+            "id": "unauth-approval",
+            "method": "action.approve",
+            "params": {"approval_id": "unknown", "decision": "APPROVED"},
+        },
+    ]
+
+    try:
+        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+            await ws.recv()
+            for request in requests:
+                request["type"] = "req"
+                await ws.send(json.dumps(request))
+                response = json.loads(await ws.recv())
+                assert response["ok"] is False
+                assert "Authentication required" in response["error"]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_binds_privileged_requests_to_authenticated_session(
+    gateway_harness: Dict[str, Any],
+) -> None:
+    """A client cannot use its authentication to operate on another session."""
+    server: GatewayServer = gateway_harness["server"]
+    port: int = gateway_harness["port"]
+    pending = server.policy.approvals.create_request(
+        action_id="action-cross-session",
+        task_id="task-cross-session",
+        session_id="session-b",
+        capability="shell.execute",
+        target_resource="echo blocked",
+        risk_summary="test approval",
+    )
+    await server.start()
+
+    try:
+        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+            await authenticate(ws, server, "session-a-client", "session-a")
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "req",
+                        "id": "cross-approval",
+                        "method": "action.approve",
+                        "params": {
+                            "approval_id": pending.approval_id,
+                            "decision": "APPROVED",
+                        },
+                    }
+                )
+            )
+            approval_response = json.loads(await ws.recv())
+            assert approval_response["ok"] is False
+            assert "not associated" in approval_response["error"]
+
+            await ws.send(
+                json.dumps(
+                    {
+                        "type": "req",
+                        "id": "cross-task",
+                        "method": "task.create",
+                        "params": {
+                            "intent": "cross-session operation",
+                            "session_id": "session-b",
+                        },
+                    }
+                )
+            )
+            task_response = json.loads(await ws.recv())
+            assert task_response["ok"] is False
+            assert "authenticated session" in task_response["error"]
     finally:
         await server.stop()
