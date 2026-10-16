@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from jarvis.actions.broker import ActionBroker
 from jarvis.cognition.gemini_live import (
     DEFAULT_LIVE_TOOLS,
     TOOL_TO_CAPABILITY_MAP,
@@ -13,6 +14,7 @@ from jarvis.cognition.gemini_live import (
 )
 from jarvis.config import settings
 from jarvis.contracts.action import ActionResult, ActionStatus, ExecutionTarget
+from jarvis.policy.engine import PolicyEngine
 from jarvis.policy.firewall import CAPABILITY_SYSTEM_INFO
 
 
@@ -263,3 +265,42 @@ async def test_live_web_search_tool_execution() -> None:
         assert sent_responses[0].response["status"] == "success"
         assert sent_responses[0].response["query"] == "deepmind antigravity"
         assert len(sent_responses[0].response["results"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_live_sessions_preserve_approval_enforcement() -> None:
+    """Live session setup must not mutate shared policy approval enforcement."""
+
+    class FakeLiveContext:
+        async def __aenter__(self) -> MagicMock:
+            return MagicMock()
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    policy = PolicyEngine(require_approvals=True)
+    broker = ActionBroker(policy=policy)
+    bridge_a = GeminiLiveBridge(session_id="LIVE-A", api_key="dummy", broker=broker)
+    bridge_b = GeminiLiveBridge(session_id="LIVE-B", api_key="dummy", broker=broker)
+    bridge_a._receive_loop = AsyncMock()  # type: ignore[method-assign]
+    bridge_b._receive_loop = AsyncMock()  # type: ignore[method-assign]
+
+    clients = []
+    for _ in range(2):
+        client = MagicMock()
+        client.aio.live.connect.return_value = FakeLiveContext()
+        clients.append(client)
+
+    with (
+        patch("jarvis.execution.browser.host.browser_node.register_capabilities"),
+        patch("jarvis.execution.whatsapp.node.whatsapp_node.register_capabilities"),
+        patch("jarvis.execution.windows.host.windows_node.register_capabilities"),
+        patch("jarvis.cognition.gemini_live.genai.Client", side_effect=clients),
+        patch.object(bridge_a, "_build_config", return_value=MagicMock()),
+        patch.object(bridge_b, "_build_config", return_value=MagicMock()),
+    ):
+        await asyncio.gather(bridge_a.connect(), bridge_b.connect())
+        assert policy.require_approvals is True
+        await asyncio.gather(bridge_a.disconnect(), bridge_b.disconnect())
+
+    assert policy.require_approvals is True

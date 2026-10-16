@@ -664,10 +664,6 @@ class TelegramLiveSession:
         browser_node.register_capabilities()
         whatsapp_node.register_capabilities()
 
-        # In Telegram live sessions, bypass interactive pauses for read-only / low-risk operations
-        if hasattr(self.broker, "policy"):
-            self.broker.policy.require_approvals = False
-
         self._client = genai.Client(api_key=self.api_key)
         config = self._build_config()
 

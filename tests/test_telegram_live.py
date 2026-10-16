@@ -13,7 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiogram.types import Message, User
 
+from jarvis.actions.broker import ActionBroker
 from jarvis.contracts.action import ActionResult, ActionStatus, ExecutionTarget
+from jarvis.policy.engine import PolicyEngine
 from jarvis.telegram.live_session import (
     TELEGRAM_LIVE_TOOLS_SPEC,
     TOOL_TO_CAPABILITY_MAP,
@@ -294,3 +296,34 @@ async def test_telegram_service_delegates_to_live_manager(tmp_path: Path) -> Non
     mock_message.answer_photo.assert_called_once()
     assert mock_message.answer.call_count == 2
     assert "Here is your desktop screenshot, Sir." in mock_message.answer.call_args_list[1][0][0]
+
+
+@pytest.mark.asyncio
+async def test_telegram_live_connection_preserves_approval_enforcement() -> None:
+    """Telegram live setup must not disable approvals on its shared broker."""
+
+    class FakeLiveContext:
+        async def __aenter__(self) -> MagicMock:
+            return MagicMock()
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    policy = PolicyEngine(require_approvals=True)
+    broker = ActionBroker(policy=policy)
+    session = TelegramLiveSession(chat_id=12345, api_key="dummy_api_key", broker=broker)
+    client = MagicMock()
+    client.aio.live.connect.return_value = FakeLiveContext()
+
+    with (
+        patch("jarvis.execution.browser.host.browser_node.register_capabilities"),
+        patch("jarvis.execution.whatsapp.node.whatsapp_node.register_capabilities"),
+        patch("jarvis.execution.windows.host.windows_node.register_capabilities"),
+        patch("jarvis.telegram.live_session.genai.Client", return_value=client),
+        patch.object(session, "_build_config", return_value=MagicMock()),
+    ):
+        await session.connect()
+        assert policy.require_approvals is True
+        await session.close()
+
+    assert policy.require_approvals is True

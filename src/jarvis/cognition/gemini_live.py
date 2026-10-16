@@ -705,10 +705,6 @@ class GeminiLiveBridge:
         browser_node.register_capabilities()
         whatsapp_node.register_capabilities()
 
-        # In interactive live sessions, bypass approval ticket pauses so host operations execute directly
-        if hasattr(self.broker, "policy"):
-            self.broker.policy.require_approvals = False
-
         self._client = genai.Client(api_key=self.api_key)
         config = self._build_config()
 
@@ -729,9 +725,6 @@ class GeminiLiveBridge:
                 await self._receive_task
             except asyncio.CancelledError:
                 pass
-
-        if hasattr(self.broker, "policy"):
-            self.broker.policy.require_approvals = settings.REQUIRE_APPROVALS
 
         if self._session_ctx:
             try:
