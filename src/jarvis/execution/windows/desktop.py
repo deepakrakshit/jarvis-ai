@@ -8,9 +8,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-import pyautogui
-import pygetwindow as gw
-
 from jarvis.config import settings
 from jarvis.telemetry import logger
 
@@ -30,6 +27,8 @@ def ensure_interactive_desktop() -> None:
 
 def capture_screenshot(save_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Capture current desktop display and save as an artifact."""
+    import pyautogui
+
     ensure_interactive_desktop()
     target_dir = save_dir or settings.ARTIFACTS_DIR
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -52,6 +51,8 @@ def capture_screenshot(save_dir: Optional[Path] = None) -> Dict[str, Any]:
 
 def mouse_click(x: int, y: int, button: str = "left", clicks: int = 1) -> Dict[str, Any]:
     """Perform mouse click at specific screen coordinates."""
+    import pyautogui
+
     logger.info(f"Mouse click at ({x}, {y}) button={button} clicks={clicks}")
     pyautogui.click(x=x, y=y, button=button, clicks=clicks)
     return {
@@ -65,6 +66,8 @@ def mouse_click(x: int, y: int, button: str = "left", clicks: int = 1) -> Dict[s
 
 def type_text(text: str, interval: float = 0.02) -> Dict[str, Any]:
     """Type keyboard text into the currently focused window."""
+    import pyautogui
+
     logger.info(f"Typing text (length {len(text)})")
     pyautogui.write(text, interval=interval)
     return {
@@ -75,6 +78,8 @@ def type_text(text: str, interval: float = 0.02) -> Dict[str, Any]:
 
 def press_key(key: str) -> Dict[str, Any]:
     """Press a specific keyboard key (e.g. 'enter', 'tab', 'esc')."""
+    import pyautogui
+
     logger.info(f"Pressing keyboard key: {key}")
     pyautogui.press(key)
     return {
@@ -85,6 +90,8 @@ def press_key(key: str) -> Dict[str, Any]:
 
 def list_open_windows() -> List[Dict[str, Any]]:
     """Enumerate all open desktop application windows."""
+    import pygetwindow as gw
+
     windows: List[Dict[str, Any]] = []
     for window in gw.getAllWindows():
         title = window.title.strip()
