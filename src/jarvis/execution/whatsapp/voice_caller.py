@@ -267,9 +267,10 @@ class WhatsAppVoiceCaller:
             qr_info: Dict[str, Any] = {}
             final_result: Optional[Dict[str, Any]] = None
             captured_lines: List[str] = []
+            opened_qr_path: Optional[str] = None
 
             async def stdout_reader() -> None:
-                nonlocal final_result, qr_info
+                nonlocal final_result, qr_info, opened_qr_path
                 try:
                     while True:
                         line_bytes = await stdout_stream.readline()
@@ -286,23 +287,33 @@ class WhatsAppVoiceCaller:
                                 if isinstance(data, dict):
                                     qr_info = data
                                     html_path = data.get("htmlPath")
-                                    if html_path:
+                                    resolved_html_path = (
+                                        str(Path(html_path).resolve()) if html_path else None
+                                    )
+                                    if resolved_html_path and resolved_html_path != opened_qr_path:
+                                        opened_qr_path = resolved_html_path
+                                        browser_opened = False
                                         try:
                                             import webbrowser
 
-                                            webbrowser.open(Path(html_path).resolve().as_uri())
+                                            browser_opened = bool(
+                                                webbrowser.open(Path(resolved_html_path).as_uri())
+                                            )
                                         except Exception:
                                             pass
-                                        try:
-                                            startfile_fn = getattr(os, "startfile", None)
-                                            if callable(startfile_fn):
-                                                startfile_fn(str(html_path))
-                                        except Exception:
-                                            pass
+                                        if not browser_opened:
+                                            try:
+                                                startfile_fn = getattr(os, "startfile", None)
+                                                if callable(startfile_fn):
+                                                    startfile_fn(resolved_html_path)
+                                            except Exception:
+                                                pass
                                         print(
                                             "\n[JARVIS] WhatsApp Authentication QR Code generated!"
                                         )
-                                        print(f"[JARVIS] View & Scan QR in browser: {html_path}")
+                                        print(
+                                            f"[JARVIS] View & Scan QR in browser: {resolved_html_path}"
+                                        )
                                         print(
                                             "[JARVIS] On phone: WhatsApp -> Settings -> Linked Devices -> Link a Device\n"
                                         )

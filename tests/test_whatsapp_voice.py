@@ -468,20 +468,21 @@ async def test_whatsapp_caller_login_qr_ready_instant_return(tmp_path: Path) -> 
 
     mock_proc = MagicMock()
     mock_proc.returncode = None
+    qr_line = (
+        f'[WHATSAPP_QR_JSON]{{"qr": "mock-qr-code", "htmlPath": "{html_file.as_posix()}"}}'
+        "[/WHATSAPP_QR_JSON]\n"
+    )
     mock_proc.stdout.readline = AsyncMock(
-        side_effect=[
-            f'[WHATSAPP_QR_JSON]{{"qr": "mock-qr-code", "htmlPath": "{html_file.as_posix()}"}}[/WHATSAPP_QR_JSON]\n'.encode(
-                "utf-8"
-            ),
-            b"",
-        ]
+        side_effect=[qr_line.encode("utf-8"), qr_line.encode("utf-8"), b""]
     )
 
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
-        res = await caller.login(force_refresh=False, wait_for_scan=False)
-        assert res["success"] is True
-        assert res["status"] == "qr_ready"
-        assert html_file.as_posix() in res["html_path"]
+        with patch("webbrowser.open", return_value=True) as open_browser:
+            res = await caller.login(force_refresh=False, wait_for_scan=False)
+            assert res["success"] is True
+            assert res["status"] == "qr_ready"
+            assert html_file.as_posix() in res["html_path"]
+            open_browser.assert_called_once_with(html_file.resolve().as_uri())
 
 
 @pytest.mark.asyncio
