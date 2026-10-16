@@ -7,6 +7,7 @@ authoritative ActionBroker and PolicyEngine pipeline.
 """
 
 import asyncio
+import platform
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -117,7 +118,7 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "system_screenshot",
-        "description": "Capture a screenshot of the current primary Windows desktop display.",
+        "description": "Capture a screenshot of the current host desktop display when a usable graphical session is available.",
         "parameters": {"type": "OBJECT", "properties": {}},
     },
     {
@@ -309,7 +310,7 @@ DEFAULT_LIVE_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "app_launch",
-        "description": "Launch an installed Windows application or registered protocol handler asynchronously without blocking.",
+        "description": "Launch an installed host application or registered protocol handler asynchronously without blocking (use the native application name for the current operating system).",
         "parameters": {
             "type": "OBJECT",
             "properties": {
@@ -642,11 +643,19 @@ class GeminiLiveBridge:
     def _build_config(self) -> types.LiveConnectConfig:
         """Construct the authoritative LiveConnectConfig."""
         callsign = getattr(settings, "USER_CALLSIGN", "Sir")
+        host_platform = platform.system()
+        platform_instruction = (
+            f"The host operating system is {host_platform}. Use application names and shell syntax appropriate for {host_platform}; "
+            "never substitute Windows commands such as start, taskkill, or .exe paths on a non-Windows host. "
+            if host_platform != "Windows"
+            else "The host operating system is Windows. Use Windows-native application names and commands when needed. "
+        )
         system_instruction = (
             "You are JARVIS (version 1.0.0), the personal AI operating system and master orchestrator. "
             f"Always address the user with respect as {callsign} (or by their preferred honorific). "
             "You are razor-sharp, proactive, polite, and concise. "
-            "You control the host system, the live web, and all specialist worker models without requiring approval tickets. "
+            + platform_instruction
+            + "You control the host system, the live web, and all specialist worker models without requiring approval tickets. "
             "When the user requests real-time information, news, weather, or web searches, use web_search. "
             "When the user asks to open Chrome and browse, search, or play media (e.g. YouTube, web pages), "
             "immediately use browser_navigate (e.g. browser_navigate('https://www.youtube.com')). "

@@ -89,33 +89,43 @@ class AppLauncher:
         try:
             if app_info and app_info.uri_scheme:
                 logger.info(f"Launching via URI scheme: {app_info.uri_scheme}")
-                os.startfile(app_info.uri_scheme)
+                startfile = getattr(os, "startfile", None)
+                if not callable(startfile):
+                    raise RuntimeError("URI handlers are unavailable on this host")
+                startfile(app_info.uri_scheme)
             elif (
                 app_info
                 and app_info.executable_path
                 and app_info.executable_path.lower().endswith(".lnk")
             ):
                 logger.info(f"Launching via Start Menu shortcut: {app_info.executable_path}")
-                os.startfile(app_info.executable_path)
+                startfile = getattr(os, "startfile", None)
+                if not callable(startfile):
+                    raise RuntimeError("Windows shortcuts are unavailable on this host")
+                startfile(app_info.executable_path)
             else:
                 exe_path = (
                     app_info.executable_path if (app_info and app_info.executable_path) else target
                 )
                 cmd = [exe_path] + (arguments or [])
 
-                # Spawn as a detached process without blocking the current event loop or shell
-                flags = subprocess.CREATE_NEW_PROCESS_GROUP
-                if hasattr(subprocess, "DETACHED_PROCESS"):
-                    flags |= subprocess.DETACHED_PROCESS
+                # Spawn as a detached process without blocking the current event loop or shell.
+                # Windows exposes creation flags that do not exist on POSIX hosts.
+                popen_kwargs: Dict[str, Any] = {
+                    "stdout": subprocess.DEVNULL,
+                    "stderr": subprocess.DEVNULL,
+                    "stdin": subprocess.DEVNULL,
+                    "close_fds": True,
+                }
+                if os.name == "nt":
+                    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    if hasattr(subprocess, "DETACHED_PROCESS"):
+                        flags |= subprocess.DETACHED_PROCESS
+                    popen_kwargs["creationflags"] = flags
+                else:
+                    popen_kwargs["start_new_session"] = True
 
-                proc = subprocess.Popen(
-                    cmd,
-                    creationflags=flags,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    stdin=subprocess.DEVNULL,
-                    close_fds=True,
-                )
+                proc = subprocess.Popen(cmd, **popen_kwargs)
                 spawned_pid = proc.pid
                 logger.info(f"Spawned detached process PID {spawned_pid} for '{app_name}'")
         except Exception as err:

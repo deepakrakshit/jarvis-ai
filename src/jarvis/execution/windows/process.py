@@ -1,4 +1,4 @@
-"""Windows Process Management & Inspection for JARVIS.
+"""Host Process Management & Inspection for JARVIS.
 
 Provides process enumeration, inspection, launching, and termination.
 """
@@ -57,16 +57,19 @@ def inspect_process(pid: int) -> Optional[Dict[str, Any]]:
 
 
 def launch_process(executable: str, arguments: Optional[List[str]] = None) -> Dict[str, Any]:
-    """Launch a new Windows application or process."""
+    """Launch a new host application or process."""
     cmd = [executable] + (arguments or [])
     logger.info(f"Launching process: {cmd}")
     try:
-        proc = subprocess.Popen(
-            cmd,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        popen_kwargs: Dict[str, Any] = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **popen_kwargs)
         return {
             "pid": proc.pid,
             "executable": executable,

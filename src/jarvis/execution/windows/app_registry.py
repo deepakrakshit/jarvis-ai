@@ -175,6 +175,19 @@ class AppRegistry:
 
         q = query.strip().lower()
 
+        # Absolute executable paths must take precedence over fuzzy cache matches.
+        # Without this, a path such as /.../bin/python can accidentally match a
+        # cached application named "sh" because of substring scoring.
+        query_path = Path(query).expanduser()
+        if query_path.is_absolute() and query_path.is_file():
+            app = ApplicationInfo(
+                name=query_path.stem.capitalize(),
+                executable_path=str(query_path),
+                source="direct_path",
+            )
+            self._cache[app.name.lower()] = app
+            return app
+
         # 1. Exact match
         if q in self._cache:
             return self._cache[q]
@@ -190,7 +203,10 @@ class AppRegistry:
                 return app
 
         # 4. Direct check if query is an absolute path or in PATH
-        resolved_path = shutil.which(query)
+        clean_query = q.replace(".exe", "")
+        resolved_path = shutil.which(query) or shutil.which(clean_query)
+        if not resolved_path:
+            resolved_path = shutil.which(clean_query.lower())
         if resolved_path:
             name = Path(resolved_path).stem.capitalize()
             app = ApplicationInfo(name=name, executable_path=resolved_path, source="direct_path")

@@ -10,8 +10,10 @@ Verifies:
 """
 
 import platform
+import sys
 from typing import List
 
+import psutil
 import pytest
 
 from jarvis.actions.broker import ActionBroker
@@ -28,8 +30,10 @@ from jarvis.execution.computer.contract import (
     ComputerBounds,
     ComputerObservation,
 )
+from jarvis.execution.windows.app_launcher import app_launcher
 from jarvis.execution.windows.app_registry import app_registry
 from jarvis.execution.windows.host import windows_node
+from jarvis.execution.windows.process import launch_process
 from jarvis.execution.windows.uia import UIElementInfo
 from jarvis.execution.windows.window_manager import window_manager
 from jarvis.policy.engine import PolicyEngine
@@ -49,6 +53,42 @@ from jarvis.policy.firewall import (
 def setup_node_capabilities() -> None:
     """Ensure host capabilities are registered before each test."""
     windows_node.register_capabilities()
+
+
+def test_posix_process_launch_does_not_use_windows_creation_flags() -> None:
+    """Process launch remains usable on Linux where Windows creation flags do not exist."""
+    if platform.system() == "Windows":
+        pytest.skip("POSIX process launch assertion is not applicable on Windows")
+
+    result = launch_process(
+        sys.executable,
+        ["-c", "import time; time.sleep(2)"],
+    )
+    process = psutil.Process(result["pid"])
+    try:
+        assert result["status"] == "launched"
+        assert process.is_running()
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_posix_application_launch_does_not_use_windows_creation_flags() -> None:
+    """Application launcher can start a background POSIX process without a desktop window."""
+    if platform.system() == "Windows":
+        pytest.skip("POSIX application launch assertion is not applicable on Windows")
+
+    result = app_launcher.launch(
+        sys.executable,
+        arguments=["-c", "import time; time.sleep(2)"],
+        timeout_seconds=0.1,
+    )
+    assert result.success is True
+    assert result.status == "LAUNCHED_BACKGROUND"
+    assert result.pid is not None
+    process = psutil.Process(result.pid)
+    process.terminate()
+    process.wait(timeout=5)
 
 
 def test_app_registry_discovery() -> None:
