@@ -7,8 +7,8 @@ This document provides instructions for developers contributing to the JARVIS co
 ## 1. Prerequisites & Developer Tooling
 
 Ensure your development environment has the following installed:
-- **Python 3.10+ (64-bit)** with `pip` and `venv`.
-- **Node.js 18+ LTS** for TypeScript execution substrate and frontend syntax verification.
+- **Python 3.14.4 (64-bit)** with `pip` and `venv`, matching [`.python-version`](../../.python-version).
+- **Node.js 22.14.0** for the TypeScript execution substrate and frontend syntax verification, matching [`.nvmrc`](../../.nvmrc).
 - **Git** with support for Conventional Commits.
 - An IDE with active Python typing, linting, and formatting extensions (VS Code or PyCharm recommended).
 
@@ -16,12 +16,14 @@ Ensure your development environment has the following installed:
 
 ## 2. Setting Up the Local Workspace
 
-```powershell
-# 1. Activate your virtual environment
-.\.venv\Scripts\Activate.ps1
+```bash
+# 1. Create and activate the local virtual environment
+python3.14 -m venv .venv
+source .venv/bin/activate
 
-# 2. Install editable package with development dependencies
-python -m pip install -e ".[dev]"
+# 2. Install from the committed lockfiles
+python -m pip install --requirement requirements.lock
+npm --prefix substrate ci --ignore-scripts
 
 # 3. Verify that development tools are available
 python -m ruff --version
@@ -57,21 +59,21 @@ Every modification submitted to JARVIS must satisfy four fundamental engineering
 
 Before pushing changes or submitting a pull request, run the complete suite of quality verification checks:
 
-```powershell
-# 1. Python Linter
-python -m ruff check .
+```bash
+# 1. Headless/offline regression suite
+make test
 
-# 2. Python Code Formatter Check
-python -m ruff format --check .
+# 2. Python linter
+make lint
 
-# 3. Static Type Checking (Strict Mode)
-python -m mypy src tests
+# 3. Python code formatter check
+make format-check
 
-# 4. Frontend JavaScript Syntax Validation
-node --check frontend/js/app.js frontend/js/config.js frontend/js/audio/player.js frontend/js/audio/recorder.js frontend/js/components/particle-field.js frontend/js/components/signal-orb.js frontend/js/components/speaking-orb.js frontend/js/gateway/client.js
+# 4. Static type checking (strict mode)
+make typecheck
 
-# 5. Full Test Suite Execution
-python -m pytest
+# 5. Frontend JavaScript syntax validation
+make js-check
 ```
 
 ### Running Targeted Tests During Development

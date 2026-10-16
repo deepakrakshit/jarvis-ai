@@ -6,12 +6,13 @@ This document outlines the testing strategy, test suites, quality gates, and Con
 
 ## 1. Quality Gates and Standards
 
-All code contributed to JARVIS must satisfy four strict quality gates before being merged:
+The reproducible local checks are driven by the committed runtime pins and lockfiles. Code changes should satisfy these quality gates before being merged:
 
-1. **100% Test Pass Rate**: `pytest` must pass with zero failures or unexpected errors.
-2. **100% Strict Type Safety**: `mypy src tests` must complete with zero type violations under strict mode.
-3. **100% Clean Linting and Formatting**: `ruff check .` and `ruff format --check .` must report zero warnings or reformatting suggestions.
-4. **Syntax Verification**: `node --check` must confirm valid syntax across all JavaScript client files.
+1. **Offline regression suite**: `make test` must pass without network access, provider credentials, browser binaries, or audio hardware.
+2. **Strict Type Safety**: `make typecheck` runs `mypy src tests` under strict mode.
+3. **Clean Linting and Formatting**: `make lint` and `make format-check` must report zero warnings or reformatting suggestions.
+4. **Frontend Syntax Verification**: `make js-check` checks every committed JavaScript client file.
+5. **Optional host suites**: `make test-all` covers browser/audio and live host behavior when the matching runtime is installed.
 
 ---
 
@@ -42,132 +43,55 @@ tests/
 
 ## 3. Running Local Verification Checks
 
-### 3.1. Running Unit & Integration Tests
+### 3.1. Running the Offline Regression Suite
 
 ```bash
-# Run the complete test suite
-pytest
+# Create the local environment from the committed lockfiles first.
+make install
 
-# Run tests with verbose output and timing
-pytest -v --durations=10
+# Headless/offline-capable regression suite.
+make test
 
-# Run only unit tests
-pytest tests/unit/
-
-# Run a specific test file
-pytest tests/unit/test_config.py
-
-# Run tests with coverage analysis
-pytest --cov=src/jarvis --cov-report=term-missing
+# Run all tests, including browser and audio suites.
+make test-all
 ```
 
 ### 3.2. Code Quality and Type Checking
 
 ```bash
 # Check code formatting (dry run)
-ruff format --check .
+make format-check
 
 # Auto-format all Python code
 ruff format .
 
 # Run linter checks
-ruff check .
+make lint
 
 # Run linter checks with automated safe fixes
 ruff check --fix .
 
 # Run strict static type checking
-mypy src tests
+make typecheck
 ```
 
 ### 3.3. Frontend Client Syntax Checks
 
 ```bash
 # Verify JavaScript syntax across all client modules
-node --check frontend/js/app.js
-node --check frontend/js/config.js
-node --check frontend/js/components/signal-orb.js
-node --check frontend/js/gateway/client.js
+make js-check
 ```
 
 ---
 
 ## 4. Continuous Integration Pipeline
 
-JARVIS uses GitHub Actions (`.github/workflows/ci.yml`) to enforce automated verification on all pull requests and branch pushes.
+JARVIS uses GitHub Actions (`.github/workflows/ci.yml`) on Ubuntu and Windows. Both runners read `.python-version` and `.nvmrc`, install from `uv.lock` and `substrate/package-lock.json`, then run the same headless regression suite and JavaScript syntax checks.
 
-### 4.1. CI Workflow Structure
+The workflow intentionally leaves browser, audio, and credential-backed live checks out of the offline gate. Run those suites on a host with the corresponding runtime and credentials:
 
-```mermaid
-flowchart TD
-    Push[Push or Pull Request] --> Lint[Lint & Style: ruff check & format]
-    Push --> TypeCheck[Type Safety: mypy src tests]
-    Push --> NodeCheck[Frontend Syntax: node --check]
-    
-    Lint --> Matrix[Test Matrix]
-    TypeCheck --> Matrix
-    NodeCheck --> Matrix
-    
-    subgraph Matrix [Pytest Execution Matrix]
-        Py311[Python 3.11 on Windows & Ubuntu]
-        Py312[Python 3.12 on Windows & Ubuntu]
-    end
-    
-    Matrix --> Gate{All Checks Passed?}
-    Gate -- Yes --> Pass[Green CI Status]
-    Gate -- No --> Fail[Fail Build & Block Merge]
-```
-
-### 4.2. Workflow Definition Highlights
-
-The CI pipeline runs on both Windows and Ubuntu runners to maintain cross-platform portability:
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [main, cleanup/*, feature/*]
-  pull_request:
-    branches: [main]
-
-jobs:
-  lint-and-typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: |
-          pip install uv
-          uv pip install --system -e ".[dev]"
-      - name: Ruff Check
-        run: ruff check .
-      - name: Ruff Format Check
-        run: ruff format --check .
-      - name: Mypy Strict Check
-        run: mypy src tests
-
-  test:
-    needs: lint-and-typecheck
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          pip install uv
-          uv pip install --system -e ".[dev]"
-      - name: Run Pytest
-        run: pytest -v
+```bash
+make test-all
 ```
 
 ---

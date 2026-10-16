@@ -43,6 +43,7 @@ help:
 install:
 	$(HOST_PYTHON) -m venv $(VENV)
 	$(VENV_PYTHON) -m pip install --requirement requirements.lock
+	$(VENV_PYTHON) -m pip install --no-deps --no-build-isolation .
 	$(NPM) --prefix substrate ci --ignore-scripts
 
 # This target intentionally excludes tests that require a downloaded browser

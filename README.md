@@ -189,6 +189,7 @@ source .venv/bin/activate
 
 # Install the committed Python lock and core substrate lock
 python -m pip install --requirement requirements.lock
+python -m pip install --no-deps --no-build-isolation .
 npm --prefix substrate ci --ignore-scripts
 
 # Configure environment variables without putting secrets in git
@@ -237,7 +238,7 @@ jarvis chat
 jarvis telegram pair
 
 # Display system diagnostics and registered execution nodes
-jarvis health
+jarvis status --json
 ```
 
 The CLI help and read-only diagnostics do not require provider credentials. Live model, browser, voice, Windows automation, and WhatsApp commands require their corresponding host capabilities and configuration.

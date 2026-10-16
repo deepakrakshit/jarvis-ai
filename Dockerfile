@@ -59,7 +59,7 @@ RUN uv sync --locked --all-extras --no-install-project \
 COPY . .
 
 RUN uv sync --locked --all-extras \
-    && python -m compileall --quiet src \
+    && python -m compileall -q src \
     && python -m playwright install chromium
 
 EXPOSE 8765 8080
