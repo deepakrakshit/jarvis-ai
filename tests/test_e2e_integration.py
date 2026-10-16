@@ -23,7 +23,7 @@ from jarvis.artifacts import ArtifactEmitter, ArtifactStore
 from jarvis.core.control_plane import ControlPlane
 from jarvis.cron import HeartbeatMonitor
 from jarvis.execution.windows.host import windows_node
-from jarvis.gateway.protocol import ProtocolMethod
+from jarvis.gateway.protocol import ProtocolMethod, create_challenge_response
 from jarvis.gateway.server import GatewayServer
 from jarvis.memory.manager import MemoryManager
 from jarvis.policy.engine import PolicyEngine
@@ -84,6 +84,12 @@ async def test_full_system_e2e_lifecycle(test_db: DatabaseEngine, tmp_path: Path
                     "client_id": "e2e-tester",
                     "nonce": nonce,
                     "session_id": "SESS-E2E-1",
+                    "challenge_response": create_challenge_response(
+                        nonce=nonce,
+                        client_id="e2e-tester",
+                        session_id="SESS-E2E-1",
+                        auth_token=server.auth_token,
+                    ),
                 },
             }
             await ws.send(json.dumps(connect_req))
