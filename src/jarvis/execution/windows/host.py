@@ -3,6 +3,8 @@
 Registers native Windows capabilities into the Action Broker capability registry.
 """
 
+import os
+
 from jarvis.actions.registry import capability_registry
 from jarvis.execution.computer.contract import ComputerActParams
 from jarvis.execution.windows.desktop import (
@@ -154,7 +156,7 @@ class WindowsNode:
             CAPABILITY_SHELL_EXECUTE,
             lambda req: run_shell_command(
                 command=str(req.arguments["command"]),
-                shell=str(req.arguments.get("shell", "powershell")),
+                shell=str(req.arguments.get("shell", "powershell" if os.name == "nt" else "sh")),
                 timeout_seconds=float(req.arguments.get("timeout_seconds", 60.0)),
                 cwd=req.arguments.get("cwd"),
             ),

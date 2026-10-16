@@ -5,6 +5,7 @@ Enforces execution timeouts, output streaming, exit code capture, and observatio
 
 import asyncio
 import os
+import shutil
 from typing import Any, Dict, Optional
 
 from jarvis.telemetry import logger
@@ -19,7 +20,8 @@ async def run_shell_command(
     """Execute a controlled shell command asynchronously and return results."""
     logger.info(f"Executing controlled {shell} command: {command[:80]}...")
 
-    if shell.lower() in ("powershell", "pwsh"):
+    shell_name = shell.lower()
+    if os.name == "nt" and shell_name in ("powershell", "pwsh"):
         cmd_args = [
             "powershell.exe",
             "-NoProfile",
@@ -29,8 +31,18 @@ async def run_shell_command(
             "-Command",
             command,
         ]
-    else:
+    elif os.name == "nt":
         cmd_args = ["cmd.exe", "/c", command]
+    else:
+        executable = shutil.which(shell_name)
+        if shell_name in ("powershell", "pwsh") and executable is None:
+            return {
+                "stdout": "",
+                "stderr": "PowerShell is not available on this host; use shell='sh' or shell='bash'.",
+                "exit_code": -1,
+                "timed_out": False,
+            }
+        cmd_args = [executable or "/bin/sh", "-c", command]
 
     try:
         process = await asyncio.create_subprocess_exec(

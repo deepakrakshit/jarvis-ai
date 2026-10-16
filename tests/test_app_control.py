@@ -9,6 +9,7 @@ Verifies:
 - Action Broker capability dispatch for application control
 """
 
+import platform
 from typing import List
 
 import pytest
@@ -52,6 +53,8 @@ def setup_node_capabilities() -> None:
 
 def test_app_registry_discovery() -> None:
     """Verify dynamic discovery of installed applications without hardcoding."""
+    if platform.system() != "Windows":
+        pytest.skip("installed-app assertions target the Windows desktop registry")
     apps = app_registry.discover_installed_apps(force_refresh=True)
     assert isinstance(apps, list)
     assert len(apps) > 0
@@ -71,6 +74,8 @@ def test_app_registry_discovery() -> None:
 
 def test_window_manager_enumeration() -> None:
     """Verify live window enumeration returns structured metadata."""
+    if platform.system() != "Windows":
+        pytest.skip("live window enumeration requires a Windows desktop")
     windows = window_manager.list_windows(visible_only=True)
     assert isinstance(windows, list)
     assert len(windows) > 0
