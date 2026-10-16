@@ -6,13 +6,15 @@
 import { CONFIG } from '../config.js';
 
 export class GatewayClient {
-  constructor({ url, sessionId, onStatusChange }) {
+  constructor({ url, sessionId, authToken, onStatusChange }) {
     this.url = url;
     this.sessionId = sessionId;
+    this.authToken = authToken || null;
     this.onStatusChange = onStatusChange;
     this.ws = null;
     this.reconnectTimer = null;
     this.isConnected = false;
+    this.isAuthenticated = false;
     this.handlers = new Map();
   }
 
@@ -55,8 +57,9 @@ export class GatewayClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
+        this.isAuthenticated = false;
         if (typeof this.onStatusChange === 'function') {
-          this.onStatusChange('connected', 'JARVIS OPERATIONAL');
+          this.onStatusChange('connecting', 'AUTHENTICATING...');
         }
         this.emit('open');
       };
@@ -64,7 +67,13 @@ export class GatewayClient {
       this.ws.onmessage = (event) => {
         try {
           const frame = JSON.parse(event.data);
-          this.handleFrame(frame);
+          this.handleFrame(frame).catch((err) => {
+            console.error('Gateway frame handling error:', err);
+            if (typeof this.onStatusChange === 'function') {
+              this.onStatusChange('error', 'AUTHENTICATION FAILED');
+            }
+            try { this.ws?.close(); } catch (e) {}
+          });
         } catch (err) {
           console.error('Frame parse error:', err);
         }
@@ -72,6 +81,7 @@ export class GatewayClient {
 
       this.ws.onclose = () => {
         this.isConnected = false;
+        this.isAuthenticated = false;
         if (typeof this.onStatusChange === 'function') {
           this.onStatusChange('disconnected', 'STANDALONE');
         }
@@ -89,16 +99,32 @@ export class GatewayClient {
     }
   }
 
-  handleFrame(frame) {
+  async handleFrame(frame) {
     if (!frame) return;
 
     // 1. Handshake Challenge Protocol
     if (frame.type === 'event' && frame.event === 'connect.challenge') {
+      const clientId = 'jarvis-neural-ui';
+      const sessionId = this.sessionId;
+      const authToken = await this.resolveAuthToken();
+      if (!authToken) {
+        throw new Error('Gateway authentication token is unavailable');
+      }
+      const challengeResponse = await createChallengeResponse(
+        frame.payload?.nonce || '',
+        clientId,
+        sessionId,
+        authToken,
+      );
       this.send({
         type: 'req',
         id: 'req-handshake',
         method: 'connect',
-        params: { client_id: 'jarvis-neural-ui', session_id: this.sessionId }
+        params: {
+          client_id: clientId,
+          session_id: sessionId,
+          challenge_response: challengeResponse,
+        }
       });
       return;
     }
@@ -109,8 +135,40 @@ export class GatewayClient {
       return;
     }
 
+    if (frame.type === 'res' && frame.ok && frame.payload?.type === 'hello-ok') {
+      this.isAuthenticated = true;
+      if (typeof this.onStatusChange === 'function') {
+        this.onStatusChange('connected', 'JARVIS OPERATIONAL');
+      }
+      this.emit('authenticated', frame.payload);
+      return;
+    }
+
     // 3. Fallback generic frame emit
     this.emit('frame', frame);
+  }
+
+  async resolveAuthToken() {
+    if (this.authToken) return this.authToken;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/__jarvis_gateway_token', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          if (typeof payload.token === 'string' && payload.token) {
+            this.authToken = payload.token;
+          }
+        }
+      } catch (err) {
+        console.error('Gateway token bootstrap failed:', err);
+      }
+    }
+
+    return this.authToken;
   }
 
   send(data) {
@@ -140,4 +198,22 @@ export class GatewayClient {
       }
     });
   }
+}
+
+async function createChallengeResponse(nonce, clientId, sessionId, authToken) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Web Crypto API is unavailable');
+  }
+
+  const encoder = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    encoder.encode(authToken),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const message = encoder.encode(`${nonce}\0${clientId}\0${sessionId}`);
+  const signature = await globalThis.crypto.subtle.sign('HMAC', key, message);
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

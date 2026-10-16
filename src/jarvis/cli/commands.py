@@ -253,7 +253,7 @@ async def handle_serve(
     ui_server: Optional[JarvisWebServer] = None
     if with_ui:
         try:
-            ui_server = JarvisWebServer()
+            ui_server = JarvisWebServer(gateway_auth_token=server.auth_token)
             ui_server.start(open_browser=open_browser, gateway_port=server.port)
             logger.info(f"JARVIS Neural UI available at {ui_server.url}/index.html")
         except Exception as ui_err:
@@ -328,7 +328,9 @@ async def handle_chat(
 
         if with_ui:
             try:
-                ui_server = JarvisWebServer()
+                ui_server = JarvisWebServer(
+                    gateway_auth_token=gateway_server.auth_token if gateway_server else None
+                )
                 gw_port = gateway_server.port if gateway_server else None
                 ui_server.start(open_browser=open_browser, gateway_port=gw_port)
                 logger.info(f"JARVIS Neural UI active at {ui_server.url}/index.html")
@@ -999,7 +1001,11 @@ async def handle_ui(
     server = GatewayServer()
     await server.start()
 
-    ui_server = JarvisWebServer(host=host, port=port)
+    ui_server = JarvisWebServer(
+        host=host,
+        port=port,
+        gateway_auth_token=server.auth_token,
+    )
     ui_server.start(open_browser=open_browser, gateway_port=server.port)
 
     console.print(

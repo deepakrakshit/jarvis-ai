@@ -1,5 +1,6 @@
 """Test Suite for JARVIS Static Web Server."""
 
+import json
 import socket
 import urllib.request
 
@@ -66,3 +67,24 @@ def test_web_server_lifecycle() -> None:
     finally:
         server.stop()
         assert not server.is_running
+
+
+def test_web_server_gateway_token_bootstrap_is_not_cross_origin_readable() -> None:
+    """Serve the gateway token only to same-origin browser code without CORS exposure."""
+    port = get_free_port()
+    server = JarvisWebServer(
+        host="127.0.0.1",
+        port=port,
+        gateway_auth_token="test-ui-token",
+    )
+
+    try:
+        server.start(open_browser=False)
+        token_url = f"{server.url}/__jarvis_gateway_token"
+        with urllib.request.urlopen(token_url, timeout=2.0) as response:
+            assert response.status == 200
+            assert response.headers.get("Access-Control-Allow-Origin") is None
+            assert response.headers.get("Cache-Control") == "no-store"
+            assert json.loads(response.read().decode("utf-8")) == {"token": "test-ui-token"}
+    finally:
+        server.stop()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import http.server
+import json
 import os
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ import threading
 import webbrowser
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 from jarvis.config import settings
 from jarvis.telemetry import logger
@@ -38,6 +40,33 @@ class JarvisUIRequestHandler(http.server.SimpleHTTPRequestHandler):
         ".ico": "image/x-icon",
     }
 
+    def __init__(
+        self,
+        *args: Any,
+        gateway_auth_token: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        self.gateway_auth_token = gateway_auth_token
+        super().__init__(*args, **kwargs)
+
+    def do_GET(self) -> None:
+        """Serve the local UI token bootstrap endpoint or a static asset."""
+        if urlsplit(self.path).path == "/__jarvis_gateway_token":
+            if not self.gateway_auth_token:
+                self.send_error(404, "Gateway token is unavailable")
+                return
+
+            body = json.dumps({"token": self.gateway_auth_token}).encode("utf-8")
+            self._sensitive_response = True
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        super().do_GET()
+
     def translate_path(self, path: str) -> str:
         """Translate a /-relative path to the local filesystem, handling /frontend/ prefix."""
         clean_path = path.split("?", 1)[0].split("#", 1)[0]
@@ -51,12 +80,15 @@ class JarvisUIRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self) -> None:
         """Inject CORS and caching headers."""
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        if getattr(self, "_sensitive_response", False):
+            self.send_header("Cache-Control", "no-store")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         super().end_headers()
 
     def do_OPTIONS(self) -> None:
@@ -77,11 +109,13 @@ class JarvisWebServer:
         host: Optional[str] = None,
         port: Optional[int] = None,
         workspace_dir: Optional[Path] = None,
+        gateway_auth_token: Optional[str] = None,
     ) -> None:
         self.host = host or settings.UI_HOST
         self.port = port or settings.UI_PORT
         self.workspace_dir = workspace_dir or settings.WORKSPACE_DIR
         self.frontend_dir = self.workspace_dir / "frontend"
+        self.gateway_auth_token = gateway_auth_token
         self._server: Optional[http.server.ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._is_running = False
@@ -107,7 +141,11 @@ class JarvisWebServer:
         max_search = getattr(settings, "UI_PORT_SEARCH_LIMIT", 50) if auto_discover else 1
 
         target_dir = self.frontend_dir if self.frontend_dir.is_dir() else self.workspace_dir
-        handler_factory = functools.partial(JarvisUIRequestHandler, directory=str(target_dir))
+        handler_factory = functools.partial(
+            JarvisUIRequestHandler,
+            directory=str(target_dir),
+            gateway_auth_token=self.gateway_auth_token,
+        )
 
         for offset in range(max_search):
             attempt_port = target_port + offset
@@ -141,7 +179,10 @@ class JarvisWebServer:
 
         return self.port
 
-    def launch_desktop_window(self, gateway_port: Optional[int] = None) -> None:
+    def launch_desktop_window(
+        self,
+        gateway_port: Optional[int] = None,
+    ) -> None:
         """Launch JARVIS in a dedicated, borderless desktop application window."""
         import time
 
@@ -206,7 +247,10 @@ class JarvisWebServer:
         except Exception as err:
             logger.warning(f"Could not open application window automatically: {err}")
 
-    def launch_browser(self, gateway_port: Optional[int] = None) -> None:
+    def launch_browser(
+        self,
+        gateway_port: Optional[int] = None,
+    ) -> None:
         """Alias for launch_desktop_window for backwards compatibility."""
         self.launch_desktop_window(gateway_port=gateway_port)
 
