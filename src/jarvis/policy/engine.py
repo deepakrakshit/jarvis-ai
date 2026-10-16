@@ -118,9 +118,26 @@ class PolicyEngine:
                 return decision
 
         # 3. Existing Approval Verification
+        approval = None
         if request.approval_id:
             approval = self.approvals.get_pending(request.approval_id)
-            if approval and approval.status == ApprovalStatus.APPROVED:
+            if approval and (
+                approval.action_id != request.action_id
+                or approval.task_id != request.task_id
+                or approval.session_id != request.session_id
+                or approval.capability != capability
+            ):
+                decision = PolicyDecision(
+                    action_id=request.action_id,
+                    verdict=PolicyVerdict.DENY,
+                    reason="Approval ticket does not match the requested action.",
+                    capability=capability,
+                    risk_tier=risk_tier.value,
+                    approval_request=approval,
+                )
+                self._log_decision(request, decision)
+                return decision
+            elif approval and approval.status == ApprovalStatus.APPROVED:
                 decision = PolicyDecision(
                     action_id=request.action_id,
                     verdict=PolicyVerdict.ALLOW,
@@ -142,6 +159,20 @@ class PolicyEngine:
                 )
                 self._log_decision(request, decision)
                 return decision
+            elif approval and approval.status in {
+                ApprovalStatus.TIMED_OUT,
+                ApprovalStatus.REVOKED,
+            }:
+                decision = PolicyDecision(
+                    action_id=request.action_id,
+                    verdict=PolicyVerdict.DENY,
+                    reason=f"Approval request is {approval.status.value} and cannot authorize execution.",
+                    capability=capability,
+                    risk_tier=risk_tier.value,
+                    approval_request=approval,
+                )
+                self._log_decision(request, decision)
+                return decision
 
         # 4. Destructive / High Risk Actions Require Interactive Approval (if enabled)
         if self.require_approvals and (
@@ -154,7 +185,7 @@ class PolicyEngine:
                 or request.arguments.get("command")
                 or "system"
             )
-            approval_req = self.approvals.create_request(
+            approval_req = approval or self.approvals.create_request(
                 action_id=request.action_id,
                 task_id=request.task_id,
                 session_id=request.session_id,

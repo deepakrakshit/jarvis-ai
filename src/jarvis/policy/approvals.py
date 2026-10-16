@@ -31,7 +31,12 @@ class ApprovalManager:
         ttl_seconds: Optional[int] = None,
     ) -> ApprovalRequest:
         """Create and register a pending approval request."""
-        ttl = max(1, int(ttl_seconds or getattr(settings, "APPROVAL_TTL_SECONDS", 300)))
+        configured_ttl = (
+            ttl_seconds
+            if ttl_seconds is not None
+            else getattr(settings, "APPROVAL_TTL_SECONDS", 300)
+        )
+        ttl = max(1, int(configured_ttl))
         request = ApprovalRequest(
             action_id=action_id,
             task_id=task_id,
@@ -105,16 +110,22 @@ class ApprovalManager:
 
     def get_pending(self, approval_id: str) -> Optional[ApprovalRequest]:
         """Get an approval request and expire it before it can be used."""
-        request = self._pending_approvals.get(approval_id)
+        # Durable storage is authoritative so another manager/process cannot leave
+        # this manager using a stale pending decision from its local cache.
+        request = self.db.get_approval_request(approval_id)
         if request is None:
-            request = self.db.get_approval_request(approval_id)
-            if request:
-                self._pending_approvals[approval_id] = request
+            request = self._pending_approvals.get(approval_id)
+        elif request:
+            self._pending_approvals[approval_id] = request
 
         if request and request.status == ApprovalStatus.PENDING:
             now = datetime.now(timezone.utc)
             if request.expires_at and now >= request.expires_at:
                 self._expire(request)
+                refreshed = self.db.get_approval_request(approval_id)
+                if refreshed:
+                    request = refreshed
+                    self._pending_approvals[approval_id] = refreshed
         return request
 
     def cancel(
@@ -138,6 +149,19 @@ class ApprovalManager:
         request.decided_at = datetime.now(timezone.utc)
         request.decided_by = operator_identity
         request.rejection_reason = reason
+        self.db.log_audit_event(
+            event_type="APPROVAL_REVOKED",
+            action_id=request.action_id,
+            task_id=request.task_id,
+            session_id=request.session_id,
+            capability=request.capability,
+            verdict=ApprovalStatus.REVOKED.value,
+            details={
+                "approval_id": approval_id,
+                "decided_by": operator_identity,
+                "reason": reason,
+            },
+        )
         return request
 
     def _expire(self, request: ApprovalRequest) -> None:

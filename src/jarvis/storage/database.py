@@ -7,7 +7,7 @@ and strongly-typed repository methods for Tasks, Sessions, Actions, and Audits.
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
 
@@ -320,6 +320,11 @@ class DatabaseEngine:
                 return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
             requested_at = parse_datetime(row["requested_at"]) or datetime.now(timezone.utc)
+            status = ApprovalStatus(row["status"])
+            expires_at = parse_datetime(row["expires_at"])
+            if expires_at is None and status == ApprovalStatus.PENDING:
+                ttl = max(1, int(getattr(settings, "APPROVAL_TTL_SECONDS", 300)))
+                expires_at = requested_at + timedelta(seconds=ttl)
             return ApprovalRequest(
                 approval_id=row["approval_id"],
                 action_id=row["action_id"],
@@ -329,9 +334,9 @@ class DatabaseEngine:
                 target_resource=row["target_resource"],
                 risk_summary=row["risk_summary"],
                 arguments_summary=json.loads(row["arguments_summary_json"] or "{}"),
-                status=ApprovalStatus(row["status"]),
+                status=status,
                 requested_at=requested_at,
-                expires_at=parse_datetime(row["expires_at"]),
+                expires_at=expires_at,
                 decided_at=parse_datetime(row["decided_at"]),
                 decided_by=row["decided_by"],
                 rejection_reason=row["rejection_reason"],
