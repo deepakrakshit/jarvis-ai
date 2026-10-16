@@ -9,6 +9,8 @@ from jarvis.execution.browser.host import browser_node
 from jarvis.execution.browser.session import browser_manager
 from jarvis.execution.windows.host import windows_node
 
+pytestmark = pytest.mark.browser
+
 
 @pytest.fixture(autouse=True)
 def setup_nodes() -> None:

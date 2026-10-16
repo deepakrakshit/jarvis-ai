@@ -25,6 +25,8 @@ from jarvis.voice.state_machine import (
 )
 from jarvis.voice.synthesizer import PcmStreamPlayer
 
+pytestmark = pytest.mark.audio
+
 
 def test_voice_state_machine_valid_transitions() -> None:
     """Verify state machine follows deterministic lifecycle rules."""

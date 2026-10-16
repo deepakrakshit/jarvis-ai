@@ -14,6 +14,8 @@ from jarvis.voice.microphone import (
 )
 from jarvis.voice.synthesizer import PcmStreamPlayer
 
+pytestmark = pytest.mark.audio
+
 
 def test_read_pcm16_audio_stats_empty() -> None:
     """Verify audio energy stats computation on empty input."""

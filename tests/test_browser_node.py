@@ -12,6 +12,8 @@ from jarvis.policy.firewall import (
     CAPABILITY_BROWSER_SNAPSHOT,
 )
 
+pytestmark = pytest.mark.browser
+
 
 @pytest.fixture(autouse=True)
 def setup_browser() -> None:
