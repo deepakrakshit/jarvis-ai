@@ -1,9 +1,16 @@
 // Signal Orb Web Component: 3D Procedural Fibonacci Sphere
-// States: listening, thinking, searching, done.
+// States: listening, thinking, searching, done, idle, error.
 (() => {
   if (customElements.get('signal-orb')) return;
-  const names = ['listening', 'thinking', 'searching', 'done'];
-  const colors = [[255,185,105],[178,151,255],[97,219,249],[136,239,194]];
+  const names = ['listening', 'thinking', 'searching', 'done', 'idle', 'error'];
+  const colors = [
+    [255, 185, 105], // listening: warm gold
+    [178, 151, 255], // thinking: violet
+    [97, 219, 249],  // searching: cyan
+    [136, 239, 194], // done: mint green
+    [122, 129, 150], // idle: slate grey
+    [255, 92, 92],   // error: coral red
+  ];
   const tau = Math.PI * 2;
   const cache = new Map();
   const seedsFor = count => {
@@ -94,7 +101,7 @@
       const count=this.particles,seeds=seedsFor(count),ring=Math.round(count*.65);
       const fine=Math.max(.5,Math.pow(1000/count,.55)),light=Math.min(1,Math.pow(1000/(count*fine*fine),.35));
       if(!this.buf||this.buf.length<count*5)this.buf=new Float32Array(count*5);
-      const buf=this.buf,[w0,w1,w2,w3]=w,spin=t*.23,cs=Math.cos(spin),sn=Math.sin(spin),wave=8+this.level*22;
+      const buf=this.buf,[w0,w1,w2,w3,w4=0,w5=0]=w,spin=t*.23,cs=Math.cos(spin),sn=Math.sin(spin),wave=8+this.level*22;
       for(let i=0;i<count;i++){
         const p=seeds[i];let vx=0,vy=0,vz=0;
         if(w0>.001){
@@ -117,6 +124,18 @@
           if(i<ring){const q=i/ring*tau,rr=173+9*p.sa;vx+=Math.cos(q)*rr*w3;vy+=Math.sin(q)*rr*w3;vz+=8*p.sa*w3;}
           else{const q=(i-ring)/(count-ring),first=q<.38,v=first?q/.38:(q-.38)/.62;
             vx+=((first?-81+58*v:-23+116*v)+6*p.sa)*w3;vy+=((first?57*v:57-133*v)+6*p.ca)*w3;}
+        }
+        if(w4>.001){
+          // Idle: calm resting equilibrium sphere
+          const x=p.x*cs+p.z*sn,z=p.z*cs-p.x*sn;
+          const r=(185+Math.sin(p.a*.1+t)*3)*w4;
+          vx+=x*r;vy+=p.y*r;vz+=z*r;
+        }
+        if(w5>.001){
+          // Error: alert pulse contained within boundaries
+          const x=p.x*cs+p.z*sn,z=p.z*cs-p.x*sn;
+          const r=(188+Math.sin(p.y*7-t*2)*6)*w5;
+          vx+=x*r;vy+=p.y*r;vz+=z*r;
         }
         const depth=(vz+240)/480,persp=850/(850-vz),alpha=.22+.72*depth;
         const r=(.8+depth*1.35)*(.75+.25*Math.sin(p.a+t*1.6))*fine,o=i*5;

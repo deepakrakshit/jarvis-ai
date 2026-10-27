@@ -10,6 +10,7 @@ import { ParticleField } from './components/particle-field.js';
 import { AudioPlayer } from './audio/player.js';
 import { AudioRecorder } from './audio/recorder.js';
 import { GatewayClient } from './gateway/client.js';
+import { OrbStateController, ORB_STATES } from './state/orb-state-controller.js';
 
 (() => {
   // DOM References
@@ -29,7 +30,7 @@ import { GatewayClient } from './gateway/client.js';
   const fieldCanvas = document.getElementById('particle-field');
 
   // Application Constants
-  const { MIN_SEARCH_VISIBLE_MS, DONE_VISIBLE_MS, SHORTCUTS } = CONFIG.UI;
+  const { MIN_SEARCH_VISIBLE_MS, DONE_VISIBLE_MS, ERROR_VISIBLE_MS = 2500, SHORTCUTS } = CONFIG.UI;
   const isMac = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
   const modKey = isMac ? '⌘' : 'Ctrl';
 
@@ -54,7 +55,7 @@ import { GatewayClient } from './gateway/client.js';
   }
 
   function applyTheme(mode) {
-    const pair = CONFIG.THEME[mode];
+    const pair = CONFIG.THEME[mode] || CONFIG.THEME.idle;
     if (!pair) return;
     const root = document.documentElement.style;
     root.setProperty('--mode-rgb', pair[0].join(', '));
@@ -125,75 +126,11 @@ import { GatewayClient } from './gateway/client.js';
 
   // Application State
   const sessionId = generateSessionId();
-  let currentInterfaceMode = 'listening';
+  let currentInterfaceMode = ORB_STATES.IDLE;
   let activeTurnText = '';
-  let turnHadToolCall = false;
-  let searchingStartTime = 0;
-  let modeRevertTimer = null;
-  let pendingSpeakingTimer = null;
-
-  // Audio Player Engine (24kHz Algenib Voice Output)
-  const player = new AudioPlayer(speakingOrb, () => {
-    if (currentInterfaceMode === 'speaking') {
-      if (turnHadToolCall) {
-        turnHadToolCall = false;
-        setInterfaceMode('done');
-        modeRevertTimer = setTimeout(() => {
-          if (currentInterfaceMode === 'done') {
-            setInterfaceMode('listening');
-          }
-        }, DONE_VISIBLE_MS);
-      } else {
-        setInterfaceMode('listening');
-      }
-    }
-  });
-
-  // Audio Recorder Engine (16kHz Echo-Cancelled Linear PCM Stream)
-  const recorder = new AudioRecorder({
-    onAudioChunk: (pcmBase64) => {
-      gateway.sendLiveAudio(pcmBase64);
-    },
-    onLevel: (level) => {
-      micLevel = Math.max(0, (level - 0.15) / 0.85);
-      if (currentInterfaceMode === 'listening' && signalOrb) {
-        signalOrb.setAttribute('level', level.toFixed(2));
-      }
-    },
-    isSpeakingCheck: () => currentInterfaceMode === 'speaking' || player.isPlaying(),
-    getLastAudioEndTime: () => player.getLastAudioEndTime(),
-  });
-
-  // Gateway Client (WebSocket Pub/Sub)
-  const gateway = new GatewayClient({
-    url: getGatewayUrl(),
-    sessionId: sessionId,
-    onStatusChange: (status, label) => {
-      if (status === 'connected') {
-        statusDot.className = 'status-dot';
-        gatewayLabel.textContent = label;
-        field?.pulse(1);
-        if (!recorder.isActive) {
-          recorder.start().then((active) => setMicUi(active === true));
-        }
-      } else {
-        statusDot.className = 'status-dot connecting';
-        gatewayLabel.textContent = label;
-      }
-    },
-  });
 
   // Visual Mode Coordinator
   function setInterfaceMode(mode, detail = '') {
-    if (modeRevertTimer) {
-      clearTimeout(modeRevertTimer);
-      modeRevertTimer = null;
-    }
-    if (pendingSpeakingTimer && mode !== 'speaking') {
-      clearTimeout(pendingSpeakingTimer);
-      pendingSpeakingTimer = null;
-    }
-
     currentInterfaceMode = mode;
     if (modeLabel) {
       modeLabel.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
@@ -201,7 +138,7 @@ import { GatewayClient } from './gateway/client.js';
     applyTheme(mode);
     field?.setMode(mode);
 
-    if (mode === 'speaking') {
+    if (mode === ORB_STATES.SPEAKING) {
       if (signalOrb) {
         signalOrb.classList.remove('orb-visible');
         signalOrb.classList.add('orb-hidden');
@@ -231,35 +168,92 @@ import { GatewayClient } from './gateway/client.js';
       }
 
       if (feedbackLine) {
-        if (mode === 'listening') {
-          feedbackLine.textContent = 'Listening... Ready for your command.';
-        } else if (mode === 'thinking') {
-          feedbackLine.textContent = 'Synthesizing reasoning graph and formulating plan...';
-        } else if (mode === 'searching') {
-          feedbackLine.textContent = detail || 'Retrieving context or executing tool...';
-        } else if (mode === 'done') {
-          feedbackLine.textContent = detail || 'Action completed successfully.';
+        switch (mode) {
+          case ORB_STATES.IDLE:
+            feedbackLine.textContent = detail || 'JARVIS standby. Click mic or type to begin.';
+            break;
+          case ORB_STATES.LISTENING:
+            feedbackLine.textContent = detail || 'Listening... Ready for your command.';
+            break;
+          case ORB_STATES.THINKING:
+            feedbackLine.textContent = detail || 'Synthesizing reasoning graph and formulating plan...';
+            break;
+          case ORB_STATES.SEARCHING:
+            feedbackLine.textContent = detail || 'Retrieving context or executing tool...';
+            break;
+          case ORB_STATES.DONE:
+            feedbackLine.textContent = detail || 'Action completed successfully.';
+            break;
+          case ORB_STATES.ERROR:
+            feedbackLine.textContent = detail || 'An error occurred. Check connection or logs.';
+            break;
+          default:
+            feedbackLine.textContent = detail || '';
         }
       }
     }
   }
 
+  // State Controller Initialization
+  const orbController = new OrbStateController({
+    initialState: ORB_STATES.IDLE,
+    minSearchMs: MIN_SEARCH_VISIBLE_MS,
+    doneVisibleMs: DONE_VISIBLE_MS,
+    errorVisibleMs: ERROR_VISIBLE_MS,
+    onStateChange: (mode, { detail }) => {
+      setInterfaceMode(mode, detail);
+    },
+  });
+
+  // Audio Player Engine (24kHz Algenib Voice Output)
+  const player = new AudioPlayer(speakingOrb, () => {
+    orbController.onSpeechEnd(player.isPlaying());
+  });
+
+  // Audio Recorder Engine (16kHz Echo-Cancelled Linear PCM Stream)
+  const recorder = new AudioRecorder({
+    onAudioChunk: (pcmBase64) => {
+      gateway.sendLiveAudio(pcmBase64);
+    },
+    onLevel: (level) => {
+      micLevel = Math.max(0, (level - 0.15) / 0.85);
+      if (currentInterfaceMode === ORB_STATES.LISTENING && signalOrb) {
+        signalOrb.setAttribute('level', level.toFixed(2));
+      }
+    },
+    isSpeakingCheck: () => currentInterfaceMode === ORB_STATES.SPEAKING || player.isPlaying(),
+    getLastAudioEndTime: () => player.getLastAudioEndTime(),
+  });
+
+  // Gateway Client (WebSocket Pub/Sub)
+  const gateway = new GatewayClient({
+    url: getGatewayUrl(),
+    sessionId: sessionId,
+    onStatusChange: (status, label) => {
+      if (status === 'connected') {
+        statusDot.className = 'status-dot';
+        gatewayLabel.textContent = label;
+        field?.pulse(1);
+        if (!recorder.isActive) {
+          recorder.start().then((active) => {
+            setMicUi(active === true);
+            orbController.onConnect(active === true);
+          });
+        } else {
+          orbController.onConnect(true);
+        }
+      } else {
+        statusDot.className = 'status-dot connecting';
+        gatewayLabel.textContent = label;
+        orbController.onDisconnect();
+      }
+    },
+  });
+
   // Handle Speaking Orb Completion
   if (speakingOrb) {
     speakingOrb.addEventListener('end', () => {
-      if (!player.isPlaying()) {
-        if (turnHadToolCall) {
-          turnHadToolCall = false;
-          setInterfaceMode('done');
-          modeRevertTimer = setTimeout(() => {
-            if (currentInterfaceMode === 'done') {
-              setInterfaceMode('listening');
-            }
-          }, DONE_VISIBLE_MS);
-        } else {
-          setInterfaceMode('listening');
-        }
-      }
+      orbController.onSpeechEnd(player.isPlaying());
     });
   }
 
@@ -267,57 +261,14 @@ import { GatewayClient } from './gateway/client.js';
   gateway.on('live.audio', (payload) => {
     if (payload.pcm) {
       player.playPcmChunk(payload.pcm, payload.rate || CONFIG.AUDIO.OUTPUT_SAMPLE_RATE);
-      if (currentInterfaceMode !== 'speaking') {
-        if (currentInterfaceMode === 'searching') {
-          const elapsed = Date.now() - searchingStartTime;
-          if (elapsed < MIN_SEARCH_VISIBLE_MS) {
-            if (!pendingSpeakingTimer) {
-              pendingSpeakingTimer = setTimeout(() => {
-                pendingSpeakingTimer = null;
-                if (player.isPlaying() || activeTurnText) {
-                  setInterfaceMode('speaking');
-                }
-              }, MIN_SEARCH_VISIBLE_MS - elapsed);
-            }
-          } else {
-            setInterfaceMode('speaking');
-          }
-        } else if (currentInterfaceMode === 'done') {
-          if (!pendingSpeakingTimer) {
-            pendingSpeakingTimer = setTimeout(() => {
-              pendingSpeakingTimer = null;
-              if (player.isPlaying() || activeTurnText) {
-                setInterfaceMode('speaking');
-              }
-            }, 600);
-          }
-        } else {
-          setInterfaceMode('speaking');
-        }
-      }
+      orbController.onSpeechStart(player.isPlaying() || !!activeTurnText);
     }
   });
 
   gateway.on('live.text', (payload) => {
     if (payload.chunk) {
       activeTurnText += payload.chunk;
-      if (currentInterfaceMode !== 'speaking') {
-        if (currentInterfaceMode === 'searching') {
-          const elapsed = Date.now() - searchingStartTime;
-          if (elapsed < MIN_SEARCH_VISIBLE_MS) {
-            if (!pendingSpeakingTimer) {
-              pendingSpeakingTimer = setTimeout(() => {
-                pendingSpeakingTimer = null;
-                setInterfaceMode('speaking');
-              }, MIN_SEARCH_VISIBLE_MS - elapsed);
-            }
-          } else {
-            setInterfaceMode('speaking');
-          }
-        } else {
-          setInterfaceMode('speaking');
-        }
-      }
+      orbController.onSpeechStart(true);
       if (speakingOrb && speakingOrb.streamWords) {
         speakingOrb.streamWords(payload.chunk);
       }
@@ -326,32 +277,19 @@ import { GatewayClient } from './gateway/client.js';
 
   gateway.on('live.turn_complete', (payload) => {
     const fullText = (payload.text || activeTurnText || '').trim();
-    if (currentInterfaceMode === 'speaking' && speakingOrb && speakingOrb.finishStream) {
+    if (currentInterfaceMode === ORB_STATES.SPEAKING && speakingOrb && speakingOrb.finishStream) {
       speakingOrb.finishStream(fullText);
     }
     activeTurnText = '';
   });
 
   gateway.on('live.tool_call', (payload) => {
-    turnHadToolCall = true;
-    searchingStartTime = Date.now();
     const detail = formatToolDetail(payload.name, payload.args);
-    setInterfaceMode('searching', detail);
+    orbController.onToolCall(detail);
   });
 
   gateway.on('live.tool_complete', (payload) => {
-    const elapsed = Date.now() - searchingStartTime;
-    const remaining = Math.max(0, MIN_SEARCH_VISIBLE_MS - elapsed);
-    setTimeout(() => {
-      if (currentInterfaceMode === 'searching') {
-        setInterfaceMode('done', formatToolCompletion(payload.name));
-        modeRevertTimer = setTimeout(() => {
-          if (currentInterfaceMode === 'done' && !player.isPlaying()) {
-            setInterfaceMode('listening');
-          }
-        }, DONE_VISIBLE_MS);
-      }
-    }, remaining);
+    orbController.onToolComplete(formatToolCompletion(payload.name));
   });
 
   gateway.on('live.interrupted', () => {
@@ -364,187 +302,18 @@ import { GatewayClient } from './gateway/client.js';
         speakingOrb.line = null;
       }
     }
-    if (pendingSpeakingTimer) {
-      clearTimeout(pendingSpeakingTimer);
-      pendingSpeakingTimer = null;
-    }
-    if (modeRevertTimer) {
-      clearTimeout(modeRevertTimer);
-      modeRevertTimer = null;
-    }
     activeTurnText = '';
-    turnHadToolCall = false;
-    setInterfaceMode('listening');
-    if (feedbackLine) {
-      feedbackLine.textContent = 'Interrupted. Listening...';
-    }
+    orbController.onInterrupted();
   });
 
   gateway.on('live.transcription', (payload) => {
     if (payload.text && feedbackLine) {
       feedbackLine.textContent = payload.text;
-      if (payload.finished && currentInterfaceMode === 'listening') {
-        setInterfaceMode('thinking');
+      if (payload.finished && currentInterfaceMode === ORB_STATES.LISTENING) {
+        orbController.transitionTo(ORB_STATES.THINKING);
       }
     }
   });
 
   gateway.on('task.progress', (payload) => {
-    const currentTaskState = payload.state;
-    if (currentTaskState === 'EXECUTING' || currentTaskState === 'SEARCHING') {
-      turnHadToolCall = true;
-      searchingStartTime = Date.now();
-      setInterfaceMode('searching', payload.message || '');
-    } else {
-      setInterfaceMode('thinking');
-      if (feedbackLine) {
-        feedbackLine.textContent = payload.message || 'Evaluating intent...';
-      }
-    }
-  });
-
-  gateway.on('task.completed', () => {
-    setInterfaceMode('done');
-    modeRevertTimer = setTimeout(() => {
-      setInterfaceMode('listening');
-    }, DONE_VISIBLE_MS);
-  });
-
-  // User Interaction & Mic Controls
-  function setMicUi(active) {
-    if (!btnMic) return;
-    btnMic.classList.toggle('active', active);
-    btnMic.setAttribute('aria-pressed', String(active));
-  }
-
-  async function handleMicToggle() {
-    player.getAudioContext();
-    const active = await recorder.toggle();
-    setMicUi(active);
-    if (feedbackLine && currentInterfaceMode === 'listening') {
-      feedbackLine.textContent = active
-        ? 'JARVIS is listening... Speak or type anytime.'
-        : 'Microphone paused.';
-    }
-  }
-
-  if (btnMic) {
-    btnMic.addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleMicToggle();
-    });
-  }
-
-  // Unlock AudioContext & activate microphone on first interaction
-  const unlockAudioOnGesture = (e) => {
-    player.getAudioContext();
-    if (!recorder.isActive && !e.target.closest('#btn-mic')) {
-      recorder.start().then((active) => setMicUi(active === true));
-    }
-  };
-
-  window.addEventListener('pointerdown', unlockAudioOnGesture, { once: true });
-  window.addEventListener('keydown', unlockAudioOnGesture, { once: true });
-
-  // Prompt Submission
-  function syncSendState() {
-    if (btnSend && promptInput) btnSend.disabled = !promptInput.value.trim();
-  }
-
-  function submitQuery(rawText) {
-    const text = rawText.trim();
-    if (!text) return;
-
-    player.getAudioContext();
-    if (promptInput) promptInput.value = '';
-    syncSendState();
-    field?.pulse(1.2);
-
-    setInterfaceMode('thinking');
-    if (feedbackLine) {
-      feedbackLine.textContent = `Processing: "${text}"`;
-    }
-    activeTurnText = '';
-
-    const sent = gateway.sendLiveText(text);
-    if (!sent) {
-      setTimeout(() => {
-        setInterfaceMode('listening');
-        if (feedbackLine) feedbackLine.textContent = 'Gateway offline. Reconnecting...';
-      }, 1500);
-    }
-  }
-
-  if (promptForm) {
-    promptForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (promptInput) {
-        submitQuery(promptInput.value);
-      }
-    });
-  }
-  promptInput?.addEventListener('input', syncSendState);
-
-  // Keyboard shortcuts
-  if (kbdHint) kbdHint.textContent = SHORTCUTS.FOCUS_INPUT;
-  if (hintRow) {
-    hintRow.innerHTML = `<kbd>${SHORTCUTS.FOCUS_INPUT}</kbd> type · <kbd>${modKey}+${SHORTCUTS.TOGGLE_MIC.toUpperCase()}</kbd> mic · <kbd>Esc</kbd> dismiss`;
-  }
-
-  window.addEventListener('keydown', (e) => {
-    const typing = document.activeElement === promptInput;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === SHORTCUTS.TOGGLE_MIC) {
-      e.preventDefault();
-      handleMicToggle();
-    } else if (!typing && e.key === SHORTCUTS.FOCUS_INPUT && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      promptInput?.focus();
-    } else if (typing && e.key === 'Escape') {
-      promptInput.blur();
-    }
-  });
-
-  // Initialize
-  setInterfaceMode('listening');
-  if (field) {
-    field.setAnchor(orbViewport).setLevelSource(currentVoiceLevel).start();
-  }
-  gateway.connect();
-
-  // App visibility & focus synchronization to eliminate background freeze
-  function syncVisibilityState() {
-    if (document.hidden) return;
-    if (!player.isPlaying() && currentInterfaceMode === 'speaking') {
-      if (speakingOrb && typeof speakingOrb.finishCurrentLine === 'function') {
-        speakingOrb.finishCurrentLine();
-      }
-      if (turnHadToolCall) {
-        turnHadToolCall = false;
-        setInterfaceMode('done');
-        modeRevertTimer = setTimeout(() => {
-          if (currentInterfaceMode === 'done') {
-            setInterfaceMode('listening');
-          }
-        }, 800);
-      } else {
-        setInterfaceMode('listening');
-      }
-    }
-    if (speakingOrb && typeof speakingOrb.resize === 'function') {
-      speakingOrb.resize();
-    }
-    if (signalOrb && typeof signalOrb.resize === 'function') {
-      signalOrb.resize();
-    }
-  }
-
-  document.addEventListener('visibilitychange', syncVisibilityState);
-  window.addEventListener('focus', syncVisibilityState);
-
-  // Test Harnesses for automated verification
-  window.__jarvis_handleFrame = (frame) => gateway.handleFrame(frame);
-  window.__jarvis_setInterfaceMode = setInterfaceMode;
-  window.__jarvis_player = player;
-  window.__jarvis_recorder = recorder;
-  window.__jarvis_gateway = gateway;
-})();
+    const current

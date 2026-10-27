@@ -59,6 +59,9 @@ body[data-mode="searching"] .hud-ring--arc { animation-duration: 1.6s; stroke-da
 body[data-mode="speaking"] .hud-ring--arc { stroke-opacity: calc(0.3 + var(--level, 0) * 0.7); }
 body[data-mode="done"] .hud-ring--arc { stroke-dasharray: 528 0; stroke-opacity: 0.3; }
 
+body[data-mode="idle"] .hud-ring--arc { animation-duration: 20s; stroke-opacity: 0.15; }
+body[data-mode="error"] .hud-ring--arc { animation-duration: 3s; stroke-opacity: 0.7; stroke-dasharray: 20 20; }
+
 @keyframes hud-spin { to { transform: rotate(360deg); } }
 
 signal-orb {

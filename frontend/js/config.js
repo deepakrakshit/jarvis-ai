@@ -24,6 +24,7 @@ export const CONFIG = {
   UI: {
     MIN_SEARCH_VISIBLE_MS: numParam('searchMs', 800),
     DONE_VISIBLE_MS: numParam('doneMs', 1200),
+    ERROR_VISIBLE_MS: numParam('errorMs', 2500),
     SHORTCUTS: {
       FOCUS_INPUT: '/',
       TOGGLE_MIC: 'm', // combined with Ctrl / Cmd
@@ -31,11 +32,13 @@ export const CONFIG = {
   },
   /** Per-mode palette: [primary rgb, secondary rgb]. Shared by CSS tokens and the particle field. */
   THEME: {
+    idle: [[122, 129, 150], [179, 185, 201]],
     listening: [[255, 185, 105], [255, 226, 190]],
     thinking: [[178, 151, 255], [120, 200, 255]],
     searching: [[97, 219, 249], [190, 245, 255]],
     speaking: [[255, 150, 214], [178, 151, 255]],
     done: [[136, 239, 194], [210, 255, 236]],
+    error: [[255, 92, 92], [255, 168, 168]],
   },
   /** Ambient 3D particle field behaviour. */
   PARTICLES: {
@@ -52,11 +55,13 @@ export const CONFIG = {
     PULSE_DECAY: 1.8,
     /** speed: forward drift (world units / s), swirl: vortex rad / s, orbit: halo orbit multiplier. */
     MODES: {
+      idle: { speed: 0.3, swirl: 0.01, orbit: 0.5, glow: 0.6 },
       listening: { speed: 0.9, swirl: 0.04, orbit: 1.0, glow: 0.85 },
       thinking: { speed: 2.4, swirl: 0.55, orbit: 2.2, glow: 1.0 },
       searching: { speed: 7.5, swirl: 0.12, orbit: 3.0, glow: 1.1 },
       speaking: { speed: 1.4, swirl: 0.08, orbit: 1.6, glow: 1.05 },
       done: { speed: 0.6, swirl: -0.06, orbit: 0.8, glow: 0.95 },
+      error: { speed: 1.8, swirl: -0.15, orbit: 1.4, glow: 1.1 },
     },
   },
 };
